@@ -22,6 +22,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     private static readonly Guid SettledDashboardLienId = new("70000000-0000-0000-0000-000000000102");
     private static readonly Guid ForeignDashboardLienId = new("70000000-0000-0000-0000-000000000103");
     private static readonly Guid ForeignOrgId = new("30000000-0000-0000-0000-000000000099");
+    private static readonly Guid CanonicalAssistantLawFirmCompanyId = new("80000000-0000-0000-0000-000000000101");
+    private static readonly Guid CanonicalAssistantCaseId = new("80000000-0000-0000-0000-000000000102");
 
     private readonly LiensApiFactory _factory;
     private HttpClient _client = null!;
@@ -134,6 +136,23 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         item.GetProperty("caseNumber").GetString().Should().Be("CASE-TEST-001");
         item.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
         item.GetProperty("totalLienAmount").GetDecimal().Should().Be(9800m);
+    }
+
+    [Fact]
+    public async Task AssistantCaseSearch_counts_cases_linked_to_canonical_law_firm_company()
+    {
+        var response = await _client.GetAsync(
+            "/api/assistant-tools/cases/search?lawFirm=Canonical%20Assistant%20Law&top=5");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+
+        var item = payload.RootElement.GetProperty("cases").EnumerateArray()
+            .Single(value => value.GetProperty("caseId").GetGuid() == CanonicalAssistantCaseId);
+        item.GetProperty("caseNumber").GetString().Should().Be("CASE-CANON-LAW-1");
+        item.GetProperty("lawFirm").GetString().Should().Be("Canonical Assistant Law");
     }
 
     [Fact]
@@ -942,6 +961,33 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 purchaseDate: new DateOnly(2024, 6, 14));
             SetId(aliasedLien, AliasedProviderLienId);
             db.Liens.Add(aliasedLien);
+        }
+
+        if (!db.Companies.Any(company => company.Id == CanonicalAssistantLawFirmCompanyId))
+        {
+            var canonicalLawFirm = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.LawFirmId,
+                "Canonical Assistant Law",
+                SeedHelper.UserId);
+            SetId(canonicalLawFirm, CanonicalAssistantLawFirmCompanyId);
+            db.Companies.Add(canonicalLawFirm);
+        }
+
+        if (!db.Cases.Any(c => c.Id == CanonicalAssistantCaseId))
+        {
+            var canonicalCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "CASE-CANON-LAW-1",
+                "Canonical",
+                "Client",
+                SeedHelper.UserId,
+                title: "Canonical law firm assistant case");
+            SetId(canonicalCase, CanonicalAssistantCaseId);
+            canonicalCase.LinkCanonicalCaseParties(CanonicalAssistantLawFirmCompanyId, null);
+            db.Cases.Add(canonicalCase);
         }
 
         if (!db.Liens.Any(l => l.Id == ActiveDashboardLienId))

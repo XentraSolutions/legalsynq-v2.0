@@ -10,7 +10,9 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     id: "lienId",
     header: "Lien ID",
     cell: (l) => (
-      <span className="text-sm text-gray-600 whitespace-nowrap">{l.lienNumber}</span>
+      <span className="text-sm text-gray-600 whitespace-nowrap">
+        {l.lienNumber}
+      </span>
     ),
   },
   {

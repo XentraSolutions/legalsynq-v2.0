@@ -34,13 +34,13 @@ public interface ITenantServiceClient
         CancellationToken ct = default);
 
     /// <summary>
-    /// Returns the subdomain slug for a given tenant ID.
+    /// Returns the platform subdomain slug and effective hostname for a given tenant ID.
     /// Calls GET /api/v1/tenants/{id}/subdomain on the Tenant service.
     ///
     /// Returns null when the tenant is not found, the Tenant service is unreachable,
     /// or BaseUrl is not configured. Callers must fall back to AppBaseUrl when null.
     /// </summary>
-    Task<string?> GetSubdomainAsync(
+    Task<TenantHostResult?> GetTenantHostAsync(
         Guid              tenantId,
         CancellationToken ct = default);
 
@@ -71,7 +71,7 @@ public interface ITenantServiceClient
     /// Calls GET /api/v1/public/resolve/by-code/{code} on the Tenant service.
     ///
     /// Used for idempotent, environment-portable seed operations (e.g. the initial
-    /// Referral Attribution seed) that must not hardcode a tenant GUID.
+    /// Referral Origination seed) that must not hardcode a tenant GUID.
     ///
     /// Returns null when the code does not resolve, the Tenant service is unreachable,
     /// or BaseUrl is not configured.
@@ -120,3 +120,5 @@ public sealed class TenantProvisionResult
     public string TenantCode { get; init; } = string.Empty;
     public string Subdomain  { get; init; } = string.Empty;
 }
+
+public sealed record TenantHostResult(string Subdomain, string? Hostname);

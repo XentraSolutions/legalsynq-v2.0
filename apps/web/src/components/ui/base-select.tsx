@@ -70,6 +70,15 @@ interface BaseSelectCommonProps<
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  /**
+   * Replaces the entire empty-list block (the `emptyText` line and the
+   * default `createAction` row below it) with a richer custom empty state —
+   * e.g. an icon, a heading, and an inline "+ Add …" affordance of the
+   * caller's own styling. `createAction` is ignored while the list is empty
+   * when this is set, since the custom content is expected to offer its own
+   * way to create one.
+   */
+  emptyState?: React.ReactNode;
 
   disabled?: boolean;
   error?: boolean;
@@ -235,6 +244,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     placeholder = "Select…",
     searchPlaceholder = "Search...",
     emptyText = "No options found.",
+    emptyState,
     disabled,
     error,
     className,
@@ -311,7 +321,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
-    onOpen?.();
+    if (next) {
+      onOpen?.();
+    }
 
     if (!next) {
       handleSearchChange("");
@@ -404,6 +416,12 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   const showSkeleton =
     isSearching || (isLoading && filteredOptions.length === 0);
 
+  // The custom emptyState is expected to offer its own "+ Add …" affordance
+  // and doesn't need to be searched into existence, so the search box above
+  // it would just be dead chrome.
+  const showsEmptyState =
+    !showSkeleton && filteredOptions.length === 0 && Boolean(emptyState);
+
   const searchInput = (
     <input
       autoFocus={!inline}
@@ -489,12 +507,14 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
           )}
         </>
       ) : (
-        <div className="p-3 text-sm text-gray-500">{emptyText}</div>
+        emptyState ?? <div className="p-3 text-sm text-gray-500">{emptyText}</div>
       )}
     </div>
   );
 
-  const createButton = createAction && (
+  // The custom emptyState is expected to offer its own "+ Add …" affordance,
+  // so the default createAction row underneath the list would be redundant.
+  const createButton = createAction && !showsEmptyState && (
     <button
       type="button"
       onClick={() => {
@@ -511,7 +531,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   if (inline) {
     return (
       <div className={className}>
-        <div className="mb-1.5">{searchInput}</div>
+        {!showsEmptyState && <div className="mb-1.5">{searchInput}</div>}
         <div
           className={cn(
             "rounded-lg border border-gray-200 bg-white",
@@ -544,17 +564,25 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             ? triggerContent({ selectedLabel, clearable, onClear: handleClear })
             : (triggerContent ?? (
                 <>
-                  <span className={cn("truncate", !selectedLabel && "text-gray-400")}>
+                  <span
+                    className={cn(
+                      "truncate",
+                      !selectedLabel && "text-gray-400",
+                    )}
+                  >
                     {selectedLabel || placeholder}
                   </span>
                   <span className="flex items-center gap-1 shrink-0">
-                    {clearable && !disabled && ((props.multiple && selectedOptions.length > 0) || (!props.multiple && Boolean(selectedLabel))) && (
-                      <X
-                        aria-label="Clear selection"
-                        className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
-                        onClick={handleClear}
-                      />
-                    )}
+                    {clearable &&
+                      !disabled &&
+                      ((props.multiple && selectedOptions.length > 0) ||
+                        (!props.multiple && Boolean(selectedLabel))) && (
+                        <X
+                          aria-label="Clear selection"
+                          className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                          onClick={handleClear}
+                        />
+                      )}
                     <ChevronDown className="h-4 w-4 opacity-50" />
                   </span>
                 </>
@@ -570,7 +598,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             contentClassName,
           )}
         >
-          <div className="p-2">{searchInput}</div>
+          {!showsEmptyState && <div className="p-2">{searchInput}</div>}
           {optionList}
           {createButton}
         </PopoverPrimitive.Content>

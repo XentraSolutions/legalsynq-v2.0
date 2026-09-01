@@ -22,7 +22,7 @@ import {
   useContactPersonsDirectory,
   useDeactivateContactPerson,
   useExportContacts,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 import type { ContactPersonDirectoryItem } from "@/lib/selling/companies.types";
 import {
   TABLE_CELL_CLASSNAME,

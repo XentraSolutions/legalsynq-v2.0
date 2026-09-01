@@ -2,17 +2,42 @@ namespace Liens.Application.DTOs;
 
 public sealed class CreateSellingLienRequest
 {
+    public Guid CaseId { get; init; }
     public string SellerStatus { get; init; } = string.Empty;
     public string? Source { get; init; }
+}
+
+public sealed class CreateSellingCaseDraftRequest
+{
+    public string? AccidentTypeId { get; init; }
+    public string? AccidentState { get; init; }
+    public DateOnly? DateOfLoss { get; init; }
+    public Guid? HandlingLawFirmId { get; init; }
+    public Guid? CaseManagerId { get; init; }
+    public string? CaseTrackingNotes { get; init; }
+}
+
+public sealed class FinalizeSellingCaseDraftPlaintiffRequest
+{
+    public string FirstName { get; init; } = string.Empty;
+    public string LastName { get; init; } = string.Empty;
+    public DateOnly? Birthdate { get; init; }
+    public string? Email { get; init; }
+    public string? Phone { get; init; }
+    public string? Gender { get; init; }
+    public string? Address { get; init; }
+    public string? City { get; init; }
+    public string? State { get; init; }
+    public string? Zipcode { get; init; }
 }
 
 public sealed class SaveSellingLienInformationRequest
 {
     public string SellerStatus { get; init; } = string.Empty;
-    public DateOnly? InitialServiceDate { get; init; }
-    public DateOnly? EndServiceDate { get; init; }
+    public System.Text.Json.JsonElement InitialServiceDate { get; init; }
+    public System.Text.Json.JsonElement EndServiceDate { get; init; }
     public string? ListingVisibility { get; init; }
-    public string? Notes { get; init; }
+    public System.Text.Json.JsonElement Notes { get; init; }
     public System.Text.Json.JsonElement ReceivableDueDate { get; init; }
 }
 
@@ -22,10 +47,6 @@ public sealed class SaveSellingCaseInformationRequest
     public Guid? FundingCompanyContactId { get; init; }
     public Guid? FacilityId { get; init; }
     public Guid? MedicalProviderId { get; init; }
-    public Guid? HandlingLawFirmId { get; init; }
-    public Guid? CaseManagerId { get; init; }
-    public Guid? CaseId { get; init; }
-    public bool CreateCaseIfMissing { get; init; }
 }
 
 public sealed class SaveSellingMedicalPricingRequest
@@ -69,6 +90,36 @@ public sealed class PrepareSellingLienRequest
 public sealed class WithdrawSellingLienRequest
 {
     public string? Reason { get; init; }
+}
+
+public sealed class MoveSellingLienToManagementRequest
+{
+    public string? Reason { get; init; }
+}
+
+public sealed class MoveSellingLienToManagementV2Request
+{
+    public string? Reason { get; init; }
+    public MoveSellingLienToManagementCaseInfoRequest? CaseInfo { get; init; }
+}
+
+public sealed class MoveSellingLienToManagementCaseInfoRequest
+{
+    public string? ClientFirstName { get; init; }
+    public string? ClientLastName { get; init; }
+    public DateOnly? ClientDob { get; init; }
+    public string? ClientAddress { get; init; }
+    public string? ClientCity { get; init; }
+    public string? ClientState { get; init; }
+    public string? ClientZipCode { get; init; }
+    public bool? IsServicing { get; init; }
+    public string? StatusLabel { get; init; }
+    public string? AccidentTypeId { get; init; }
+    public string? StateOfIncident { get; init; }
+    public DateOnly? DateOfIncident { get; init; }
+    public string? LawFirmId { get; init; }
+    public string? CaseManagerId { get; init; }
+    public string? Notes { get; init; }
 }
 
 public sealed class ArchiveSellingLienRequest

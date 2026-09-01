@@ -4,10 +4,13 @@ interface MetricCardProps {
   label: string;
   trend?: "up" | "down" | undefined;
   trendDescription?: string;
-  value: number;
+  value?: number;
   description?: string;
   statsPercentage?: number;
   formatAsCurrency: boolean;
+  /** True when the backend can't compute this metric yet — shows a generic
+   * "Coming soon" state instead of a misleading $0.00. */
+  unavailable?: boolean;
 }
 
 export function MetricCard({
@@ -18,6 +21,7 @@ export function MetricCard({
   description,
   statsPercentage,
   formatAsCurrency,
+  unavailable,
 }: MetricCardProps) {
   const displayValue =
     typeof value === "number" && formatAsCurrency
@@ -50,22 +54,36 @@ export function MetricCard({
           </span>
         )}
       </div>
-      <p className="mt-3 text-2xl font-bold leading-8 break-words">
-        {displayValue}
-      </p>
-      <p className="mt-5 text-xs font-bold text-neutral-950">
-        {trend ? (
-          <>
-            {trendDescription ?? ""}
-            <TrendIcon className="h-4 w-4 inline" aria-hidden />
-          </>
-        ) : (
-          <span className="text-neutral-400">No trend data</span>
-        )}
-      </p>
-      <p className="mt-1 text-xs leading-5 text-neutral-500">
-        {trend ? description : "—"}
-      </p>
+      {unavailable ? (
+        <>
+          <p className="mt-3 text-2xl font-bold leading-8 break-words text-neutral-300">
+            Coming soon
+          </p>
+          <p className="mt-5 text-xs font-bold text-neutral-400">
+            Coming soon
+          </p>
+          <p className="mt-1 text-xs leading-5 text-neutral-500">—</p>
+        </>
+      ) : (
+        <>
+          <p className="mt-3 text-2xl font-bold leading-8 break-words">
+            {displayValue}
+          </p>
+          <p className="mt-5 text-xs font-bold text-neutral-950">
+            {trend ? (
+              <>
+                {trendDescription ?? ""}
+                <TrendIcon className="h-4 w-4 inline" aria-hidden />
+              </>
+            ) : (
+              <span className="text-neutral-400">No trend data</span>
+            )}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-neutral-500">
+            {trend ? description : "—"}
+          </p>
+        </>
+      )}
     </article>
   );
 }

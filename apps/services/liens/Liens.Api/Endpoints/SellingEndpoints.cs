@@ -7,7 +7,9 @@ using BuildingBlocks.Notifications;
 using HtmlAgilityPack;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Application.Services;
 using Liens.Api;
+using Liens.Api.Serialization;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -43,14 +45,6 @@ public static class SellingEndpoints
         ".xlsx",
     };
     private const string SellingBulkImportTemplateType = "SellingLienImport";
-    private static readonly string[] SellingDocumentTaskTypes =
-    [
-        "LegacyCaseDocument",
-        "LegacyLienDocument",
-        "LegacyMedicalDocument",
-        "SellingDocumentReference",
-    ];
-
     public static void MapSellingEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/liens/selling")
@@ -95,8 +89,15 @@ public static class SellingEndpoints
         buyerGroup.MapGet("/liens/{accessLinkId:guid}/documents/{documentId:guid}/download", DownloadBuyerOfferedLienDocument)
             .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
 
-        buyerGroup.MapPost("/liens/{accessLinkId:guid}/messages", PostBuyerOfferedLienMessage)
+        buyerGroup.MapGet("/liens/{accessLinkId:guid}/message-attachments/{attachmentId:guid}/view", ViewBuyerOfferedLienMessageAttachment)
             .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapGet("/liens/{accessLinkId:guid}/message-attachments/{attachmentId:guid}/download", DownloadBuyerOfferedLienMessageAttachment)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapPost("/liens/{accessLinkId:guid}/messages", PostBuyerOfferedLienMessage)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer)
+            .DisableAntiforgery();
 
         buyerGroup.MapPost("/liens/{accessLinkId:guid}/accept", AcceptBuyerOfferedLien)
             .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
@@ -229,6 +230,7 @@ public static class SellingEndpoints
         ICurrentRequestContext ctx,
         string? tab = null,
         string? search = null,
+        Guid? caseId = null,
         Guid? fundingCompanyId = null,
         Guid? lawFirmId = null,
         Guid? caseManagerId = null,
@@ -246,15 +248,16 @@ public static class SellingEndpoints
             RequireOrgId(ctx),
             new SellingDashboardQuery
             {
-                Tab = tab ?? "pending",
+                Tab = tab ?? "all",
                 Search = search,
+                CaseId = caseId,
                 FundingCompanyId = fundingCompanyId,
                 LawFirmId = lawFirmId,
                 CaseManagerId = caseManagerId,
                 FacilityId = facilityId,
                 InitialServiceDateFrom = initialServiceDateFrom,
                 InitialServiceDateTo = initialServiceDateTo,
-                SortBy = sortBy ?? "initialServiceDate",
+                SortBy = sortBy ?? "createDate",
                 SortDirection = sortDirection ?? "desc",
                 Page = page,
                 PageSize = pageSize,
@@ -507,6 +510,7 @@ public static class SellingEndpoints
         var providerName = await ResolveProviderNameAsync(db, tenantId, lien.FacilityId, ct);
         var documents = await ResolveBuyerOfferedLienDocumentsAsync(db, tenantId, accessLink.Id, lien, ct);
         var messages = await ResolveBuyerOfferedLienMessagesAsync(db, accessLink, ct);
+        var messageAttachments = await ResolveBuyerOfferedLienMessageAttachmentsAsync(db, accessLink, messages, ct);
 
         return Results.Ok(MapBuyerOfferedLienDetail(
             accessLink,
@@ -515,7 +519,8 @@ public static class SellingEndpoints
             buyerContact,
             providerName,
             documents,
-            messages));
+            messages,
+            messageAttachments));
     }
 
     private static Task<IResult> ViewBuyerOfferedLienDocument(
@@ -623,9 +628,99 @@ public static class SellingEndpoints
         return Results.Redirect(redeemUrl, permanent: false, preserveMethod: false);
     }
 
+    private static Task<IResult> ViewBuyerOfferedLienMessageAttachment(
+        Guid accessLinkId,
+        Guid attachmentId,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectBuyerOfferedLienMessageAttachment(
+            accessLinkId,
+            attachmentId,
+            "view",
+            db,
+            ctx,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static Task<IResult> DownloadBuyerOfferedLienMessageAttachment(
+        Guid accessLinkId,
+        Guid attachmentId,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectBuyerOfferedLienMessageAttachment(
+            accessLinkId,
+            attachmentId,
+            "download",
+            db,
+            ctx,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static async Task<IResult> RedirectBuyerOfferedLienMessageAttachment(
+        Guid accessLinkId,
+        Guid attachmentId,
+        string accessType,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        if (attachmentId == Guid.Empty)
+            return Results.BadRequest(new { error = new { code = "attachment_required", message = "A valid attachment id is required." } });
+
+        var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
+        if (error is not null)
+            return error;
+
+        var attachment = await db.SellingPortalMessageAttachments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item =>
+                item.Id == attachmentId &&
+                item.TenantId == accessLink!.TenantId &&
+                item.LienId == accessLink.LienId &&
+                item.SellerOrgId == accessLink.SellerOrgId &&
+                item.BuyerOrgId == accessLink.BuyerOrgId &&
+                item.BuyerContactId == accessLink.BuyerContactId,
+                ct);
+        if (attachment is null)
+            return Results.NotFound(new { error = new { code = "attachment_not_found", message = "Attachment was not found for this offered lien message thread." } });
+
+        var redeemUrl = await IssueBuyerOfferedLienDocumentAccessUrlAsync(
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            accessLink!,
+            attachment.DocumentId,
+            accessType,
+            RequireUserId(ctx),
+            ct);
+        if (string.IsNullOrWhiteSpace(redeemUrl))
+        {
+            return Results.Problem(
+                title: "Attachment unavailable",
+                detail: "The attachment could not be opened right now.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+
+        return Results.Redirect(redeemUrl, permanent: false, preserveMethod: false);
+    }
+
     private static async Task<IResult> PostBuyerOfferedLienMessage(
         Guid accessLinkId,
-        SellingPublicEndpoints.PublicPortalMessageRequest? request,
         HttpContext httpContext,
         INotificationPublisher notifications,
         ISellingBuyerAccessLinkService accessLinks,
@@ -634,25 +729,40 @@ public static class SellingEndpoints
         LiensDbContext db,
         ICurrentRequestContext ctx,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
+        ILegacyDocumentUploadClient uploadClient,
         CancellationToken ct = default)
     {
+        var parsedRequest = await SellingPublicEndpoints.ReadPortalMessageRequestAsync(httpContext.Request, ct);
+        if (parsedRequest.Error is not null)
+            return parsedRequest.Error;
+
         var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
         if (error is not null)
             return error;
 
-        return await SellingPublicEndpoints.PostResolvedBuyerPortalMessage(
-            accessLink!,
-            null,
-            request,
-            httpContext,
-            notifications,
-            accessLinks,
-            loggerFactory,
-            configuration,
-            sellerDisplayResolver,
-            db,
-            ct,
-            currentBuyerAccountEmail: ctx.Email);
+        try
+        {
+            return await SellingPublicEndpoints.PostResolvedBuyerPortalMessage(
+                accessLink!,
+                null,
+                parsedRequest.Request,
+                httpContext,
+                notifications,
+                accessLinks,
+                loggerFactory,
+                configuration,
+                sellerDisplayResolver,
+                db,
+                uploadClient,
+                parsedRequest.Attachments,
+                ct,
+                currentBuyerAccountEmail: ctx.Email,
+                attachmentUrlBuilder: (attachment, action) => BuildBuyerOfferedLienMessageAttachmentActionUrl(accessLinkId, attachment.Id, action));
+        }
+        finally
+        {
+            SellingPublicEndpoints.DisposePortalMessageAttachmentUploads(parsedRequest.Attachments);
+        }
     }
 
     private static async Task<IResult> AcceptBuyerOfferedLien(
@@ -980,57 +1090,38 @@ public static class SellingEndpoints
             .ThenBy(item => item.Id)
             .ToListAsync(ct);
 
+        var documentCategories = await db.LookupValues
+            .AsNoTracking()
+            .Where(value =>
+                (value.TenantId == null || value.TenantId == tenantId) &&
+                value.Category == LookupCategory.DocumentCategory &&
+                value.IsActive)
+            .Select(value => new { value.Id, value.Name })
+            .ToListAsync(ct);
+        var documentCategoryNames = FundingCompanySaleDocumentMapper.BuildDocumentCategoryNameLookup(
+            documentCategories.Select(category => (category.Id, category.Name)));
+
         return items
-            .Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal))
-            .Select(item => MapBuyerOfferedLienDocument(item, accessLinkId))
-            .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
-            .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
+            .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
+            .Where(document => document is not null)
+            .Select(document => MapBuyerOfferedLienDocument(document!, accessLinkId))
+            .DistinctBy(document => document.Id)
             .ToList();
     }
 
-    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(ServicingItem item, Guid accessLinkId)
+    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(
+        FundingCompanySaleDocument document,
+        Guid accessLinkId)
     {
-        var fields = ParseLegacyNoteFields(item.Notes);
-        var fileName = FirstNonEmpty(new[]
-        {
-            fields.GetValueOrDefault("originalFileName"),
-            fields.GetValueOrDefault("displayName"),
-            fields.GetValueOrDefault("filename"),
-            item.Description,
-        }) ?? string.Empty;
-
-        var category = FirstNonEmpty(new[]
-        {
-            fields.GetValueOrDefault("documentCategory"),
-            fields.GetValueOrDefault("category"),
-            FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
-            HumanizeDocumentTaskType(item.TaskType),
-        });
-
-        var sizeOrType = FirstNonEmpty(new[]
-        {
-            fields.GetValueOrDefault("size"),
-            fields.GetValueOrDefault("fileSize"),
-            fields.GetValueOrDefault("contentLength"),
-            ResolveFileExtension(fileName),
-        });
-        var documentId = TryResolveDocumentId(fields, out var resolvedDocumentId)
-            ? resolvedDocumentId
-            : (Guid?)null;
-
         return new BuyerOfferedLienDocument(
-            item.Id,
-            fileName.Trim(),
-            category,
-            FormatDocumentSize(sizeOrType),
-            FirstNonEmpty(new[]
-            {
-                fields.GetValueOrDefault("url"),
-                documentId.HasValue ? $"/documents/{documentId.Value:D}" : null,
-            }),
-            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, documentId, "view"),
-            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, documentId, "download"),
-            item.CreatedAtUtc);
+            document.ReferenceId,
+            document.FileName,
+            document.Category,
+            document.SizeOrType,
+            document.DocumentId.HasValue ? $"/documents/{document.DocumentId.Value:D}" : null,
+            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, document.DocumentId, "view"),
+            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, document.DocumentId, "download"),
+            document.CreatedAtUtc);
     }
 
     private static async Task<Guid?> ResolveBuyerOfferedLienDocumentReferenceAsync(
@@ -1046,7 +1137,7 @@ public static class SellingEndpoints
             .Select(item => new { item.TaskType, item.Notes })
             .ToListAsync(ct);
 
-        foreach (var item in items.Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal)))
+        foreach (var item in items.Where(item => FundingCompanySaleDocumentMapper.IsFundingCompanyDocumentTaskType(item.TaskType)))
         {
             var fields = ParseLegacyNoteFields(item.Notes);
             if (TryResolveDocumentId(fields, out var resolvedDocumentId) &&
@@ -1170,6 +1261,17 @@ public static class SellingEndpoints
         return $"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId.Value:D}/{normalizedAction}";
     }
 
+    private static string? BuildBuyerOfferedLienMessageAttachmentActionUrl(Guid accessLinkId, Guid attachmentId, string action)
+    {
+        if (attachmentId == Guid.Empty)
+            return null;
+
+        var normalizedAction = string.Equals(action, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        return $"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/message-attachments/{attachmentId:D}/{normalizedAction}";
+    }
+
     private static async Task<IReadOnlyList<SellingPortalMessage>> ResolveBuyerOfferedLienMessagesAsync(
         LiensDbContext db,
         SellingBuyerAccessLink accessLink,
@@ -1186,6 +1288,36 @@ public static class SellingEndpoints
             .ThenBy(message => message.Id)
             .ToListAsync(ct);
 
+    private static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>>> ResolveBuyerOfferedLienMessageAttachmentsAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink accessLink,
+        IReadOnlyList<SellingPortalMessage> messages,
+        CancellationToken ct)
+    {
+        var messageIds = messages.Select(message => message.Id).ToList();
+        if (messageIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>>();
+
+        var attachments = await db.SellingPortalMessageAttachments
+            .AsNoTracking()
+            .Where(attachment =>
+                attachment.TenantId == accessLink.TenantId &&
+                attachment.LienId == accessLink.LienId &&
+                attachment.SellerOrgId == accessLink.SellerOrgId &&
+                attachment.BuyerOrgId == accessLink.BuyerOrgId &&
+                attachment.BuyerContactId == accessLink.BuyerContactId &&
+                messageIds.Contains(attachment.MessageId))
+            .OrderBy(attachment => attachment.CreatedAtUtc)
+            .ThenBy(attachment => attachment.Id)
+            .ToListAsync(ct);
+
+        return attachments
+            .GroupBy(attachment => attachment.MessageId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<SellingPortalMessageAttachment>)group.ToList());
+    }
+
     private static BuyerOfferedLienDetailResponse MapBuyerOfferedLienDetail(
         SellingBuyerAccessLink accessLink,
         Lien lien,
@@ -1193,11 +1325,12 @@ public static class SellingEndpoints
         BuyerContactDisplay? buyerContact,
         string? providerName,
         IReadOnlyList<BuyerOfferedLienDocument> documents,
-        IReadOnlyList<SellingPortalMessage> messages)
+        IReadOnlyList<SellingPortalMessage> messages,
+        IReadOnlyDictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>> messageAttachments)
     {
         var status = GetBuyerOfferedLienStatus(accessLink.ResponseStatus, lien.Status, lien.SellerStatus);
         var askAmount = lien.AskAmount ?? lien.OfferPrice;
-        var submittedAtUtc = accessLink.NotificationSubmittedAtUtc ?? lien.SubmittedForSaleAtUtc ?? accessLink.CreatedAtUtc;
+        var submittedAtUtc = PacificTimeHelper.Convert(lien.SubmittedForSaleAtUtc ?? accessLink.NotificationSubmittedAtUtc ?? accessLink.CreatedAtUtc);
         var sellerName = FirstNonEmpty(new[] { sellerDisplay.Name, sellerDisplay.Company, "Seller unavailable" }) ?? "Seller unavailable";
         var resolvedSellerCompany = FirstNonEmpty(new[] { sellerDisplay.Company, sellerDisplay.Name });
         var title = FirstNonEmpty(new[] { sellerName, ResolveLienSubjectName(lien), lien.LienNumber }) ?? lien.Id.ToString();
@@ -1232,18 +1365,24 @@ public static class SellingEndpoints
             askAmount,
             lien.HighestBidAmount,
             accessLink.ResponseAmount,
-            FirstNonEmpty(new[] { lien.Description, lien.Notes }),
+            FirstNonEmpty(new[] { lien.Notes, lien.Description }),
             accessLink.ExpiresAtUtc,
             accessLink.ResponseStatus,
             accessLink.ResponseNotes,
             accessLink.RespondedAtUtc,
             allowedActions,
             documents,
-            messages.Select(MapBuyerOfferedLienMessage).ToList(),
+            messages.Select(message => MapBuyerOfferedLienMessage(
+                accessLink.Id,
+                message,
+                messageAttachments.TryGetValue(message.Id, out var attachments) ? attachments : [])).ToList(),
             BuildBuyerOfferedLienActivity(accessLink));
     }
 
-    private static BuyerOfferedLienMessage MapBuyerOfferedLienMessage(SellingPortalMessage message)
+    private static BuyerOfferedLienMessage MapBuyerOfferedLienMessage(
+        Guid accessLinkId,
+        SellingPortalMessage message,
+        IReadOnlyList<SellingPortalMessageAttachment> attachments)
         => new(
             message.Id,
             message.SenderType,
@@ -1252,7 +1391,17 @@ public static class SellingEndpoints
             message.SenderEmail,
             message.Message,
             message.CreatedAtUtc,
-            string.Equals(message.SenderType, SellingPortalMessageSenderType.Buyer, StringComparison.Ordinal));
+            string.Equals(message.SenderType, SellingPortalMessageSenderType.Buyer, StringComparison.Ordinal),
+            attachments
+                .Select(attachment => new BuyerOfferedLienMessageAttachment(
+                    attachment.Id,
+                    attachment.FileName,
+                    attachment.ContentType,
+                    attachment.FileSizeBytes,
+                    attachment.CreatedAtUtc,
+                    BuildBuyerOfferedLienMessageAttachmentActionUrl(accessLinkId, attachment.Id, "view"),
+                    BuildBuyerOfferedLienMessageAttachmentActionUrl(accessLinkId, attachment.Id, "download")))
+                .ToList());
 
     private static IReadOnlyList<BuyerOfferedLienActivityItem> BuildBuyerOfferedLienActivity(
         SellingBuyerAccessLink accessLink)
@@ -1515,71 +1664,6 @@ public static class SellingEndpoints
         var segment = url.Trim().TrimEnd('/').Split('/').LastOrDefault();
         return Guid.TryParse(segment, out documentId);
     }
-
-    private static string? FormatSellingDocumentType(string? documentType)
-    {
-        if (string.IsNullOrWhiteSpace(documentType))
-            return null;
-
-        return documentType.Trim() switch
-        {
-            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
-            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
-            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
-            "SettlementStatement" => "Settlement Statement",
-            "Other" => "Supporting Document",
-            var value => SplitCamelCase(value),
-        };
-    }
-
-    private static string SplitCamelCase(string value)
-    {
-        var label = new StringBuilder(value.Length + 8);
-        for (var i = 0; i < value.Length; i++)
-        {
-            var current = value[i];
-            if (i > 0 && char.IsUpper(current) && char.IsLower(value[i - 1]))
-                label.Append(' ');
-
-            label.Append(current);
-        }
-
-        return label.ToString();
-    }
-
-    private static string FormatDocumentSize(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        var trimmed = value.Trim();
-        if (!long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bytes))
-            return trimmed;
-
-        if (bytes >= 1024L * 1024L)
-            return $"{bytes / (1024m * 1024m):0.#} MB";
-        if (bytes >= 1024L)
-            return $"{bytes / 1024m:0.#} KB";
-
-        return $"{bytes} B";
-    }
-
-    private static string? ResolveFileExtension(string fileName)
-    {
-        var extension = Path.GetExtension(fileName);
-        return string.IsNullOrWhiteSpace(extension)
-            ? null
-            : extension.TrimStart('.').ToUpperInvariant();
-    }
-
-    private static string HumanizeDocumentTaskType(string taskType)
-        => taskType switch
-        {
-            "LegacyCaseDocument" => "Case Document",
-            "LegacyLienDocument" => "Lien Document",
-            "LegacyMedicalDocument" => "Medical Document",
-            _ => "Document",
-        };
 
     private static string BuildInitials(string value)
     {
@@ -2727,7 +2811,7 @@ public static class SellingEndpoints
         BuyerOfferedLienBuyerDetail Buyer,
         string? ProviderName,
         string Status,
-        DateTime SubmittedAtUtc,
+        DateTimeOffset SubmittedAtUtc,
         DateOnly? InitialServiceDate,
         DateOnly? EndServiceDate,
         decimal BillingAmount,
@@ -2779,7 +2863,17 @@ public static class SellingEndpoints
         string? SenderEmail,
         string Message,
         DateTime CreatedAtUtc,
-        bool IsCurrentUser);
+        bool IsCurrentUser,
+        IReadOnlyList<BuyerOfferedLienMessageAttachment> Attachments);
+
+    private sealed record BuyerOfferedLienMessageAttachment(
+        Guid Id,
+        string FileName,
+        string ContentType,
+        long FileSizeBytes,
+        DateTime CreatedAtUtc,
+        string? ViewUrl,
+        string? DownloadUrl);
 
     private sealed record BuyerOfferedLienActivityItem(
         string Id,

@@ -57,6 +57,8 @@ public class TenantAdminService : ITenantAdminService
         ["synq_rx"] = "SynqRx",
         ["synqpayout"] = "SynqPayout",
         ["synq_payout"] = "SynqPayout",
+        ["synqselling"] = "SynqSelling",
+        ["synq_selling"] = "SynqSelling",
     };
 
     public TenantAdminService(
@@ -186,6 +188,50 @@ public class TenantAdminService : ITenantAdminService
             IsVerificationRetryExhausted: compatSnapshot?.IsVerificationRetryExhausted);
     }
 
+    private async Task UpsertPrimaryPlatformDomainAsync(Guid tenantId, string hostname, CancellationToken ct)
+    {
+        var normalized = TenantDomain.NormalizeHost(hostname);
+        if (!TenantDomain.IsValidHost(normalized))
+        {
+            _logger.LogWarning(
+                "Ignoring invalid tenant platform hostname '{Hostname}' for tenant {TenantId}.",
+                hostname, tenantId);
+            return;
+        }
+
+        var current = await _domainRepo.GetActivePrimarySubdomainByTenantAsync(tenantId, ct);
+        if (current is not null)
+        {
+            if (!string.Equals(current.Host, normalized, StringComparison.OrdinalIgnoreCase))
+                current.Update(normalized, TenantDomainType.Subdomain, isPrimary: true);
+            await _domainRepo.UpdateAsync(current, ct);
+            return;
+        }
+
+        var existingHost = await _domainRepo.GetActiveByHostAsync(normalized, ct);
+        if (existingHost is not null)
+        {
+            if (existingHost.TenantId != tenantId)
+            {
+                _logger.LogWarning(
+                    "Ignoring tenant platform hostname '{Hostname}' for tenant {TenantId}; host already belongs to tenant {ExistingTenantId}.",
+                    normalized, tenantId, existingHost.TenantId);
+                return;
+            }
+
+            existingHost.Update(normalized, TenantDomainType.Subdomain, isPrimary: true);
+            await _domainRepo.UpdateAsync(existingHost, ct);
+            return;
+        }
+
+        await _domainRepo.AddAsync(TenantDomain.Create(
+            tenantId,
+            normalized,
+            TenantDomainType.Subdomain,
+            isPrimary: true,
+            status: TenantDomainStatus.Active), ct);
+    }
+
     // ── B11: Status update ────────────────────────────────────────────────────
 
     public async Task<TenantAdminSummaryResponse> UpdateStatusAsync(
@@ -306,6 +352,9 @@ public class TenantAdminService : ITenantAdminService
         // If provisioning succeeded and returned a subdomain/hostname, update the Tenant record.
         if (provResult.Success && !string.IsNullOrWhiteSpace(provResult.Subdomain))
             tenant.SetSubdomain(provResult.Subdomain);
+
+        if (provResult.Success && !string.IsNullOrWhiteSpace(provResult.Hostname))
+            await UpsertPrimaryPlatformDomainAsync(tenant.Id, provResult.Hostname, ct);
 
         if (provResult.Success
             && !string.IsNullOrWhiteSpace(provResult.AdminUserId)

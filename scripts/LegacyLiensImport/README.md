@@ -27,12 +27,267 @@ target mappings and service-owned import paths.
    manifest hash to the import run.
 3. Apply Liens migrations, including `20260726000001_AddLegacyImportControlPlane`,
    `20260727000001_AddLegacyImportApprovals`, and
-   `20260731000001_AddLienPurchaseAndSettlementDates`.
+   `20260731000001_AddLienPurchaseAndSettlementDates`. For the report-parity
+   import and repair described below, also apply
+   `20260825160000_AddLegacyReportParityFields`.
+   `20260825180000_AddLienImportedCreatedByName` is also required to retain
+   `SL_LEINS_MEDICAL.LM_CREATE_BY` as legacy text. Legacy creator text is never
+   treated as a V2 user ID.
+   When the normal EF migration path is unavailable, run the idempotent
+   [`apply-v3-report-parity-schema.sql`](apply-v3-report-parity-schema.sql)
+   against the selected `LS_QA_LIENS` or `LS_LIENS` schema first. It applies
+   the schema only and intentionally leaves EF migration history for the normal
+   application deployment to record.
 4. Set connection strings outside source control:
 
 ```powershell
 $env:LegacySlCoreConnectionString = 'Server=localhost;Database=sl_core_staging;User ID=...;Password=...'
 $env:ConnectionStrings__LiensDb = 'Server=localhost;Database=liens_db;User ID=...;Password=...'
+```
+
+## Import Program 1 update history
+
+[`import-program-1-update-history.sql`](import-program-1-update-history.sql)
+installs the dry-run-first `liens_import_program_1_update_history` procedure for
+`SL_CASE_UPDATE_LOG` and `SL_LIENS_UPDATE_LOG`. It writes append-only
+`liens_LegacyUpdateEvents` plus one `LegacyUpdateEvent` crosswalk per imported
+source row. The controlled restore must be in the separate `SL-CORE` schema on
+the same MySQL server as the currently selected `LS_QA_LIENS` or `LS_LIENS`
+target, matching the existing complete SL-CORE procedure workflow. Do not run
+the full legacy dump against the target schema: it contains unqualified
+destructive `DROP TABLE` statements. A MySQL procedure cannot read a local dump
+file or connect to a different MySQL server.
+
+The `--import-update-logs` C# mode is diagnostic preflight only. It rejects
+`--apply`; all update-history writes must use the stored procedure so the
+one-time database approval and both migration advisory locks are enforced.
+
+This v2 mode is bound to the existing controlled core-import fingerprint
+`3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe`,
+Program `1`, and mapping/import scope `sl-core-update-history-v2`. This rebaseline
+keeps imported update events on the same provenance lineage as their existing
+case/lien crosswalks; do not label that restore with the unrelated portable-dump
+fingerprint. Before running it, deploy the schema from Liens migration
+`20260829120000_AddLegacyUpdateEvents` and complete exactly one compatible core
+Program 1 import for the same tenant, organization, and source fingerprint. The
+procedure validates the required update-event table columns and indexes; it
+does not create or alter EF migration-history rows.
+
+The controlled staging restore must create a dedicated provenance receipt with:
+
+- `PROVENANCE_KEY = sl-core-update-history-v2`
+- `SOURCE_FINGERPRINT` equal to the frozen fingerprint above
+- `IMPORT_SCOPE = sl-core-update-history-v2`
+- `TIMESTAMP_SEMANTICS = America/Los_Angeles-wall-clock`
+
+Do not replace or reuse the `sl-core-current` receipt. Restore with the MySQL
+session time zone fixed to `+00:00` so timestamp literals remain deterministic.
+The `SL-CORE.SL_MIGRATION_SOURCE_PROVENANCE` table must include the nullable
+`TIMESTAMP_SEMANTICS varchar(100)` column so the existing core receipt may remain
+unchanged while the separately keyed update-history receipt declares its
+timestamp interpretation. The procedure definer requires `SELECT` on only the
+six named `SL-CORE` source/receipt tables.
+The procedure also sets its session to `+00:00`, interprets update-log
+timestamps as Pacific wall-clock values, rejects invalid/ambiguous DST times,
+and validates the 19 embedded UTC anchor notes before importing.
+
+After the controlled restore owner adds that nullable column, create the v2
+receipt without changing `sl-core-current`:
+
+```sql
+INSERT INTO `SL-CORE`.SL_MIGRATION_SOURCE_PROVENANCE (
+  PROVENANCE_KEY, SOURCE_FINGERPRINT, IMPORT_SCOPE, RESTORE_REFERENCE,
+  RESTORED_AT_UTC, TIMESTAMP_SEMANTICS)
+SELECT
+  'sl-core-update-history-v2', SOURCE_FINGERPRINT,
+  'sl-core-update-history-v2', RESTORE_REFERENCE, RESTORED_AT_UTC,
+  'America/Los_Angeles-wall-clock'
+FROM `SL-CORE`.SL_MIGRATION_SOURCE_PROVENANCE
+WHERE PROVENANCE_KEY = 'sl-core-current'
+  AND LOWER(SOURCE_FINGERPRINT) =
+      '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe'
+  AND IMPORT_SCOPE = 'sl-core-core-liens-v1';
+```
+
+Install the procedure by opening the complete SQL file in DBeaver and choosing
+**Execute SQL Script**. Because it is `SQL SECURITY DEFINER`, install it under
+the controlled migration account and grant `EXECUTE` only to the migration
+operator; do not grant that operator direct write access to the source or target
+tables. Then run preflight without an approval:
+
+```sql
+CALL liens_import_program_1_update_history(
+  '<tenant-guid>',
+  '<organization-guid>',
+  '<migration-actor-guid>',
+  NULL,
+  0,
+  -1,
+  -1,
+  -1,
+  NULL
+);
+```
+
+For apply, the Identity-owned release process must first create a separate,
+unconsumed `liens_LegacyImportApprovals` row bound to the exact tenant,
+organization, actor, Program `1`, frozen fingerprint, signed-manifest hash, and
+mapping version `sl-core-update-history-v2`. Set its `MappingManifestHash` to
+the exact `ApprovalBindingHash` returned by preflight. That hash canonically
+binds the scope, tenant, organization, actor, fingerprint, case/lien/excluded
+counts, aggregate checksum, and approved `SL_LIENS_UPDATE_LOG:4891` anomaly.
+Copy the exact preflight counts and checksum into the apply call:
+
+```sql
+CALL liens_import_program_1_update_history(
+  '<tenant-guid>',
+  '<organization-guid>',
+  '<migration-actor-guid>',
+  '<update-history-approval-guid>',
+  1,
+  <dry-run-case-count>,
+  <dry-run-lien-count>,
+  <dry-run-excluded-count>,
+  '<dry-run-aggregate-checksum>'
+);
+```
+
+The procedure derives every lien event's case from its crosswalk-bound V2 lien;
+blank `LU_CASE_ID` is valid. The approved source mismatch at `LU_ID=4891` and
+eligible rows without a target crosswalk are recorded as redacted exceptions.
+Wrong-entity, changed-hash, missing-target, cross-tenant, cross-organization,
+and unapproved case/lien mismatches block apply. An identical completed apply
+is a no-op only after the procedure exactly reconciles that run's events,
+crosswalks, and redacted exceptions. Apply shares the tenant's core-import lock,
+atomically revalidates and consumes the database approval, and performs
+set-based event, crosswalk, and redacted-exception inserts in one target
+transaction.
+
+For the approved fingerprint, reconciliation must report 2,756 case events and
+15,976 lien events, including exactly 1,280 lien rows with blank `LU_CASE_ID`,
+plus the single approved exclusion `SL_LIENS_UPDATE_LOG:4891`. Action totals are:
+
+- Case: 1,502 `Case Details Update`, 1,186 `Case Created`, and 68
+  `Personal Info Update`.
+- Lien: 11,157 `Create`, 2,587 `Create Medical Payee`, 1,870 `Update`,
+  303 `Update Medical Code`, 57 `Update Medical Information`, and 2
+  `Update Medical Payee`.
+
+After apply, run the same dry-run command again. It must report zero inserts,
+the same aggregate checksum, one event and one `LegacyUpdateEvent` crosswalk
+per imported source key, the same approved exception evidence, and no ownership
+violations before the read flag is enabled.
+
+The feature remains hidden after import. Reconcile the printed counts and
+checksum, then enable `LegacyUpdateHistory:Enabled`. Before exposure, the
+reviewed run-bound compensation script
+[`compensate-program-1-update-history-import.sql`](compensate-program-1-update-history-import.sql)
+may remove only that run's events and event crosswalks while retaining run and
+exception evidence. Its dry run returns an `ApprovalBindingHash`; before apply,
+the Identity-owned release process must create an unconsumed approval with
+mapping version `sl-core-update-history-rollback-v1` and that exact hash. The
+compensation consumes the approval in the same transaction as the deletions and
+run-state update. After exposure, disable the feature and repair forward.
+
+## Restore legacy case and lien creators
+
+For an SL-CORE core import completed before creator names were retained, run
+[`backfill-sl-core-imported-creators.sql`](backfill-sl-core-imported-creators.sql)
+after applying `20260825180000_AddLienImportedCreatedByName`. It maps only
+through the completed core-import crosswalks, fills blank target values only,
+and stops if an existing nonblank target value conflicts with the source.
+Legacy rows without a core-import crosswalk were never migrated to V2 and are
+outside this backfill's scope.
+
+Run the file with **Execute SQL Script** in DBeaver, then dry run:
+
+```sql
+CALL liens_backfill_sl_core_imported_creators('<tenant-guid>', -1, '0');
+```
+
+Review `ChangesToApply` and `Conflicts`. Apply only with that exact count:
+
+```sql
+CALL liens_backfill_sl_core_imported_creators('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore state of incident
+
+For an SL-CORE core import completed before `SL_CASE.CASE_ACCIDENT_STATE` was
+copied to the typed V2 case field, run
+[`backfill-sl-core-incident-state.sql`](backfill-sl-core-incident-state.sql).
+It updates only blank `liens_Cases.IncidentState` values. A populated different
+V2 value is a conflict and blocks the complete apply; it is never overwritten.
+Legacy rows without a core-import case crosswalk were never migrated into V2 and
+are outside this backfill's scope.
+
+Run the complete file in DBeaver first, then dry-run:
+
+```sql
+CALL liens_backfill_sl_core_incident_state('<tenant-guid>', -1, '0');
+```
+
+Resolve any conflicts. Re-run the dry run immediately before applying, then
+copy its exact `ChangesToApply` count into:
+
+```sql
+CALL liens_backfill_sl_core_incident_state('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore plaintiff address and law-firm email
+
+[`backfill-sl-core-plaintiff-address-and-lawfirm-email.sql`](backfill-sl-core-plaintiff-address-and-lawfirm-email.sql)
+maps legacy plaintiff address, city, state, and ZIP values to both the typed
+V3 case columns and the legacy-compatible full case-address field, and
+law-firm email to the linked canonical contact. It fills blank values only and
+blocks a conflicting existing V3 value.
+
+```sql
+CALL liens_backfill_sl_core_plaintiff_address_and_lawfirm_email('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_plaintiff_address_and_lawfirm_email('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore case phone, email, and sex
+
+[`backfill-sl-core-case-contact-and-sex.sql`](backfill-sl-core-case-contact-and-sex.sql)
+maps legacy case phone and email to their V3 case columns and maps legacy gender
+to the case's `gender` metadata. It fills blank values only and blocks conflicts.
+
+```sql
+CALL liens_backfill_sl_core_case_contact_and_sex('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_case_contact_and_sex('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore report party and medical-facility details
+
+[`backfill-sl-core-report-party-and-facility-details.sql`](backfill-sl-core-report-party-and-facility-details.sql)
+restores the crosswalk-bound case-manager, law-firm, and lien-facility details
+used by reports. It fills only blank V3 fields and refuses conflicting values.
+
+```sql
+CALL liens_backfill_sl_core_report_party_and_facility_details('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_report_party_and_facility_details('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore legacy manual medical-code entries
+
+[`backfill-sl-core-medical-code-amounts.sql`](backfill-sl-core-medical-code-amounts.sql)
+transfers each active `SL_LEINS_MEDICAL_CODE` row into its linked V3 lien as a
+deterministic `LegacyMedicalCode` servicing item. This preserves each code and
+its Medicare, billing, and purchase amounts; it does not populate the separate
+tenant-wide manual-code catalogue. It only inserts missing source-bound rows and
+blocks conflicting or manually-created legacy-code tasks.
+
+Run the complete file in DBeaver, then dry-run:
+
+```sql
+CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', -1, '0');
+```
+
+Apply only when `Conflicts = 0`, using the exact `TasksToInsert` count:
+
+```sql
+CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', <TasksToInsert>, '1');
 ```
 
 The restore receipt table is intentionally in the staging database, outside the
@@ -58,6 +313,66 @@ VALUES
 The restore process must replace this one current row only as part of an
 approved restore workflow. The tool checks its fingerprint and scope before it
 reads source business rows.
+
+Never reuse a receipt after the dump file changes. Recompute the dump SHA-256,
+restore that exact file into controlled staging, and atomically replace the
+receipt through the approved restore process before preflight. A dump whose
+current hash differs from its recorded receipt is not eligible for apply.
+
+## Program 1 contacts and facilities import
+
+[`import-sl-core-contacts-facilities-tenant-only.sql`](import-sl-core-contacts-facilities-tenant-only.sql)
+uses mapping version `sl-core-contact-facility-v3`. Its procedure requires the
+tenant, the lowercase SHA-256 of the approved signed mapping manifest, and the
+apply flag:
+
+```sql
+CALL liens_import_sl_core_contacts_facilities_tenant_only(
+  '<tenant-guid>', '<approved-manifest-sha256>', '0');
+```
+
+Version 3 maps law firms, providers, and other organizations from `SL_CONTACT`,
+but maps the people referenced by `SL_CASE.CASE_MANAGER` and
+`SL_CASE.CASE_ATTORNEY` from `SL_CASE_MANAGER`. Their owning law firm comes from
+`SL_CASE_MANAGER.CM_LAWFIRM`. When that reference is not an eligible Program 1
+law firm, version 3 may fall back to `SL_CASE.CASE_LAW_FIRM` only if every
+active Program 1 case referencing that person agrees on exactly one eligible
+law firm. Missing, invalid, or ambiguous case-derived parents still block the
+wave. The case person's crosswalk source table is `SL_CASE_MANAGER`; do not
+substitute an `SL_CONTACT` crosswalk for these people. Review the dry-run counts
+and conflicts before repeating the exact call with `p_apply = '1'` under the
+approved change record.
+
+Version 3 also contains one source-fingerprint-bound identity resolution:
+`SL_CASE_MANAGER:792` is an approved alias of canonical record
+`SL_CASE_MANAGER:602`. The importer creates or reuses one V3 contact using
+record 602's populated values, while retaining separate crosswalks and source
+hashes for both legacy IDs so all six case-manager relationships remain
+traceable. The preflight must report exactly one `MergedContactAliasRows` for
+this source snapshot. Every other duplicate natural key still blocks with
+`LSLTC-011`, and existing crosswalks for 602 and 792 must not point to different
+target contacts.
+If either approved alias already has a crosswalk from an older contact-import
+run, v3 blocks with `LSLTC-032`; do not repoint it automatically. A completed
+v3 run must retain both alias crosswalks, and every existing crosswalk must
+resolve to a real contact owned by the same tenant and organization.
+
+For a tenant that already completed an earlier contact wave, v3 revalidates and
+reuses its immutable `SL_CONTACT`, facility, facility-person, and lien-facility
+crosswalks only when their completed run has the same tenant, organization, and
+source fingerprint. The new `SL_CASE_MANAGER` rows and crosswalks belong to the
+v3 run. The supplied manifest hash must exactly match the completed core import;
+an arbitrary well-formed SHA-256 is rejected.
+
+Lien-facility crosswalks have two reviewed historical hash contracts. The
+complete v2 importer hashed the five fields that define the lien/facility
+relationship, while the tenant-only importer also included facility-contact,
+email, phone, and provider evidence. Version 3 accepts either exact hash only
+for completed v1/v2 contact runs; a v3 crosswalk must match the expanded current
+hash. The target lien, facility assignment, tenant, organization, source
+fingerprint, entity type, and completed-run checks remain mandatory. Existing
+crosswalk hashes and run IDs are never rewritten. Review
+`LegacyLienFacilityHashMatches` in the preflight and summary before apply.
 
 ## Program 1 law-firm repair
 
@@ -113,28 +428,45 @@ Resolve any returned conflicts, then rerun it with the exact `ContactsToInsert`
 value and `p_apply = '1'.` Production execution requires explicit approval and
 an intentionally selected `LS_LIENS` connection.
 
-## Program 1 case-manager, accident-type, status-label, and facility repair
+## Program 1 case relationship and report-parity repair
 
 Use [`backfill-sl-core-case-relationships.sql`](backfill-sl-core-case-relationships.sql)
 after both the Program 1 core import and the Program 1 contacts/facilities
-import have completed for the same source fingerprint. It repairs only omitted
-relationships and legacy case-status metadata:
+import have completed for the same source fingerprint. It repairs only blank
+canonical fields, omitted relationships, and legacy case-status metadata:
 
-- `SL_CASE.CASE_MANAGER` through its `SL_CONTACT` crosswalk to `caseManagerId`
-  metadata on the target case.
+The repair accepts the completed v2 or v3 contact run that owns the required
+`SL_CASE_MANAGER` crosswalks; facility and lien-facility mappings may come from
+an approved completed v1, v2, or v3 run for the same tenant, organization, and
+source fingerprint.
+
+- `SL_CASE.CASE_MANAGER` and `SL_CASE.CASE_ATTORNEY` through their
+  `SL_CASE_MANAGER` crosswalks to compatibility case-manager and attorney IDs
+  in the target case metadata.
+- `SL_CASE.CASE_LAW_FIRM` through its approved `SL_CONTACT` crosswalk to the
+  compatibility law-firm ID in the target case metadata. The crosswalk may be
+  owned by the completed v1, v2, or v3 contact wave for the same immutable
+  source fingerprint; the case-person crosswalks still require v2 or v3.
 - `SL_CASE.CASE_ACCIDENT_TYPE` through `SL_ACCIDENT_TYPE` to the matching
   system `liens_LookupValues` UUID plus the target `accidentType` name.
 - `SL_CASE.CASE_STATUS` to `statusLabel` metadata for `New`, `Processing`, and
   `Litigation` rows whose target case remains in the corresponding collapsed
   canonical status (`PreDemand` or `InNegotiation`).
 - `SL_LEINS_MEDICAL_INFORMATION_FACILITY` to a blank target lien `FacilityId`.
+- The source address components, incident state, medical status, tracking
+  follow-up date, minor-comp flag, dropped-case flag, and imported creator name
+  to their typed `liens_Cases` fields.
 
 The facility relationship is lien-level, not a column on `liens_Cases`. The
-script never creates contacts, facilities, lookups, or crosswalks; a missing or
-ambiguous mapping blocks the entire apply. It also refuses to overwrite an
-existing different case-manager, accident-type, case-status label, or facility
-assignment. Cases whose status changed after import retain their current status
-and are not given the historical label.
+script never creates contacts, facilities, or lookups. It creates only its
+dedicated `SL_CASE_NOTES_LAST_ACTIVITY` crosswalks; a missing or ambiguous
+prerequisite mapping blocks the entire apply. It also refuses to overwrite an
+existing different case-manager, attorney, typed parity value, accident-type,
+case-status label, or facility assignment. Cases whose status changed after
+import retain their current status and are not given the historical label.
+Every applied parity group records source, preimage, and applied-value hashes
+in `liens_LegacyFieldMigrationStates` so reruns and rollback investigation are
+auditable without retaining sensitive plaintext in the control ledger.
 
 You may use DBeaver to inspect the SQL file in dry-run mode (`@apply = 0`),
 but use the checked-in .NET runner for every apply. It owns the transaction and
@@ -148,28 +480,160 @@ Run the dry run from the repository root:
 
 ```powershell
 dotnet run --project scripts/LegacyLiensImport -- `
-  --backfill-case-relationships `
+  --backfill-v3-report-fields `
   --tenant-id 019f6ae6-4348-784a-aae0-f4d636f843ad `
   --target-connection '<LS_QA_LIENS connection string>'
 ```
 
-Copy the exact `Case rows to update` and `Lien facility rows to update` output,
-then run the apply:
+Copy all five exact dry-run counts, then run the apply:
 
 ```powershell
 dotnet run --project scripts/LegacyLiensImport -- `
-  --backfill-case-relationships `
+  --backfill-v3-report-fields `
   --tenant-id 019f6ae6-4348-784a-aae0-f4d636f843ad `
   --target-connection '<LS_QA_LIENS connection string>' `
   --expected-case-updates <dry-run-case-count> `
   --expected-lien-facility-updates <dry-run-lien-facility-count> `
+  --expected-medical-code-inserts <dry-run-medical-code-count> `
+  --expected-provider-changes <dry-run-provider-count> `
+  --expected-activity-inserts <dry-run-activity-count> `
   --apply
 ```
 
 The target connection must select `LS_QA_LIENS` (or the explicitly approved
 `LS_LIENS` production schema), and `SL-CORE` must be on the same MySQL server.
-The runner refuses an apply when the counts differ or any preflight/conflict
-check fails.
+The runner refuses an apply when any count differs or any preflight/conflict
+check fails. The compatibility option `--backfill-case-relationships` executes
+the same complete v3 repair, but new operations should use
+`--backfill-v3-report-fields`.
+
+For the complete v3 DIY-report data set, run the repairs in dependency order:
+
+1. Apply `20260825160000_AddLegacyReportParityFields` and complete
+   `sl-core-contact-facility-v3`.
+2. Run this guarded all-fields repair. It now includes medical-code servicing
+   rows, medical-provider metadata, and deterministic last-activity records in
+   the same assertion-bound transaction as the case and facility updates.
+3. If the completed core import predates case-note v2, run
+   `reconcile-sl-core-case-note-categories.sql` separately when you also need
+   the legacy tracking/feed categories corrected. The all-fields repair itself
+   creates the deterministic internal row used by `last_activity` and
+   `last_activity_date`.
+
+The repair also fills a blank plaintiff date of birth from `SL_CASE.CASE_DOB`;
+an existing different value is treated as a blocking conflict.
+Law-firm and medical-facility address/phone/email fields are read from the v3
+contact/facility targets after the relationships above make them reachable.
+
+## Litigation case-status repair
+
+[`update-litigation-case-statuses.sql`](update-litigation-case-statuses.sql)
+applies the reviewed `Litigation Status.xlsx` list. The workbook identifies
+1,136 liens but contains a case-status correction: 377 unique cases remain
+at `InNegotiation` before the repair, then `liens_Cases.Status` is set directly
+to either `Litigation (Open)` (166 cases) or `Litigation (Pending)` (211
+cases). It does not change lien lifecycle statuses, notes, or legacy metadata.
+
+Open an explicitly selected `LS_QA_LIENS` or approved `LS_LIENS` connection in
+DBeaver. Set the target tenant and audit actor IDs in the script, leave
+`@apply = 0`, and execute the entire file. Review its 377-case preflight output
+and copy `ChangesToApply` into `@expected_case_updates`; then set `@apply = 1`
+and execute the whole script again. It updates only when every target still has
+case status `InNegotiation`, the tenant-owned preimages match, and
+postconditions succeed; otherwise it rolls back.
+
+## Memet Hussein 25-02030 imported-payment repair
+
+[`repair-memet-hussein-25-02030-imported-payments.sql`](repair-memet-hussein-25-02030-imported-payments.sql)
+soft-deletes the two reviewed SL-CORE payment-detail artifacts that incorrectly
+make each open lien show `$1,795` received. Because QA and production target
+UUIDs differ, the repair resolves the reviewed legacy case (`27208`), liens
+(`59915`/`59916`), and payment details (`41411`/`41412`) through exact,
+tenant-scoped SL-CORE crosswalks. It also verifies the schema/tenant pair,
+target ownership, amount, receipt fields, note, and audit preimages. It
+preserves the rows and crosswalks for audit and does not change balances,
+reductions, settlements, or payment numbering.
+
+Open an explicitly selected `LS_QA_LIENS` or approved `LS_LIENS` connection in
+DBeaver, select the tenant line matching that database, set `@actor_user_id`,
+leave `@apply = 0`, and execute the entire file. Review both planned rows and
+copy `ChangesToApply` and `PlanChecksum` into `@expected_updates` and
+`@expected_checksum`. Set `@apply = 1` and execute the whole file again. Any
+missing or changed preimage, ambiguous legacy crosswalk, unexpected row count,
+checksum mismatch, or failed postcondition rolls back the transaction.
+
+## Darin Tellis 25-01967 lien-05 closed-at-zero repair
+
+[`repair-darin-tellis-25-01967-lien-05.sql`](repair-darin-tellis-25-01967-lien-05.sql)
+is a production-only manual repair for lien `25-01967-05`. It keeps the lien
+closed, changes its current balance and payoff to `$0`, soft-deletes the
+reviewed malformed imported `$16,000` payment, and retains the real zero-dollar
+closure record after removing its No Recovery classification. The case, its
+four earlier liens, `$33,500` in legitimate payments and settlements, legacy
+crosswalks, and status history remain unchanged.
+
+Open an explicitly selected `LS_LIENS` connection in DBeaver, replace the
+single `<identity-user-guid>` placeholder with an active Identity user for the
+production tenant, leave `@apply = 0`, and execute the complete file. Review
+the exact targets and copy `ChangesToApply` and `PlanChecksum` into
+`@expected_updates` and `@expected_checksum`. Set `@apply = 1` and execute the
+complete file again. The repair commits only if the case, lien, both payment
+rows, source crosswalks, sibling totals, receipt fields, notes, timestamps, and
+audit fields still match the reviewed preimages; otherwise it rolls back. If
+the SQL client reports an execution error before the final `Result` row, issue
+`ROLLBACK` in that same connection before investigating or rerunning.
+
+The emergency companion
+[`rollback-darin-tellis-25-01967-lien-05-repair.sql`](rollback-darin-tellis-25-01967-lien-05-repair.sql)
+reverses only those three repaired values. It intentionally restores the false
+`$16,000` received amount and No Recovery classification, so use it only under
+an approved rollback decision. The rollback has its own dry-run, count, actor,
+checksum, and postcondition gates. It also requires the lien and both payment
+rows to retain the identical repair timestamp and actor written by the forward
+script; any later edit blocks rollback. Run it with `@apply = 0`, review
+`ChangesToApply = 3` and `BlockingRows = 0`, copy its new `PlanChecksum`, then
+set `@apply = 1`, `@expected_updates = 3`, and its exact checksum before
+executing the complete rollback file again. If the SQL client reports an
+execution error before the final `Result` row, issue `ROLLBACK` in that same
+connection before investigating or rerunning.
+
+## Hector Zaldana 26-31912 imported-payment repair
+
+[`repair-hector-zaldana-26-31912-imported-payment.sql`](repair-hector-zaldana-26-31912-imported-payment.sql)
+soft-deletes the reviewed SL-CORE No Recovery artifact that incorrectly makes
+open lien `26-31912-01` show `$17,228` received. It verifies the production
+schema and tenant, active audit actor, case, both open liens, the exact payment
+preimage, empty receipt fields, zero settlement/reduction context, and all four
+source crosswalk hashes. It does not update the case or either lien.
+
+Run the complete file with `@apply = 0`, review `ChangesToApply = 1` and
+`BlockingRows = 0`, and copy its `PlanChecksum`. Then set `@apply = 1`,
+`@expected_updates = 1`, and `@expected_checksum` to that checksum before
+executing the complete file again. The emergency companion
+[`rollback-hector-zaldana-26-31912-payment-repair.sql`](rollback-hector-zaldana-26-31912-payment-repair.sql)
+intentionally restores the false receipt and No Recovery classification, so
+use it only under an approved rollback decision. Both files require a
+same-connection `ROLLBACK` if the SQL client errors before the final `Result`
+row.
+
+## Julio De Anda Fajardo 26-32723 No Recovery amount repair
+
+[`repair-julio-de-anda-fajardo-26-32723-no-recovery-amount.sql`](repair-julio-de-anda-fajardo-26-32723-no-recovery-amount.sql)
+is a production-only manual repair for lien `26-32723-01`. The imported
+SL-CORE status-4 declaration has no receipt evidence, but its `$3,700` face
+amount was stored as received cash. The repair changes only that payment
+amount to `$0`; it keeps the row active so V3 continues to show **No Recovery**
+and does not modify the Closed case or Settled lien.
+
+Open an explicitly selected `LS_LIENS` connection in DBeaver, replace
+`<identity-user-guid>` with an active Identity user for the production tenant,
+leave `@apply = 0`, and execute the complete file. Review
+`ChangesToApply = 1` and `BlockingRows = 0`, then copy `PlanChecksum` into
+`@expected_checksum`, set `@expected_updates = 1` and `@apply = 1`, and execute
+the complete file again. Exact source hashes, target preimages, tenant actor,
+serializable locks, and postconditions guard the one-row update. If the SQL
+client errors before the final `Result` row, issue `ROLLBACK` in the same
+connection before investigating or rerunning.
 
 ## Run
 
@@ -263,8 +727,156 @@ CALL liens_migrate_sl_core_complete('<tenant-guid>', '1'); -- apply
 ```
 
 The complete procedure maps `LM_PURCHASE_DATE` to `liens_Liens.PurchaseDate`,
-maps nonblank `SLS_SETTLE_AMOUNT` and `SLS_SETTLE_DATE` rows to
-`liens_LienSettlements`, and retains non-deleted settlement payment details.
+maps rows with a nonblank `SLS_SETTLE_AMOUNT` to `liens_LienSettlements`, and
+also preserves rows whose settle amount is blank when either
+`SLS_REDUCTION_AMOUNT` or `SLS_TOTAL_SETTLED_AMOUNT` is present. These
+metadata-only rows use `Amount = 0` and `Status = 'Pending'`, so they do not
+change Cash Received or amount-to-settle totals. A nonblank invalid or
+out-of-range `SLS_SETTLE_AMOUNT` still blocks the import. Reduction dates are
+carried only from `SLS_REDUCTION_DATE`; the importer does not infer one from a
+settlement date. The reductions API reads dated preserved metadata when a
+canonical `liens_LienReductions` row is unavailable. Source rows without a
+reduction date remain preserved for audit but are omitted from the reductions
+API. The procedure also retains non-deleted settlement payment details.
+
+### Existing-import settlement metadata repair
+
+Do not rerun the complete import to repair tenants that were imported before
+metadata-only settlement rows were preserved. Deploy
+[`backfill-sl-core-settlement-metadata.sql`](backfill-sl-core-settlement-metadata.sql)
+to an explicitly selected `LS_QA_LIENS` or approved `LS_LIENS` schema while the
+same immutable `SL-CORE` source restore is available. The repair uses the
+completed core import and lien crosswalks to insert only missing source
+settlement rows whose settle amount is blank but whose reduction or
+total-settled metadata is present.
+
+Run preflight first; the `NULL` assertion parameters are intentional:
+
+```sql
+CALL liens_backfill_sl_core_settlement_metadata(
+  '<tenant-guid>', '1', NULL,
+  NULL, NULL, NULL, NULL, NULL, '0');
+```
+
+Confirm that `DistinctLiens` and `ReductionTotal` reconcile to the approved
+exception report. `EligibleCanonicalReductionRows` reports reductions that can
+be written to `liens_LienReductions`. `BlankReductionDates` is calculated from
+the authoritative `SL-CORE.SL_LIENS_SETTLEMENT.SLS_REDUCTION_DATE` value. Those
+rows remain in preserved settlement metadata and are skipped by the canonical
+reduction phase. `InvalidReductionDates` must be `0`; any nonblank source value
+that cannot be parsed blocks both preflight approval and apply. The procedure
+never infers a reduction date from a settlement date or workbook data. Retain
+`SourceRows`, `DistinctLiens`, `BlankReductionDates`, `ReductionTotal`, and
+`ExpectedChecksum`, obtain a change/approval reference, then copy those exact
+values into the apply call:
+
+```sql
+CALL liens_backfill_sl_core_settlement_metadata(
+  '<tenant-guid>', '1', '<change-or-approval-id>',
+  <source-rows>, <distinct-liens>, <blank-reduction-dates>,
+  <reduction-total>, '<checksum>', '1');
+```
+
+When `BlankReductionDates` is greater than `0`, apply remains safe: the
+procedure skips those canonical rows and returns the count as
+`SkippedReductionRowsWithBlankDate`. The settlement metadata remains
+authoritative for audit, but undated metadata is omitted from the reductions
+API until a separately approved repair materializes a canonical dated
+reduction. This avoids inventing historical dates solely to satisfy the
+canonical table constraint.
+
+The repair holds the tenant core-import lock, verifies the completed import and
+source fingerprint, rejects conflicting or uncrosswalked target rows, and
+inserts zero-amount `Pending` settlements and eligible canonical lien
+reductions plus their crosswalks in one transaction. Version 3 is safe to apply
+after the original settlement-only repair or Version 2: its preflight reports
+the existing settlement rows, plans only missing reductions with valid dates,
+and skips missing-date rows for the API fallback. It records a separate
+completed repair run when writes are required and is safe to rerun; an already
+repaired tenant returns `settlement-metadata-backfill-already-complete`. It
+never fabricates a reduction date or changes Cash Received. Existing business
+rows are not deleted on rollback; reverse an applied repair only through an
+approved compensating script or database restore.
+
+Identity, provenance, checksum, and postcondition string comparisons use binary
+semantics so the same reviewed procedure works when production target columns
+use `utf8mb4_unicode_ci` and restored source or temporary columns use
+`utf8mb4_0900_ai_ci`.
+
+### Business-approved default reduction date
+
+If the business has separately approved `2026-04-27` as the default reduction
+date for the exact 192-row blank-date cohort, deploy
+[`materialize-sl-core-approved-default-reductions.sql`](materialize-sl-core-approved-default-reductions.sql)
+after the Version 3 metadata repair has completed. This is a separate,
+tenant-bound repair: it does not claim the date came from SL-CORE, does not
+change the preserved settlement metadata, and does not change Cash Received.
+It creates canonical `liens_LienReductions` rows so the existing reductions API
+and tenant portal can list the approved reductions.
+
+Run preflight using the real ticket, change request, or other durable approval
+reference. Replace the literal placeholder before execution:
+
+```sql
+CALL liens_materialize_sl_core_approved_default_reductions_v1(
+  '019fb470-f161-7fbd-93a0-c808d43c43c3',
+  '0ab1aa20-9e22-11f1-9a38-0a971fa4811b',
+  '2026-04-27',
+  '<change-or-approval-id>',
+  NULL, NULL, NULL, NULL, NULL, NULL,
+  '0'
+);
+```
+
+For the initial approved cohort, confirm that preflight returns `SourceRows =
+192`, `DistinctLiens = 192`, `BlankSourceReductionDates = 192`, `ExistingRows =
+0`, `RowsToInsert = 192`, and `ReductionTotal = 467303.5100`. Copy the returned
+values and checksum without editing them into apply:
+
+```sql
+CALL liens_materialize_sl_core_approved_default_reductions_v1(
+  '019fb470-f161-7fbd-93a0-c808d43c43c3',
+  '0ab1aa20-9e22-11f1-9a38-0a971fa4811b',
+  '2026-04-27',
+  '<same-change-or-approval-id>',
+  192, 192, 0, 192, 467303.5100,
+  '<checksum-from-immediately-preceding-preflight>',
+  '1'
+);
+```
+
+For the production cohort, deploy
+[`materialize-sl-core-approved-default-reductions-prod.sql`](materialize-sl-core-approved-default-reductions-prod.sql)
+only through an explicitly selected `LS_LIENS` connection. Its procedure has a
+separate name and is bound to production tenant
+`019f1a05-7459-7855-b46b-110a702e37a4` and completed Version 3 metadata repair
+run `35cece1a-9e54-11f1-b823-12a7a8afef43`; it does not replace or weaken the
+QA procedure. Run its production preflight with all assertion parameters null:
+
+```sql
+CALL liens_materialize_sl_core_approved_default_reductions_prod_v1(
+  '019f1a05-7459-7855-b46b-110a702e37a4',
+  '35cece1a-9e54-11f1-b823-12a7a8afef43',
+  '2026-04-27',
+  '<production-change-or-approval-id>',
+  NULL, NULL, NULL, NULL, NULL, NULL,
+  '0'
+);
+```
+
+Copy all six assertions from the immediately preceding production preflight
+into apply. Never reuse the QA counts or checksum even if the displayed totals
+match.
+
+The apply phase revalidates the immutable source fingerprint and all copied
+assertions inside a transaction. It rejects a changed cohort, nonblank source
+dates, unrelated canonical reductions, or conflicting crosswalks. New rows use
+a dedicated approved-default crosswalk and record the approval reference plus
+`reductionDateSource=business-approved-default` in the reduction note. A safe
+rerun with the same approval reference returns
+`approved-default-reductions-already-complete`; a different approval reference
+is treated as a conflict.
+
 Case-note staging carries `SL_CASE_NOTES.CN_USER_ID`: a null value maps to the
 tracking category `general`, while a non-null value maps to `feed`. The note
 crosswalk hash is prefixed with `case-note-v2:` and includes that discriminator
@@ -313,6 +925,38 @@ row-count postconditions, and is safe to rerun after a new preflight.
 `import-sl-core-complete.sql` is the supported complete SQL runner. Files named
 `import-sl-core-complete - Copy*.sql` are archival working copies and must not
 be deployed or used for a new import.
+
+### Existing-import case-note materialization
+
+[`backfill-sl-core-case-notes.sql`](backfill-sl-core-case-notes.sql) inserts
+missing `SL_CASE_NOTES` crosswalk targets into `liens_CaseNotes`. It preserves
+the source content, category, deletion state, and creator name, and maps the
+approved legacy creator names to their V3 user IDs. It requires the matching
+completed import, source-provenance receipt, and both case and note crosswalks.
+An existing target note with incompatible fields is a conflict that prevents
+all writes. Numeric note and case crosswalks are staged into indexed temporary
+maps so the source join remains bounded and does not apply functions to indexed
+join columns. The dry run also verifies that every note crosswalk produced one
+staged source row; missing source notes, cases, or content block the apply as
+`CrosswalkCoverageErrors`. An otherwise-identical note still owned by the
+completed import's migration user and carrying a known importer fallback name
+has both `CreatedByUserId` and canonical `CreatedByName` updated to the mapped
+V3 author in the same transaction. When legacy
+`CN_CREATED_BY` is blank, the source has no recoverable creator identity, so the
+procedure assigns the completed import's migration user ID and the name
+`system-migration`. A legacy creator value of `migration` is normalized to the
+same canonical name. Other nonblank legacy creator names are preserved. Names
+present in the approved map receive their V3 user ID; other names retain the
+migration user ID until an explicit mapping is approved.
+
+Run the procedure in DBeaver, then dry run before inserting the exact returned
+count. The dry run returns one summary row with `ChangesToApply`, `Conflicts`,
+`InsertsToApply`, `AuthorUpdatesToApply`, and the remaining breakdown:
+
+```sql
+CALL liens_backfill_sl_core_case_notes('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_case_notes('<tenant-guid>', <ChangesToApply>, '1');
+```
 
 For a MySQL-only rehearsal or controlled one-time import, use
 [`import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql`](import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql).

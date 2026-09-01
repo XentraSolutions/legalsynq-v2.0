@@ -33,6 +33,7 @@ public record IdentityTenantSyncRequest(
     string    DisplayName,
     string    Status,
     string?   Subdomain,
+    string?   Hostname,
     Guid?     LogoDocumentId,
     Guid?     LogoWhiteDocumentId,
     DateTime? SourceCreatedAtUtc,

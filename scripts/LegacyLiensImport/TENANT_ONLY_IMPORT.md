@@ -109,8 +109,8 @@ the lien header amounts or deletes existing import provenance.
 Deploy the procedure with DBeaver **Execute SQL Script**. Then run:
 
 ```sql
-CALL LS_QA_LIENS.liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', '0');
-CALL LS_QA_LIENS.liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', '1');
+CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', <TasksToInsert>, '1');
 ```
 
 For the supplied Program 1 snapshot, preflight should report `21688`

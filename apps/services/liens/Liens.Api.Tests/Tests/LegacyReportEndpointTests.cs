@@ -85,6 +85,86 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunReport_paginates_case_rows_without_changing_full_summary_totals()
+    {
+        var prefix = $"LIEN-DIY-CASE-PAGE-{Guid.CreateVersion7():N}"[..34];
+        List<(string CaseNumber, string CaseType)> expectedCases;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var firstCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-PAGE-A-{Guid.CreateVersion7():N}"[..30],
+                "First",
+                "Plaintiff",
+                SeedHelper.UserId,
+                notes: "accidentType=First Type");
+            var secondCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-PAGE-B-{Guid.CreateVersion7():N}"[..30],
+                "Second",
+                "Plaintiff",
+                SeedHelper.UserId,
+                notes: "accidentType=Second Type");
+            var firstLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-A",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: firstCase.Id,
+                isBulk: "N");
+            var secondLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-B",
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                caseId: secondCase.Id,
+                isBulk: "N");
+
+            db.Cases.AddRange(firstCase, secondCase);
+            db.Liens.AddRange(firstLien, secondLien);
+            await db.SaveChangesAsync();
+
+            expectedCases = new[] { firstCase, secondCase }
+                .OrderByDescending(caseEntity => caseEntity.CreatedAtUtc)
+                .ThenByDescending(caseEntity => caseEntity.Id)
+                .Select(caseEntity => (
+                    caseEntity.CaseNumber,
+                    caseEntity.Id == firstCase.Id ? "First Type" : "Second Type"))
+                .ToList();
+        }
+
+        for (var page = 1; page <= expectedCases.Count; page++)
+        {
+            var response = await _client.PostAsJsonAsync("/report/diy", new
+            {
+                reportType = "CASES",
+                search = prefix,
+                isBulk = "N",
+                columns = new[] { "case_id", "case_type" },
+                page,
+                limit = 1,
+            });
+            response.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await response.Content.ReadAsStringAsync()}");
+
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(2);
+            payload.RootElement.GetProperty("summaryTotals").GetProperty("totalCases").GetInt32().Should().Be(2);
+            var row = payload.RootElement.GetProperty("data").EnumerateArray().Single();
+            row.GetProperty("case_id").GetString().Should().Be(expectedCases[page - 1].CaseNumber);
+            row.GetProperty("case_type").GetString().Should().Be(expectedCases[page - 1].CaseType);
+        }
+    }
+
+    [Fact]
     public async Task RunReport_treats_the_ui_N_bulk_sentinel_as_no_filter()
     {
         string nonBulkLienNumber;
@@ -184,6 +264,99 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         nonBulkOnlyPayload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
         nonBulkOnlyPayload.RootElement.GetProperty("data").EnumerateArray()
             .Single().GetProperty("lien_id").GetString().Should().Be(nonBulkLienNumber);
+    }
+
+    [Fact]
+    public async Task RunReport_filters_by_the_facility_id_returned_by_the_diy_picker()
+    {
+        var lienNumber = $"LIEN-DIY-FACILITY-{Guid.CreateVersion7():N}"[..36];
+        Guid legacyPickerContactId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-FACILITY-{Guid.CreateVersion7():N}"[..30],
+                "Facility",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                facilityId: SeedHelper.FacilityId,
+                purchaseDate: new DateOnly(2026, 8, 14));
+            var legacyPickerContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.MedicalFacility,
+                "Sunrise",
+                "Clinic",
+                SeedHelper.UserId,
+                facilityId: SeedHelper.FacilityId,
+                organization: "Sunrise Clinic");
+            legacyPickerContactId = legacyPickerContact.Id;
+
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.Contacts.Add(legacyPickerContact);
+            await db.SaveChangesAsync();
+        }
+
+        var filterOptionsResponse = await _client.PostAsJsonAsync("/report/diy/filter-options", new
+        {
+            filterField = "medicalfacility",
+            keyword = "Sunrise Clinic",
+            limit = 20,
+        });
+        filterOptionsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await filterOptionsResponse.Content.ReadAsStringAsync()}");
+
+        using var filterOptions = JsonDocument.Parse(await filterOptionsResponse.Content.ReadAsStringAsync());
+        filterOptions.RootElement.GetProperty("data").EnumerateArray().Should().Contain(option =>
+            option.GetProperty("id").GetString() == SeedHelper.FacilityId.ToString());
+
+        var reportResponse = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            purchaseDateFrom = "2026-08-14",
+            purchaseDateTo = "2026-08-14",
+            medicalFacilityIds = new[] { SeedHelper.FacilityId },
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 10,
+        });
+        reportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await reportResponse.Content.ReadAsStringAsync()}");
+
+        using var report = JsonDocument.Parse(await reportResponse.Content.ReadAsStringAsync());
+        report.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .Should().Contain(lienNumber);
+
+        var savedReportResponse = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            purchaseDateFrom = "2026-08-14",
+            purchaseDateTo = "2026-08-14",
+            medicalFacilityIds = new[] { legacyPickerContactId },
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 10,
+        });
+        savedReportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await savedReportResponse.Content.ReadAsStringAsync()}");
+
+        using var savedReport = JsonDocument.Parse(await savedReportResponse.Content.ReadAsStringAsync());
+        savedReport.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .Should().Contain(lienNumber);
     }
 
     [Fact]
@@ -393,11 +566,176 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         row.GetProperty("purchase_date").GetString().Should().Be("06/15/2024");
         row.GetProperty("returned_amount").GetString().Should().Be("1,234.56");
         int.Parse(row.GetProperty("days_since_reduction_approval").GetString()!)
-            .Should().BeGreaterThan(0);
+            .Should().Be(22);
         row.GetProperty("medical_facility").GetString().Should().Be("Sunrise Clinic");
         row.GetProperty("lawfirm").GetString().Should().Be("Smith & Associates LLP");
         row.GetProperty("case_type").GetString().Should().Be("Motor Vehicle Accident");
         row.GetProperty("case_manager").GetString().Should().Be("Case Manager");
+    }
+
+    [Fact]
+    public async Task RunReport_does_not_use_settlement_date_when_reduction_date_is_missing()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-REDUCTION-DAYS-{Guid.CreateVersion7():N}"[..30],
+                "LegacyReduction",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-REDUCTION-DAYS-{Guid.CreateVersion7():N}"[..36],
+                LienType.MedicalLien,
+                300m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N",
+                purchaseDate: new DateOnly(2025, 1, 1));
+            var settlement = LienSettlement.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                180m,
+                SeedHelper.UserId,
+                status: "Settled",
+                note: "reductionAmount=20; reductionDate=; totalSettledAmount=150",
+                settlementDate: new DateOnly(2025, 1, 10));
+            var payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                150m,
+                SeedHelper.UserId,
+                paymentDate: new DateOnly(2025, 2, 1));
+
+            lien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.LienSettlements.Add(settlement);
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            statusView = "ALL",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[]
+            {
+                "lien_id",
+                "reduction_date",
+                "days_since_reduction_approval",
+            },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("reduction_date").ValueKind.Should().Be(JsonValueKind.Null);
+        row.GetProperty("days_since_reduction_approval").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task RunReport_prefers_canonical_reduction_over_legacy_settlement_metadata()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-REDUCTION-SOURCE-{Guid.CreateVersion7():N}"[..30],
+                "CanonicalReduction",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-REDUCTION-SOURCE-{Guid.CreateVersion7():N}"[..36],
+                LienType.MedicalLien,
+                300m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+            var settlement = LienSettlement.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                180m,
+                SeedHelper.UserId,
+                status: "Settled",
+                note: "reductionAmount=20; reductionDate=2025-01-10; totalSettledAmount=150",
+                settlementDate: new DateOnly(2025, 1, 10));
+            var reduction = LienReduction.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                new DateOnly(2025, 1, 20),
+                75m,
+                SeedHelper.UserId);
+            var payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                150m,
+                SeedHelper.UserId,
+                paymentDate: new DateOnly(2025, 2, 1));
+
+            lien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.LienSettlements.Add(settlement);
+            db.LienReductions.Add(reduction);
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            statusView = "ALL",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[]
+            {
+                "lien_id",
+                "reduction",
+                "reduction_date",
+                "days_since_reduction_approval",
+            },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("reduction").GetString().Should().Be("75.00");
+        row.GetProperty("reduction_date").GetString().Should().Be("01/20/2025");
+        row.GetProperty("days_since_reduction_approval").GetString().Should().Be("12");
     }
 
     [Fact]
@@ -782,7 +1120,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task RunReport_and_export_include_rejected_and_cancelled_liens_for_all_status_view()
+    public async Task RunReport_and_export_exclude_deleted_cancelled_liens()
     {
         var prefix = $"LIEN-DIY-EXCLUDED-{Guid.CreateVersion7():N}"[..36];
         var openLienNumber = $"{prefix}-OPEN";
@@ -829,8 +1167,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .ToList();
         previewLienNumbers.Should().BeEquivalentTo(
             openLienNumber,
-            rejectedLienNumber,
-            cancelledLienNumber);
+            rejectedLienNumber);
+        previewLienNumbers.Should().NotContain(cancelledLienNumber);
 
         var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
         exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -840,7 +1178,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
         var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
         csv.Should().Contain(openLienNumber);
-        csv.Should().Contain(rejectedLienNumber).And.Contain(cancelledLienNumber);
+        csv.Should().Contain(rejectedLienNumber).And.NotContain(cancelledLienNumber);
 
         var rejectedResponse = await _client.PostAsJsonAsync("/report/diy", new
         {
@@ -859,7 +1197,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var rejectedLienNumbers = rejectedPayload.RootElement.GetProperty("data").EnumerateArray()
             .Select(row => row.GetProperty("lien_id").GetString())
             .ToList();
-        rejectedLienNumbers.Should().BeEquivalentTo(rejectedLienNumber, cancelledLienNumber);
+        rejectedLienNumbers.Should().BeEquivalentTo(rejectedLienNumber);
+        rejectedLienNumbers.Should().NotContain(cancelledLienNumber);
         rejectedLienNumbers.Should().NotContain(openLienNumber);
     }
 
@@ -984,6 +1323,114 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         casesPayload.RootElement.GetProperty("data").GetArrayLength().Should().Be(1);
         casesPayload.RootElement.GetProperty("data")[0]
             .GetProperty("settlement_date").GetString().Should().Be("02/01/2025");
+    }
+
+    [Theory]
+    [InlineData(LienStatus.Active, null)]
+    [InlineData(LienStatus.Settled, "0.00")]
+    public async Task RunReport_preserves_metadata_only_legacy_reduction_and_authoritative_blank_returned_amount(
+        string lienStatus,
+        string? expectedReturnedAmount)
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-METADATA-SETTLEMENT-{Guid.CreateVersion7():N}"[..30],
+                "Settlement",
+                "Metadata",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-METADATA-SETTLEMENT-{Guid.CreateVersion7():N}"[..36],
+                LienType.MedicalLien,
+                300m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+            var medicalCode = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-DIY-METADATA-SETTLEMENT-{Guid.CreateVersion7():N}"[..40],
+                "LegacyMedicalCode",
+                "Medical code amount entry",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                lienId: lien.Id,
+                notes: "purchaseAmount=100; billingAmount=300");
+            var settlement = LienSettlement.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                0m,
+                SeedHelper.UserId,
+                status: "Pending",
+                note: "reductionAmount=20; reductionDate=; totalSettledAmount=");
+            var payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                150m,
+                SeedHelper.UserId,
+                paymentDate: new DateOnly(2025, 2, 1));
+
+            lien.SetLegacyMedicalStatus(lienStatus, SeedHelper.UserId);
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.ServicingItems.Add(medicalCode);
+            db.LienSettlements.Add(settlement);
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            statusView = "ALL",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[]
+            {
+                "lien_id",
+                "reduction",
+                "expected_settlement_amount",
+                "amt_to_settle",
+                "returned_amount",
+                "settled_amt",
+                "gross_profit",
+            },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray().Single();
+        row.GetProperty("lien_id").GetString().Should().Be(lienNumber);
+        row.GetProperty("reduction").GetString().Should().Be("20.00");
+        row.GetProperty("expected_settlement_amount").GetString().Should().Be("200.00");
+        row.GetProperty("amt_to_settle").GetString().Should().Be("0.00");
+        row.GetProperty("returned_amount").GetString().Should().Be(expectedReturnedAmount);
+        row.GetProperty("settled_amt").GetString().Should().Be("0.00");
+        row.GetProperty("gross_profit").GetString().Should().Be("-100.00");
+
+        var summary = payload.RootElement.GetProperty("summaryTotals");
+        summary.GetProperty("totalPurchaseAmt").GetDecimal().Should().Be(100m);
+        summary.GetProperty("totalBillingAmt").GetDecimal().Should().Be(300m);
+        summary.GetProperty("totalAmtToSettle").GetDecimal().Should().Be(300m);
+        summary.GetProperty("totalReturnedAmt").GetDecimal().Should().Be(0m);
+        summary.GetProperty("totalGrossProfit").GetDecimal().Should().Be(-100m);
+        summary.GetProperty("avgRoi").GetDecimal().Should().Be(-100m);
     }
 
     [Fact]
@@ -1560,6 +2007,22 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             row.GetProperty("last_case_tracking_note").GetString().Should().Be(expectedActivity);
             row.GetProperty("last_case_tracking_date").GetString().Should().Be(expectedTimestamp);
 
+            var aliasResponse = await _client.PostAsJsonAsync("/report/diy", new
+            {
+                reportType,
+                search,
+                isBulk = "N",
+                columns = new[] { "case_id", "last_activity", "last_activity_date" },
+                page = 1,
+                limit = 10,
+            });
+            aliasResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await aliasResponse.Content.ReadAsStringAsync()}");
+            using var aliasPayload = JsonDocument.Parse(await aliasResponse.Content.ReadAsStringAsync());
+            var aliasRow = aliasPayload.RootElement.GetProperty("data").EnumerateArray().Single();
+            aliasRow.GetProperty("last_activity").GetString().Should().Be(expectedActivity);
+            aliasRow.GetProperty("last_activity_date").GetString().Should().Be(expectedTimestamp);
+
             var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
             exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
                 $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
@@ -1963,6 +2426,81 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         rows[0].TryGetProperty("medical_provider", out _).Should().BeTrue();
         rows[0].TryGetProperty("lawfirm_email", out _).Should().BeTrue();
         rows[0].TryGetProperty("plaintiff_date_of_birth", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunReport_populates_canonical_case_parity_fields()
+    {
+        var caseNumber = $"CASE-DIY-PARITY-{Guid.CreateVersion7():N}"[..30];
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Parity",
+                "Plaintiff",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1990, 3, 4),
+                clientPhone: "555-0100",
+                clientEmail: "parity@example.test",
+                clientAddress: "123 Main St, Austin, TX 78701",
+                clientAddressLine1: "123 Main St",
+                clientCity: "Austin",
+                clientState: "TX",
+                clientPostalCode: "78701",
+                incidentState: "Texas",
+                currentMedicalStatus: "Treating",
+                trackingFollowUpDate: new DateOnly(2026, 9, 15),
+                minorComp: true,
+                caseDropped: false);
+
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "CASES",
+            search = caseNumber,
+            columns = new[]
+            {
+                "case_id",
+                "state_of_incident",
+                "medical_status",
+                "case_tracking_follow_up_date",
+                "plaintiff_date_of_birth",
+                "plaintiff_phone",
+                "plaintiff_email",
+                "plaintiff_address",
+                "plaintiff_city",
+                "plaintiff_state",
+                "plaintiff_zip_code",
+                "case_dropped",
+                "minor_comp",
+            },
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray().Single();
+        row.GetProperty("state_of_incident").GetString().Should().Be("Texas");
+        row.GetProperty("medical_status").GetString().Should().Be("Treating");
+        row.GetProperty("case_tracking_follow_up_date").GetString().Should().Be("09/15/2026");
+        row.GetProperty("plaintiff_date_of_birth").GetString().Should().Be("03/04/1990");
+        row.GetProperty("plaintiff_phone").GetString().Should().Be("555-0100");
+        row.GetProperty("plaintiff_email").GetString().Should().Be("parity@example.test");
+        row.GetProperty("plaintiff_address").GetString().Should().Be("123 Main St");
+        row.GetProperty("plaintiff_city").GetString().Should().Be("Austin");
+        row.GetProperty("plaintiff_state").GetString().Should().Be("TX");
+        row.GetProperty("plaintiff_zip_code").GetString().Should().Be("78701");
+        row.GetProperty("case_dropped").GetString().Should().Be("No");
+        row.GetProperty("minor_comp").GetString().Should().Be("Yes");
     }
 
     [Fact]

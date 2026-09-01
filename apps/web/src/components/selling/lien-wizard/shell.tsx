@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/selling/button";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
@@ -36,9 +35,20 @@ export interface LienWizardShellProps {
   submitting?: boolean;
   continueDisabled?: boolean;
   continueLabel?: string;
+  // Circled top-left arrow: goes to the previous step (or, on step 1 where
+  // there is no previous step, behaves the same as onCancel).
   onBack: () => void;
+  // Footer "Cancel" button: exits the wizard entirely, back to wherever the
+  // user came from — the lien list, or the lien/case detail page in
+  // detail-edit mode.
+  onCancel: () => void;
   onContinue: () => void;
   children: React.ReactNode;
+  // When set, this step is being opened as a standalone edit from the lien
+  // detail page (via a "returnTo=detail" query param) rather than as part of
+  // the create/edit wizard: hides the step progress bar, and the footer
+  // reads Save instead of Continue.
+  detailEditReturnHref?: string;
 }
 
 // Shared chrome for every lien-wizard step page: back link, progress bar,
@@ -52,25 +62,31 @@ export function LienWizardShell({
   continueDisabled,
   continueLabel = "Continue",
   onBack,
+  onCancel,
   onContinue,
   children,
+  detailEditReturnHref,
 }: LienWizardShellProps) {
+  const isDetailEdit = !!detailEditReturnHref;
   return (
     <div className="max-w-[700px] m-auto">
       <div className="flex items-center mb-6 ">
         <nav>
-          <Link
-            href="/selling/portfolio"
-            className="text-sm text-gray-500 hover:text-gray-800"
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >
             <ArrowLeft className="h-5 w-5" />
-          </Link>
+          </button>
         </nav>
-        <ProgressBar currentStep={step} />
+        {!isDetailEdit && <ProgressBar currentStep={step} />}
       </div>
-      <p className={`mt-2 text-xs text-gray-600`}>
-        Step {step}/ {TOTAL_STEPS}
-      </p>
+      {!isDetailEdit && (
+        <p className={`mt-2 text-xs text-gray-600`}>
+          Step {step}/ {TOTAL_STEPS}
+        </p>
+      )}
       <div className="mt-5 position-relative ">
         {hydrating ? (
           skeleton ?? (
@@ -84,8 +100,8 @@ export function LienWizardShell({
             {children}
 
             <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
-              <Button variant="secondary" onClick={onBack}>
-                Back
+              <Button variant="secondary" onClick={onCancel}>
+                Cancel
               </Button>
               <Button
                 variant="primary"
@@ -93,7 +109,11 @@ export function LienWizardShell({
                 loading={submitting}
                 disabled={!!continueDisabled || !!submitting}
               >
-                {continueLabel}
+                {isDetailEdit
+                  ? submitting
+                    ? "Saving..."
+                    : "Save"
+                  : continueLabel}
               </Button>
             </div>
           </>

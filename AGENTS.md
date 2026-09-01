@@ -231,6 +231,7 @@ Canonical product codes are defined in `shared/building-blocks/BuildingBlocks/Au
 | `SYNQ_PAY` | SynqPay |
 | `SYNQ_INSIGHTS` | SynqInsights |
 | `SYNQ_COMMS` | SynqComms |
+| `SYNQ_SELLING` | Synq Selling |
 | `SYNQ_AI` | Xenia / SynqAI |
 | `SYNQ_PLATFORM` | Platform pseudo-product for tenant permissions |
 
@@ -287,3 +288,11 @@ If a full solution build or full stack startup is too slow, memory-heavy, or req
 - Check `git status --short` before and after substantial edits.
 - Do not run destructive git commands unless explicitly requested.
 - When adding files, place instructions at the narrowest useful scope. Root `AGENTS.md` covers the whole repo; subdirectory `AGENTS.md` files override it for their subtree.
+
+### Reverting Changes
+
+- To undo a specific commit, use `git revert <sha>` (`git revert -m 1 <sha>` for a merge commit). Never "revert" by manually checking out an older commit's tree over current files (`git checkout <old-sha> -- <paths>` across many files, resetting to a stale local/backup branch, etc.) — that silently clobbers every other commit that touched the same paths since that point, including work from people who never asked for it.
+  - This isn't hypothetical: `dev2` commit `5d8c2635b` ("revent-all-frontend-change", 2026-08-26) did exactly this — it reset 66 files to an 8-day-old tree, wiping out unrelated commits from multiple authors, and was never caught because the message called it a "revert" when no `git revert` was ever run.
+- Before reverting anything, run `git log --oneline <target-sha>..HEAD -- <affected paths>` to see every commit sitting on top of the target for those paths. If that list includes commits you weren't asked to touch, stop and confirm scope with the user before proceeding — do not silently take them down too.
+- If a revert needs to span multiple commits, revert them one at a time by SHA and resolve conflicts explicitly. Do not resolve a revert conflict by picking whichever side is "older" — that reintroduces the exact blast-radius problem above.
+- A commit that reverts something must say so precisely: which SHA(s) it reverts and why. Do not commit a broad rollback under a vague label like "revert" or "revert all X changes" — that hides the blast radius from everyone downstream, including the next agent.

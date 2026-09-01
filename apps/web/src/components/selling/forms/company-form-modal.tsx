@@ -7,7 +7,7 @@ import { BaseSelect } from "@/components/ui/base-select";
 import { useSessionContext } from "@/providers/session-provider";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
 import { formatZipInput, isValidUsZipCode } from "@/lib/address";
-import { useCompanyTypes, useCreateCompany, useUpdateCompany } from "@/hooks/use-selling-companies";
+import { useCompanyTypes, useCreateCompany, useUpdateCompany } from "@/hooks/selling/use-selling-companies";
 import type { Company } from "@/lib/selling/companies.types";
 
 interface CompanyFormModalProps {
@@ -18,6 +18,8 @@ interface CompanyFormModalProps {
   lockCompanyType?: boolean;
   /** Present in edit mode; the company being edited. */
   editTarget?: Company | null;
+  /** Prefills the Name field, e.g. from an unlinked name imported via bulk upload. */
+  initialName?: string;
   onClose: () => void;
   onSaved: (company: Company) => void;
 }
@@ -55,13 +57,16 @@ export function CompanyFormModal({
   companyTypeId,
   lockCompanyType,
   editTarget,
+  initialName,
   onClose,
   onSaved,
 }: CompanyFormModalProps) {
   const { lookup } = useSessionContext();
   const isEdit = Boolean(editTarget);
   const [form, setForm] = useState(
-    editTarget ? formFromCompany(editTarget) : { ...EMPTY_FORM, companyTypeId },
+    editTarget
+      ? formFromCompany(editTarget)
+      : { ...EMPTY_FORM, companyTypeId, name: initialName ?? "" },
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const createCompany = useCreateCompany();
@@ -74,10 +79,14 @@ export function CompanyFormModal({
 
   useEffect(() => {
     if (!open) return;
-    setForm(editTarget ? formFromCompany(editTarget) : { ...EMPTY_FORM, companyTypeId });
+    setForm(
+      editTarget
+        ? formFromCompany(editTarget)
+        : { ...EMPTY_FORM, companyTypeId, name: initialName ?? "" },
+    );
     setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editTarget, companyTypeId]);
+  }, [open, editTarget, companyTypeId, initialName]);
 
   const inputCls = (field: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;

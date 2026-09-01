@@ -151,6 +151,17 @@ export interface OfferedLienMessage {
   message: string;
   createdAtUtc: string;
   isCurrentUser?: boolean;
+  attachments?: OfferedLienMessageAttachment[];
+}
+
+export interface OfferedLienMessageAttachment {
+  id: string;
+  fileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  createdAtUtc: string;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
 }
 
 export interface OfferedLienActivityItem {

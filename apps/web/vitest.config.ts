@@ -22,8 +22,16 @@ export default defineConfig({
         // instead of the deduped one, producing a second dispatcher
         // and "Cannot read properties of null" once rendered. Inlining
         // routes them through Vite instead, where the alias/dedupe below
-        // actually apply.
-        inline: [/@radix-ui\//, /@floating-ui\//, /@tanstack\/react-query/, /@tanstack\/react-table/],
+        // actually apply. @react-input/mask and react-day-picker (both
+        // used by DatePicker) hit the same issue via their hook calls.
+        inline: [
+          /@radix-ui\//,
+          /@floating-ui\//,
+          /@tanstack\/react-query/,
+          /@tanstack\/react-table/,
+          /@react-input\//,
+          /react-day-picker/,
+        ],
       },
     },
   },

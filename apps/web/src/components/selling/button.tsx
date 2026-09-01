@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import {
+  ArrowDownWideNarrow,
   ChevronDown,
   CloudBackup,
   CloudUpload,
+  Divide,
   Loader,
   Plus,
   RefreshCw,
@@ -12,6 +14,7 @@ import {
   SquarePen,
   Trash2,
   Upload,
+  UserRoundPlus,
 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -22,15 +25,18 @@ import { cn } from "@/lib/utils";
  * in. Add new entries here as new icons are actually needed.
  */
 const BUTTON_ICONS = {
+  arrowDownWideNarrow: ArrowDownWideNarrow,
   chevronDown: ChevronDown,
   cloudBackup: CloudBackup,
   cloudUpload: CloudUpload,
+  divide: Divide,
   plus: Plus,
   refreshCw: RefreshCw,
   settings2: Settings2,
   squarePen: SquarePen,
   trash2: Trash2,
   upload: Upload,
+  userRoundPlus: UserRoundPlus,
 } as const;
 
 export type ButtonIconName = keyof typeof BUTTON_ICONS;

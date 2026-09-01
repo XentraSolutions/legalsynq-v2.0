@@ -40,7 +40,8 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
 
         var content = await response.Content.ReadAsStringAsync();
         content.Split('\n')[0].TrimEnd('\r').Should().Be(
-            "Case Code*,Lien Status,Listing Visibility,Purchase Date,Initial Service Date*,End Service Date,Lien Notes,Funding Company,Facility Name*,Medical Provider,Medical Code & Description*,Medicare Cost,Billing Amount*,Target Ask Amount");
+            "Case Code*,Lien Status,Purchase Date,Initial Service Date*,End Service Date,Lien Notes,Funding Company,Facility Name*,Medical Provider,Medical Code & Description*,Medicare Cost,Billing Amount*,Target Ask Amount");
+        content.Should().NotContain("Listing Visibility");
         content.Should().NotContain("Document Type*");
         content.Should().NotContain("Attachment");
         content.Should().Contain("CASE-10001");
@@ -122,7 +123,10 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
         detailResponse.EnsureSuccessStatusCode();
         using var detail = JsonDocument.Parse(await detailResponse.Content.ReadAsStringAsync());
         detail.RootElement.GetProperty("lienInformation").GetProperty("purchaseDate").GetString().Should().Be("2026-07-15");
-        detail.RootElement.GetProperty("caseInformation").GetProperty("caseNumber").GetString().Should().Be("CASE-MAPPED-001");
+        var caseInformation = detail.RootElement.GetProperty("caseInformation");
+        caseInformation.GetProperty("caseNumber").GetString().Should().Be("CASE-MAPPED-001");
+        caseInformation.GetProperty("lawFirmId").ValueKind.Should().Be(JsonValueKind.Null);
+        caseInformation.GetProperty("lawFirm").ValueKind.Should().Be(JsonValueKind.Null);
         detail.RootElement.GetProperty("facility").GetProperty("name").GetString().Should().Be("Sunrise Clinic");
         detail.RootElement.GetProperty("medicalProvider").GetProperty("name").GetString().Should().Be("City Medical Center");
         detail.RootElement.GetProperty("medicalPricing").GetProperty("askAmount").GetDecimal().Should().Be(175m);

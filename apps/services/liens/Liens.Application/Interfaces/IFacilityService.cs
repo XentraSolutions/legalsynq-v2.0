@@ -8,6 +8,13 @@ public interface IFacilityService
         Guid tenantId, string? search, bool? isActive,
         int page, int pageSize, CancellationToken ct = default);
 
+    /// <summary>
+    /// Searches legacy facility records using the IDs stored on liens.
+    /// </summary>
+    Task<PaginatedResult<FacilityResponse>> SearchLienFacilitiesAsync(
+        Guid tenantId, string? search, bool? isActive,
+        int page, int pageSize, CancellationToken ct = default);
+
     Task<List<FacilityResponse>> GetAllAsync(Guid tenantId, bool? isActive = true, CancellationToken ct = default);
 
     Task<FacilityResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);

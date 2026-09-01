@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Collections.Concurrent;
 using System.Net;
 
 namespace Liens.Api.Tests;
@@ -156,6 +157,10 @@ internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
     private const string ViewToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string DownloadToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     public static readonly byte[] DownloadContent = "%PDF-1.4 stub payoff"u8.ToArray();
+    private static readonly ConcurrentDictionary<Guid, int> MetadataRequestCounts = new();
+
+    public static int GetMetadataRequestCount(Guid documentId) =>
+        MetadataRequestCounts.GetValueOrDefault(documentId);
 
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
@@ -188,6 +193,8 @@ internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
             {
                 Content = new ByteArrayContent(DownloadContent)
             },
+            _ when request.Method == HttpMethod.Get && IsDocumentMetadataPath(path) =>
+                DocumentMetadataResponse(path),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound)
         };
 
@@ -199,6 +206,30 @@ internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
         {
             Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
         };
+
+    private static bool IsDocumentMetadataPath(string path)
+    {
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length == 2 &&
+               string.Equals(segments[0], "documents", StringComparison.OrdinalIgnoreCase) &&
+               Guid.TryParse(segments[1], out _);
+    }
+
+    private static HttpResponseMessage DocumentMetadataResponse(string path)
+    {
+        var documentId = Guid.Parse(path.Split('/', StringSplitOptions.RemoveEmptyEntries)[1]);
+        var requestCount = MetadataRequestCounts.AddOrUpdate(documentId, 1, (_, count) => count + 1);
+        var scanStatus = requestCount == 1 ? "PENDING" : "CLEAN";
+
+        return JsonResponse($$"""
+            {
+              "data": {
+                "id": "{{documentId}}",
+                "scanStatus": "{{scanStatus}}"
+              }
+            }
+            """);
+    }
 }
 
 internal sealed class StubIdentityHandler : HttpMessageHandler
@@ -207,8 +238,25 @@ internal sealed class StubIdentityHandler : HttpMessageHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
-        request.RequestUri?.AbsolutePath.Should().Be("/api/users");
         request.Headers.Authorization.Should().NotBeNull();
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+        if (string.Equals(
+                path,
+                $"/api/users/{SeedHelper.IdentityOnlyUserId:D}",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"id":"{{SeedHelper.IdentityOnlyUserId}}","firstName":"Identity","lastName":"Only","email":"identity.only@legalsynq.test"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            });
+        }
+
+        if (!string.Equals(path, "/api/users", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -232,6 +280,8 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
         var expectedOrganizationPath = $"/api/admin/organizations/{SeedHelper.OrgId:D}";
         var expectedTenantOwnerDisplayPath = "/api/internal/users/tenant-owner/display";
         var expectedUserDisplayPath = $"/api/internal/users/{SeedHelper.UserId:D}/display";
+        var expectedIdentityOnlyUserDisplayPath =
+            $"/api/internal/users/{SeedHelper.IdentityOnlyUserId:D}/display";
         if (string.Equals(path, expectedTenantOwnerDisplayPath, StringComparison.OrdinalIgnoreCase))
         {
             AssertProvisioningToken(request);
@@ -267,6 +317,24 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
                   "firstName": "Seller",
                   "lastName": "Processor",
                   "displayName": "Seller Processor"
+                }
+                """));
+        }
+
+        if (string.Equals(path, expectedIdentityOnlyUserDisplayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            AssertProvisioningToken(request);
+            request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
+            return Task.FromResult(JsonResponse($$"""
+                {
+                  "found": true,
+                  "userId": "{{SeedHelper.IdentityOnlyUserId:D}}",
+                  "tenantId": "{{SeedHelper.TenantId:D}}",
+                  "email": "identity.only@legalsynq.test",
+                  "firstName": "Identity",
+                  "lastName": "Only",
+                  "displayName": "Identity Only"
                 }
                 """));
         }

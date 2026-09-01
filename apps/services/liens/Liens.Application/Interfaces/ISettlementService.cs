@@ -6,6 +6,7 @@ public interface ISettlementService
 {
     // Reductions
     Task<List<LienReductionResponse>> GetReductionsByCaseAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
+    Task<List<LienReductionResponse>> GetLatestReductionsByCaseAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<List<LienReductionResponse>> GetReductionsByLienAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
     Task<LienReductionResponse>       CreateReductionAsync(Guid tenantId, Guid userId, CreateLienReductionRequest request, CancellationToken ct = default);
     Task<LienReductionResponse>       UpdateReductionAsync(Guid tenantId, Guid id, Guid userId, UpdateLienReductionRequest request, CancellationToken ct = default);

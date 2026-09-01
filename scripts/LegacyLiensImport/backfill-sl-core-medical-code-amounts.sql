@@ -12,7 +12,9 @@
 -- Only rows with SL_LEINS_MEDICAL_CODE.LMC_STATUS = 'A' are active source
 -- data and are included in validation, totals, and servicing-item inserts.
 
-USE LS_LIENS;
+-- Do not add USE here. Run this only through a deliberately selected
+-- LS_QA_LIENS or LS_LIENS connection.
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 DROP PROCEDURE IF EXISTS liens_backfill_sl_core_medical_code_amounts;
 
@@ -20,6 +22,7 @@ DELIMITER $$
 
 CREATE PROCEDURE liens_backfill_sl_core_medical_code_amounts(
     IN p_tenant_id CHAR(36),
+    IN p_expected_changes INT,
     IN p_apply CHAR(1)
 )
 SQL SECURITY DEFINER
@@ -35,10 +38,14 @@ BEGIN
     DECLARE v_import_run_id CHAR(36);
     DECLARE v_org_id CHAR(36);
     DECLARE v_migration_user_id CHAR(36);
+    DECLARE v_legacy_program VARCHAR(50);
+    DECLARE v_source_fingerprint CHAR(64);
     DECLARE v_source_code_count INT DEFAULT 0;
     DECLARE v_existing_backfill_count INT DEFAULT 0;
     DECLARE v_tasks_to_insert INT DEFAULT 0;
     DECLARE v_tasks_inserted INT DEFAULT 0;
+    DECLARE v_conflicts INT DEFAULT 0;
+    DECLARE v_postcondition_errors INT DEFAULT 0;
     DECLARE v_total_billing DECIMAL(20,2) DEFAULT 0;
     DECLARE v_total_purchase DECIMAL(20,2) DEFAULT 0;
 
@@ -59,11 +66,15 @@ BEGIN
     SET v_apply = p_apply = '1';
     SET v_lock_name = CONCAT('LSLTB:medcodes:', v_tenant_id);
 
+    IF DATABASE() NOT IN ('LS_QA_LIENS', 'LS_LIENS') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-001 target schema must be LS_QA_LIENS or LS_LIENS';
+    END IF;
     IF v_tenant_id IS NULL
        OR v_tenant_id NOT REGEXP '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
        OR p_apply IS NULL
-       OR p_apply NOT IN ('0', '1') THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-001 invalid tenant ID or apply flag';
+       OR p_apply NOT IN ('0', '1') OR p_expected_changes IS NULL
+       OR (NOT v_apply AND p_expected_changes <> -1) OR (v_apply AND p_expected_changes < 0) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-002 invalid tenant ID, expected change count, or apply flag';
     END IF;
 
     SELECT GET_LOCK(v_lock_name, 10) INTO v_lock_acquired;
@@ -82,36 +93,35 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-003 required target or source tables are unavailable';
     END IF;
 
-    SELECT COUNT(*) INTO v_provenance_count
-    FROM `SL-CORE`.`SL_MIGRATION_SOURCE_PROVENANCE`
-    WHERE PROVENANCE_KEY = 'sl-core-current'
-      AND LOWER(SOURCE_FINGERPRINT) = '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe'
-      AND IMPORT_SCOPE = 'sl-core-core-liens-v1';
-    IF v_provenance_count <> 1 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-004 source provenance does not match the approved SL-CORE dump';
-    END IF;
-
     SELECT COUNT(*) INTO v_completed_run_count
-    FROM liens_LegacyImportRuns
-    WHERE TenantId = v_tenant_id
-      AND SourceSystem = 'SL-CORE'
-      AND SourceFingerprint = '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe'
-      AND LegacyProgram = '1'
-      AND MappingVersion = 'sl-core-core-liens-v1'
-      AND Status = 'Completed';
+    FROM liens_LegacyImportRuns r
+    WHERE r.TenantId = v_tenant_id
+      AND r.SourceSystem = 'SL-CORE'
+      AND r.MappingVersion = 'sl-core-core-liens-v1'
+      AND r.Status = 'Completed'
+      AND EXISTS (SELECT 1 FROM liens_LegacyIdCrosswalks x WHERE x.ImportRunId = r.Id
+                  AND x.TenantId = r.TenantId AND x.SourceSystem = 'SL-CORE'
+                  AND x.SourceTable = 'SL_LEINS_MEDICAL' AND x.TargetEntity = 'Lien');
     IF v_completed_run_count <> 1 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-005 exactly one completed Program 1 core import is required';
     END IF;
 
-    SELECT Id, OrgId, CreatedByUserId
-    INTO v_import_run_id, v_org_id, v_migration_user_id
+    SELECT Id, OrgId, CreatedByUserId, LegacyProgram, LOWER(SourceFingerprint)
+    INTO v_import_run_id, v_org_id, v_migration_user_id, v_legacy_program, v_source_fingerprint
     FROM liens_LegacyImportRuns
     WHERE TenantId = v_tenant_id
       AND SourceSystem = 'SL-CORE'
-      AND SourceFingerprint = '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe'
-      AND LegacyProgram = '1'
       AND MappingVersion = 'sl-core-core-liens-v1'
       AND Status = 'Completed';
+
+    SELECT COUNT(*) INTO v_provenance_count
+    FROM `SL-CORE`.`SL_MIGRATION_SOURCE_PROVENANCE`
+    WHERE PROVENANCE_KEY = 'sl-core-current'
+      AND HEX(LOWER(SOURCE_FINGERPRINT)) = HEX(v_source_fingerprint)
+      AND HEX(IMPORT_SCOPE) = HEX('sl-core-core-liens-v1');
+    IF v_provenance_count <> 1 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-004 source provenance does not match the completed core import';
+    END IF;
 
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_backfill_raw;
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_backfill_codes;
@@ -132,7 +142,7 @@ BEGIN
      AND x.SourceTable = 'SL_LEINS_MEDICAL'
      AND x.TargetEntity = 'Lien'
      AND x.ImportRunId = v_import_run_id
-     AND x.LegacyId = CAST(mc.LMC_LM_ID AS CHAR)
+     AND HEX(x.LegacyId) = HEX(CAST(mc.LMC_LM_ID AS CHAR))
     INNER JOIN liens_Liens l
       ON l.Id = x.TargetId
      AND l.TenantId = v_tenant_id
@@ -148,10 +158,8 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM tmp_sl_core_backfill_raw
-        WHERE BillingText IS NULL
-           OR PurchaseText IS NULL
-           OR BillingText NOT REGEXP '^[0-9]+([.][0-9]{1,2})?$'
-           OR PurchaseText NOT REGEXP '^[0-9]+([.][0-9]{1,2})?$'
+        WHERE (BillingText IS NOT NULL AND BillingText NOT REGEXP '^-?[0-9]+([.][0-9]{1,2})?$')
+           OR (PurchaseText IS NOT NULL AND PurchaseText NOT REGEXP '^-?[0-9]+([.][0-9]{1,2})?$')
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-007 legacy medical-code amount is blank or invalid';
     END IF;
@@ -181,8 +189,8 @@ BEGIN
               WHEN MedicareText REGEXP '^[0-9]+([.][0-9]{1,2})?$' THEN CAST(MedicareText AS DECIMAL(20,2))
               ELSE NULL
             END AS MedicareAmount,
-            CAST(BillingText AS DECIMAL(20,2)) AS BillingAmount,
-            CAST(PurchaseText AS DECIMAL(20,2)) AS PurchaseAmount
+            COALESCE(CAST(BillingText AS DECIMAL(20,2)), 0) AS BillingAmount,
+            COALESCE(CAST(PurchaseText AS DECIMAL(20,2)), 0) AS PurchaseAmount
         FROM tmp_sl_core_backfill_raw
     ) mapped;
 
@@ -225,7 +233,7 @@ BEGIN
         WHERE s.TaskType <> 'LegacyMedicalCode'
            OR NOT (s.LienId <=> t.TargetLienId)
            OR NOT (s.CaseId <=> t.TargetCaseId)
-           OR COALESCE(s.Notes, '') <> t.ExpectedNotes
+           OR HEX(COALESCE(s.Notes, '')) <> HEX(t.ExpectedNotes)
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-010 existing backfill task conflicts with the source mapping';
     END IF;
@@ -237,6 +245,14 @@ BEGIN
      AND s.TenantId = v_tenant_id;
 
     SET v_tasks_to_insert = v_source_code_count - v_existing_backfill_count;
+    SELECT COUNT(*) INTO v_conflicts
+    FROM liens_ServicingItems s
+    INNER JOIN tmp_sl_core_backfill_codes t ON t.TaskNumber = s.TaskNumber
+    WHERE s.TenantId = v_tenant_id
+      AND (s.TaskType <> 'LegacyMedicalCode'
+        OR NOT (s.LienId <=> t.TargetLienId)
+        OR NOT (s.CaseId <=> t.TargetCaseId)
+        OR HEX(COALESCE(s.Notes, '')) <> HEX(t.ExpectedNotes));
     SELECT COALESCE(SUM(BillingAmount), 0), COALESCE(SUM(PurchaseAmount), 0)
     INTO v_total_billing, v_total_purchase
     FROM tmp_sl_core_backfill_codes;
@@ -251,9 +267,16 @@ BEGIN
                v_source_code_count AS SourceMedicalCodes,
                v_existing_backfill_count AS ExistingBackfillTasks,
                v_tasks_to_insert AS TasksToInsert,
+               v_conflicts AS Conflicts,
                v_total_billing AS TotalBilling,
                v_total_purchase AS TotalPurchase;
     ELSE
+        IF p_expected_changes <> v_tasks_to_insert THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-012 expected change count does not match dry run';
+        END IF;
+        IF v_conflicts <> 0 THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-013 medical-code backfill has conflicts; no rows were changed';
+        END IF;
         START TRANSACTION;
         SET v_in_transaction = TRUE;
 
@@ -281,6 +304,17 @@ BEGIN
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-011 insert count did not match the validated backfill plan';
         END IF;
 
+        SELECT COUNT(*) INTO v_postcondition_errors
+        FROM tmp_sl_core_backfill_codes t
+        LEFT JOIN liens_ServicingItems s ON s.TenantId = v_tenant_id AND s.TaskNumber = t.TaskNumber
+        WHERE s.Id IS NULL OR s.TaskType <> 'LegacyMedicalCode'
+           OR NOT (s.LienId <=> t.TargetLienId)
+           OR NOT (s.CaseId <=> t.TargetCaseId)
+           OR HEX(COALESCE(s.Notes, '')) <> HEX(t.ExpectedNotes);
+        IF v_postcondition_errors <> 0 THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTB-014 medical-code backfill postcondition failed';
+        END IF;
+
         COMMIT;
         SET v_in_transaction = FALSE;
         DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_backfill_codes;
@@ -300,7 +334,7 @@ END$$
 DELIMITER ;
 
 -- Run a preflight first. It performs no permanent writes.
--- CALL LS_QA_LIENS.liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', '0');
+-- CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', -1, '0');
 --
 -- Apply only after the preflight reports the expected count and totals.
--- CALL LS_QA_LIENS.liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', '1');
+-- CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', <TasksToInsert>, '1');

@@ -41,7 +41,7 @@ public class SellingPortalMessage : AuditableEntity
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
         ArgumentException.ThrowIfNullOrWhiteSpace(senderType);
         ArgumentException.ThrowIfNullOrWhiteSpace(senderName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        ArgumentNullException.ThrowIfNull(message);
 
         if (!SellingPortalMessageSenderType.All.Contains(senderType))
             throw new ArgumentException($"Invalid sender type: '{senderType}'.", nameof(senderType));

@@ -47,6 +47,43 @@ public sealed class FacilityService : IFacilityService
         };
     }
 
+    public async Task<PaginatedResult<FacilityResponse>> SearchLienFacilitiesAsync(
+        Guid tenantId, string? search, bool? isActive,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 200) pageSize = 200;
+
+        var (items, totalCount) = await _facilityRepo.SearchAsync(
+            tenantId, search, isActive, page, pageSize, ct);
+
+        return new PaginatedResult<FacilityResponse>
+        {
+            Items = items.Select(facility => new FacilityResponse
+            {
+                Id = facility.Id,
+                Name = facility.Name,
+                Code = facility.Code,
+                ExternalReference = facility.ExternalReference,
+                AddressLine1 = facility.AddressLine1,
+                AddressLine2 = facility.AddressLine2,
+                City = facility.City,
+                State = facility.State,
+                PostalCode = facility.PostalCode,
+                Phone = facility.Phone,
+                Email = facility.Email,
+                Fax = facility.Fax,
+                IsActive = facility.IsActive,
+                CreatedAtUtc = facility.CreatedAtUtc,
+                UpdatedAtUtc = facility.UpdatedAtUtc,
+            }).ToList(),
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+        };
+    }
+
     public async Task<List<FacilityResponse>> GetAllAsync(
         Guid tenantId, bool? isActive = true, CancellationToken ct = default)
     {

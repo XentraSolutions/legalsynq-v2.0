@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import { PageHeader } from "@/components/lien/page-header";
+import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { DateDisplay } from "@/components/ui/date-display";
 import { CreateLienModal } from "@/components/lien/forms/create-lien-modal";
@@ -19,7 +20,6 @@ import { ApiError } from "@/lib/api-client";
 import {
   liensService,
   type LienListItem,
-  type LiensQuery,
   type PaginationMeta,
 } from "@/lib/liens";
 import {
@@ -29,6 +29,9 @@ import {
 } from "./components/liens-filter";
 import { LiensExportQuery } from "@/lib/liens/liens.types";
 import { dateConverter } from "@/lib/cases/cases.mapper";
+import { useLiens } from "@/hooks/use-case-liens";
+import { useQueryClient } from "@tanstack/react-query";
+import type { LiensQuery } from "@/lib/liens";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "—";
@@ -91,26 +94,18 @@ const SORT_BY_MAP: Record<string, string> = {
 export default function LiensPage() {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
+  const queryClient = useQueryClient();
 
-  const [liens, setLiens] = useState<LienListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
     pageSize: 10,
     totalCount: 0,
     totalPages: 0,
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // Registers the table's own load with the app-wide background queue so
-  // the filter modal's option prefetch (below) waits for it instead of
-  // competing with the primary table fetch for network/render time.
-  // Combined with `!loading` directly (rather than trusting the queue
-  // alone) so the very first render is correct with no propagation delay —
-  // see useBackgroundReady's doc.
-  usePrimaryLoad(loading);
-  const bgReady = useBackgroundReady() && !loading;
 
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [filters, setFilters] =
     useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -120,67 +115,81 @@ export default function LiensPage() {
   const activeFilterCount = countActiveFilters(filters);
   const [exporting, setExporting] = useState(false);
 
-  const currentQuery = useCallback(
-    (): LiensQuery => ({
-      search: search || undefined,
-      page: 1,
-      pageSize: 10,
-      lawFirmIds: filters.lawFirmIds,
-      medicalFacilityIds: filters.medicalFacilityIds,
-      caseManagerIds: filters.caseManagerIds,
-      lienStatusIds: filters.lienStatusIds,
-      purchaseDateFrom: filters.purchaseDateFrom || undefined,
-      purchaseDateTo: filters.purchaseDateTo || undefined,
-      closedDateFrom: filters.closedDateFrom || undefined,
-      closedDateTo: filters.closedDateTo || undefined,
-      sortBy: sorting[0] ? SORT_BY_MAP[sorting[0].id] : undefined,
-      sortDirection: sorting[0]
-        ? sorting[0].desc
-          ? "desc"
-          : "asc"
-        : undefined,
-    }),
-    [search, filters, sorting],
-  );
+  const query: LiensQuery = {
+    search: search || undefined,
+    page: pagination.page,
+    pageSize: 10,
+    lawFirmIds: filters.lawFirmIds,
+    medicalFacilityIds: filters.medicalFacilityIds,
+    caseManagerIds: filters.caseManagerIds,
+    lienStatusIds: filters.lienStatusIds,
+    purchaseDateFrom: filters.purchaseDateFrom || undefined,
+    purchaseDateTo: filters.purchaseDateTo || undefined,
+    closedDateFrom: filters.closedDateFrom || undefined,
+    closedDateTo: filters.closedDateTo || undefined,
+    sortBy: sorting[0] ? SORT_BY_MAP[sorting[0].id] : undefined,
+    sortDirection: sorting[0] ? (sorting[0].desc ? "desc" : "asc") : undefined,
+  };
 
-  const fetchLiens = useCallback(async (query: LiensQuery = {}) => {
-    setLoading(true);
-    setError(null);
+  const {
+    data: liensResult,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useLiens(query);
+  const liens = liensResult?.items ?? [];
+
+  // Registers the table's own load with the app-wide background queue so
+  // the filter modal's option prefetch (below) waits for it instead of
+  // competing with the primary table fetch for network/render time.
+  // Combined with `!isLoading` directly (rather than trusting the queue
+  // alone) so the very first render is correct with no propagation delay —
+  // see useBackgroundReady's doc.
+  usePrimaryLoad(isLoading);
+  const bgReady = useBackgroundReady() && !isLoading;
+
+  useEffect(() => {
+    if (liensResult) setPagination(liensResult.pagination);
+  }, [liensResult]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [search, filters, sorting]);
+
+  const exportLiens = async () => {
+    const params: LiensExportQuery = {
+      keyword: search ?? "",
+      caseId: null,
+      lawFirmId: filters.lawFirmIds?.length
+        ? filters.lawFirmIds.toString()
+        : null,
+      medicalFacilityId: filters.medicalFacilityIds?.length
+        ? filters.medicalFacilityIds.toString()
+        : null,
+      caseManagerId: filters.caseManagerIds?.length
+        ? filters.caseManagerIds.toString()
+        : null,
+      lienStatusId: filters.lienStatusIds?.length
+        ? filters.lienStatusIds.toString()
+        : null,
+      purchaseDate:
+        filters.purchaseDateFrom && filters.purchaseDateTo
+          ? `${dateConverter(filters.purchaseDateFrom)}-${dateConverter(filters.purchaseDateTo)}`
+          : (filters.purchaseDateFrom ?? filters.purchaseDateTo ?? null),
+
+      closedDate:
+        filters.closedDateFrom && filters.closedDateTo
+          ? `${dateConverter(filters.closedDateFrom)}-${dateConverter(filters.closedDateTo)}`
+          : (filters.closedDateFrom ?? filters.closedDateTo ?? null),
+    };
     try {
-      const result = await liensService.getLiens(query);
-      setLiens(result.items);
-      setPagination(result.pagination);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Failed to load liens");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const exportLiens = async()=>{
-    const params:LiensExportQuery = {
-    keyword: search ?? "",
-    caseId: null,
-    lawFirmId: filters.lawFirmIds?.length ? filters.lawFirmIds.toString() : null,
-    medicalFacilityId: filters.medicalFacilityIds?.length ? filters.medicalFacilityIds.toString() : null,
-    caseManagerId: filters.caseManagerIds?.length ? filters.caseManagerIds.toString() : null,
-    lienStatusId: filters.lienStatusIds?.length ? filters.lienStatusIds.toString() : null,
-    purchaseDate: 
-      filters.purchaseDateFrom && filters.purchaseDateTo
-        ? `${dateConverter(filters.purchaseDateFrom)}-${dateConverter(filters.purchaseDateTo)}`
-        : filters.purchaseDateFrom ?? filters.purchaseDateTo ?? null,
-
-    closedDate: 
-      filters.closedDateFrom && filters.closedDateTo
-        ? `${dateConverter(filters.closedDateFrom)}-${dateConverter(filters.closedDateTo)}`
-        : filters.closedDateFrom ?? filters.closedDateTo ?? null,  
-    }
-    try {
-      setExporting(true)
+      setExporting(true);
       const req = await liensService.export(params);
       const item = req.data?.[0];
       const src = `data:text/${item.export_format};base64,${item.base64}`;
@@ -189,34 +198,22 @@ export default function LiensPage() {
       link.download = item.filename;
       link.click();
       link.remove();
-    } catch (err){
-        if(err instanceof ApiError){
-          addToast({
-            type: "error",
-            title: "Export Failed",
-            description: err?.message,
-          });
-        }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Export Failed",
+          description: err?.message,
+        });
+      }
     } finally {
-        setExporting(false)
+      setExporting(false);
     }
-  }
-
-  useEffect(() => {
-    fetchLiens(currentQuery());
-  }, [search, filters, sorting, fetchLiens, currentQuery]);
-
-  const handlePageChange = (newPage: number) => {
-    fetchLiens({
-      ...currentQuery(),
-      page: newPage,
-      pageSize: pagination.pageSize,
-    });
   };
 
   const handleCreated = () => {
     setShowCreate(false);
-    fetchLiens(currentQuery());
+    queryClient.invalidateQueries({ queryKey: ["liens"] });
     addToast({
       type: "success",
       title: "Lien Created",
@@ -227,6 +224,49 @@ export default function LiensPage() {
   const handleApplyFilter = (next: LiensFilterValues) => {
     setFilters(next);
   };
+
+  const searchDropdown = searchFocused ? (
+    <div
+      onMouseDown={(e) => e.preventDefault()}
+      className="absolute left-0 right-0 top-full mt-1 max-h-96 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+    >
+      {isLoading ? (
+        <div className="px-4 py-3 text-sm text-gray-400">Searching...</div>
+      ) : liens.length === 0 ? (
+        <div className="px-4 py-3 text-sm text-gray-400">No liens found.</div>
+      ) : (
+        liens.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            onClick={() => {
+              setSearchFocused(false);
+              router.push(lienDetailHref(l));
+            }}
+            className="w-full text-left px-4 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+          >
+            <div className="text-sm font-semibold text-gray-800">
+              {l.isConfidential
+                ? "Confidential"
+                : l.plaintiff || l.subjectName}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              <span className="text-primary">Initial Service Date: </span>
+              <span className="text-gray-700">
+                {l.initialServiceDate || "—"}
+              </span>
+              {", "}
+              <span className="text-primary">Purchase Date: </span>
+              <span className="text-gray-700">{l.purchaseDate || "—"}</span>
+              {l.lawFirm ? `, ${l.lawFirm}` : ""}{" "}
+              <span className="text-primary">Lien ID: </span>
+              <span className="text-gray-700">{l.lienNumber}</span>
+            </div>
+          </button>
+        ))
+      )}
+    </div>
+  ) : null;
 
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
     () => [
@@ -355,20 +395,18 @@ export default function LiensPage() {
     <div className="space-y-5">
       <PageHeader
         title="Liens"
-        subtitle={loading ? "Loading..." : `${pagination.totalCount} liens`}
+        subtitle={isLoading ? "Loading..." : `${pagination.totalCount} liens`}
       />
 
-      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-          <input
-            type="text"
-            placeholder="Search liens by number or subject..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-        </div>
+      <FilterToolbar
+        searchPlaceholder="Search liens by number or subject..."
+        onSearch={(e) => {
+          setSearchInput(e);
+        }}
+        onSearchFocus={() => setSearchFocused(true)}
+        onSearchBlur={() => setSearchFocused(false)}
+        dropdown={searchDropdown}
+      >
         <button
           onClick={() => setShowFilter(true)}
           className="relative flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors"
@@ -387,14 +425,16 @@ export default function LiensPage() {
         >
           {exporting ? "Exporting..." : "Export"}
         </button>
-      </div>
+      </FilterToolbar>
 
-      {error && (
+      {isError && (
         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
           <i className="ri-error-warning-line text-red-600" />
-          <p className="text-sm text-red-700">{error}</p>
+          <p className="text-sm text-red-700">
+            {error instanceof ApiError ? error.message : "Failed to load liens"}
+          </p>
           <button
-            onClick={() => fetchLiens(currentQuery())}
+            onClick={() => refetch()}
             className="ml-auto text-sm text-red-600 hover:underline"
           >
             Retry
@@ -402,57 +442,51 @@ export default function LiensPage() {
         </div>
       )}
 
-      {loading ? (
-        <div className="p-10 text-center">
-          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-gray-400 mt-2">Loading liens...</p>
-        </div>
-      ) : (
-        <BaseTable
-          data={liens}
-          columns={columns}
-          getRowId={(l) => l.id}
-          sorting={sorting}
-          onSortingChange={setSorting}
-          manualSorting
-          toolbar={
-            activeFilterCount > 0 ? (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-blue-50/70 border-b border-blue-100">
-                <span className="flex items-center gap-2 text-sm text-gray-700">
-                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                  {activeFilterCount} Filter(s) Applied
-                </span>
-                <button
-                  onClick={() => setFilters(EMPTY_LIENS_FILTERS)}
-                  className="text-sm font-medium text-primary bg-white rounded-lg px-4 py-1.5 shadow-sm hover:bg-gray-50 transition-colors"
-                >
-                  Clear Filter
-                </button>
-              </div>
-            ) : undefined
-          }
-          emptyMessage="No liens match your filters."
-          onRowClick={(l) => router.push(lienDetailHref(l))}
-          manualPagination
-          pageCount={pagination.totalPages}
-          totalCount={pagination.totalCount}
-          pagination={{
-            pageIndex: pagination.page - 1,
-            pageSize: pagination.pageSize,
-          }}
-          onPaginationChange={(updater) => {
-            const next =
-              typeof updater === "function"
-                ? updater({
-                    pageIndex: pagination.page - 1,
-                    pageSize: pagination.pageSize,
-                  })
-                : updater;
-            handlePageChange(next.pageIndex + 1);
-          }}
-          className="bg-white border-gray-200 rounded-xl"
-        />
-      )}
+      <BaseTable
+        data={liens}
+        columns={columns}
+        getRowId={(l) => l.id}
+        isLoading={isLoading}
+        sorting={sorting}
+        onSortingChange={setSorting}
+        manualSorting
+        toolbar={
+          activeFilterCount > 0 ? (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 bg-blue-50/70 border-b border-blue-100">
+              <span className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                {activeFilterCount} Filter(s) Applied
+              </span>
+              <button
+                onClick={() => setFilters(EMPTY_LIENS_FILTERS)}
+                className="text-sm font-medium text-primary bg-white rounded-lg px-4 py-1.5 shadow-sm hover:bg-gray-50 transition-colors"
+              >
+                Clear Filter
+              </button>
+            </div>
+          ) : undefined
+        }
+        emptyMessage="No liens match your filters."
+        onRowClick={(l) => router.push(lienDetailHref(l))}
+        manualPagination
+        pageCount={pagination.totalPages}
+        totalCount={pagination.totalCount}
+        pagination={{
+          pageIndex: pagination.page - 1,
+          pageSize: pagination.pageSize,
+        }}
+        onPaginationChange={(updater) => {
+          const next =
+            typeof updater === "function"
+              ? updater({
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                })
+              : updater;
+          setPagination((p) => ({ ...p, page: next.pageIndex + 1 }));
+        }}
+        className="bg-white border-gray-200 rounded-xl"
+      />
 
       <CreateLienModal
         open={showCreate}

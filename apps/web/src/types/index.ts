@@ -32,6 +32,8 @@ export const ProductRole = {
   CareConnectReceiver: "SYNQ_CARECONNECT:CARECONNECT_RECEIVER",
   // CC2-INT-B06: role-based network management (not orgType-based)
   CareConnectNetworkManager: "SYNQ_CARECONNECT:CARECONNECT_NETWORK_MANAGER",
+  // LSV3-1084: law-firm-scoped network self-management
+  CareConnectReferrerAdmin: "SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN",
   // SynqFund (product code: SYNQ_FUND)
   SynqFundReferrer: "SYNQ_FUND:SYNQFUND_REFERRER",
   SynqFundFunder: "SYNQ_FUND:SYNQFUND_FUNDER",
@@ -105,7 +107,10 @@ export interface NavItem {
   heading?: string;
   href?: string;
   label?: string;
+  /** Remix Icon class name, e.g. "ri-folder-3-line". Ignored when lucideIcon is set. */
   icon?: string;
+  /** Lucide icon component, takes precedence over `icon` when both are set. */
+  lucideIcon?: import("lucide-react").LucideIcon;
   badge?: string;
   badgeKey?: string;
   requiredRoles?: ProductRoleValue[];

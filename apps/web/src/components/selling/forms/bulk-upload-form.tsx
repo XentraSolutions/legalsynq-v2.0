@@ -8,6 +8,7 @@ import { useLienStore } from "@/stores/lien-store";
 import { documentsService } from "@/lib/documents";
 import { liensService } from "@/lib/selling";
 import { liensApi } from "@/lib/selling/selling-liens.api";
+import { stripFirstCsvColumn, prependCsvColumn } from "@/lib/selling/csv-utils";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/selling/button";
 import { ReviewBulkUploadModal } from "@/components/selling/forms/review-bulk-upload-modal";
@@ -20,7 +21,15 @@ interface BulkUploadFormProps {
   referenceId?: string;
   tenantId?: string;
   documentTypeId?: string;
+  // When set, the form is scoped to a single case: the template's first
+  // column ("Case Code*") is stripped on download since the case is already
+  // known, and re-added with this value before the file is uploaded.
+  caseCode?: string;
 }
+
+// Matches the header SellingBulkImportTemplateColumns puts first — see the
+// comment on BulkImportRowItem in liens.types.ts.
+const CASE_CODE_HEADER = "Case Code*";
 
 const REFERENCE_TYPE_OPTIONS = ["Case", "Lien", "Bill of Sale"];
 
@@ -35,6 +44,7 @@ export function BulkUploadForm({
   referenceId,
   tenantId,
   documentTypeId,
+  caseCode,
 }: BulkUploadFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -49,6 +59,11 @@ export function BulkUploadForm({
   const [uploading, setUploading] = useState(false);
   const [reviewImportId, setReviewImportId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // The exact CSV text last sent to the bulk-import endpoint, kept around so
+  // the unmatched-entities panel can rewrite and re-upload a corrected
+  // version — null for .xlsx uploads, which that panel can't rewrite.
+  const [uploadedCsvText, setUploadedCsvText] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string>("");
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -64,7 +79,14 @@ export function BulkUploadForm({
       setUploading(true);
       const formData = new FormData();
       if (!file) return;
-      formData.append("File", file);
+      const uploadFile = caseCode
+        ? new File(
+            [prependCsvColumn(await file.text(), CASE_CODE_HEADER, caseCode)],
+            file.name,
+            { type: file.type || "text/csv" },
+          )
+        : file;
+      formData.append("File", uploadFile);
       formData.append("templateType", "SellingLienImport");
       formData.append("defaultListingVisibility", "Private");
       formData.append("defaultSellerStatus", "Pending");
@@ -78,6 +100,12 @@ export function BulkUploadForm({
         return;
       }
 
+      if (uploadFile.name.toLowerCase().endsWith(".csv")) {
+        setUploadedCsvText(await uploadFile.text());
+        setUploadedFileName(uploadFile.name);
+      } else {
+        setUploadedCsvText(null);
+      }
       setReviewImportId(uploadedfiles.importId);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -102,7 +130,37 @@ export function BulkUploadForm({
     setFile(null);
     setErrors({});
     setReviewImportId(null);
+    setUploadedCsvText(null);
+    setUploadedFileName("");
     onClose();
+  };
+
+  // Re-runs the upload -> validate pipeline against a corrected CSV, then
+  // points the review modal at the new import. Cancelling the old one is
+  // best-effort — it not being cancellable (e.g. a slow double-click) isn't
+  // worth blocking the correction on, since it's harmless leftover state.
+  const applyCorrections = async (correctedCsvText: string) => {
+    const previousImportId = reviewImportId;
+    const correctedFile = new File(
+      [correctedCsvText],
+      uploadedFileName || "corrected.csv",
+      { type: "text/csv" },
+    );
+    const formData = new FormData();
+    formData.append("File", correctedFile);
+    formData.append("templateType", "SellingLienImport");
+    formData.append("defaultListingVisibility", "Private");
+    formData.append("defaultSellerStatus", "Pending");
+    const uploaded = await liensService.upload(formData);
+    const validated = await liensService.validateUpload(uploaded.importId);
+    if (validated.status === "VALIDATED_WITH_ERRORS") {
+      toast.error(`Failed to import ${validated.invalidCount} row/s`);
+    }
+    setUploadedCsvText(correctedCsvText);
+    setReviewImportId(uploaded.importId);
+    if (previousImportId) {
+      liensService.cancelUpload(previousImportId).catch(() => {});
+    }
   };
 
   const handleConfirmImport = async () => {
@@ -127,7 +185,12 @@ export function BulkUploadForm({
   };
 
   const downloadTemplate = async () => {
-    const blob = await liensService.downloadTemplate();
+    let blob = await liensService.downloadTemplate();
+    if (caseCode) {
+      blob = new Blob([stripFirstCsvColumn(await blob.text())], {
+        type: blob.type || "text/csv",
+      });
+    }
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
@@ -155,7 +218,7 @@ export function BulkUploadForm({
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept=".csv,.xlsx"
+          accept={caseCode ? ".csv" : ".csv,.xlsx"}
           onChange={(e) => handleFileSelect(e.target.files)}
         />
         {file && (
@@ -247,6 +310,8 @@ export function BulkUploadForm({
       onClose={resetAndClose}
       onConfirm={handleConfirmImport}
       confirming={confirming}
+      sourceCsvText={uploadedCsvText}
+      onApplyCorrections={applyCorrections}
     />
     </>
   );

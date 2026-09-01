@@ -1,40 +1,45 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import FundingCompanyInfo from "../forms/add-medical-lien/funding-company-info";
 import { LienWizardShell } from "./shell";
-import { buildFormsFromLien, goToStep } from "./shared";
+import {
+  buildFormsFromLien,
+  goToStep,
+  detailHref,
+  DETAIL_EDIT_PARAM,
+  DETAIL_EDIT_VALUE,
+} from "./shared";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
-// Mirrors FundingCompanyInfo's layout: title + description, then 6 selects
-// (medical provider, facility, funding company, contact, law firm, case
-// manager) across full-width and paired rows.
+// Mirrors FundingCompanyInfo's layout: title + description and the lien-owned
+// medical-provider, funding-company, and contact selections.
 function FundingCompanyStepSkeleton() {
   return (
     <div className="space-y-4 animate-pulse pt-5">
       <div className="h-6 bg-gray-100 rounded w-52" />
       <div className="h-3 bg-gray-100 rounded w-full max-w-md" />
-      <SkeletonFormGrid fields={6} />
+      <SkeletonFormGrid fields={3} />
     </div>
   );
 }
 
 export interface FundingCompanyStepProps {
   lienId: string;
-  caseId?: string;
 }
 
 // Step 2 — always edits an existing lien (the route requires an id; a lien
 // is only created by completing step 1 first).
 export default function FundingCompanyStep({
   lienId,
-  caseId,
 }: FundingCompanyStepProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetailEdit = searchParams.get(DETAIL_EDIT_PARAM) === DETAIL_EDIT_VALUE;
   const [hydrating, setHydrating] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
@@ -46,7 +51,7 @@ export default function FundingCompanyStep({
       try {
         const lien = await liensService.getLienById(lienId);
         if (cancelled) return;
-        setFormData(buildFormsFromLien(lien).caseInformation);
+        setFormData(buildFormsFromLien(lien).providerFunding);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to load lien");
       } finally {
@@ -68,17 +73,17 @@ export default function FundingCompanyStep({
   const handleContinue = async () => {
     setSubmitting(true);
     try {
-      await liensService.saveCaseInformation(lienId, {
+      await liensService.saveProviderFundingDetails(lienId, {
         medicalProviderId: formData?.medicalProviderId || undefined,
-        fundingCompanyId: formData?.fundingCompanyId || undefined,
-        fundingCompanyContactId:
-          formData?.fundingCompanyContactId || undefined,
         facilityId: formData?.facilityId || undefined,
-        handlingLawFirmId: formData?.lawfirmId || undefined,
-        caseManagerId: formData?.caseManagerId || undefined,
-        caseId: caseId || undefined,
-        createCaseIfMissing: !caseId,
+        fundingCompanyId: formData?.fundingCompanyId || null,
+        fundingCompanyContactId: formData?.fundingCompanyContactId || null,
       });
+      if (isDetailEdit) {
+        toast.success("Provider & funding details updated.");
+        router.push(detailHref(lienId));
+        return;
+      }
       goToStep(router, lienId, 3);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -98,11 +103,20 @@ export default function FundingCompanyStep({
       skeleton={<FundingCompanyStepSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
-      onBack={() => goToStep(router, lienId, 1)}
+      onBack={
+        isDetailEdit
+          ? () => router.push(detailHref(lienId))
+          : () => goToStep(router, lienId, 1)
+      }
+      onCancel={
+        isDetailEdit
+          ? () => router.push(detailHref(lienId))
+          : () => router.push("/selling/portfolio/lien")
+      }
       onContinue={handleContinue}
+      detailEditReturnHref={isDetailEdit ? detailHref(lienId) : undefined}
     >
       <FundingCompanyInfo
-        caseId={caseId}
         lienId={lienId}
         data={formData}
         onFormValid={onFormValid}

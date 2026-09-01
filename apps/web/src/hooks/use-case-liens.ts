@@ -31,6 +31,7 @@ import {
   type UpdateServicingDetailsRequestDto,
 } from "@/lib/servicing";
 import { dateConverter } from "@/lib/cases/cases.mapper";
+import { CreateMedicalCodeLiensDto } from "@/lib/cases/cases.types";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -164,14 +165,17 @@ async function enrichLiens(
   const latestReductionDateByLien = new Map<string, string>();
 
   const sortedReductions = [...reductions].sort((a, b) => {
-    const dateDiff = b.reductionDate.localeCompare(a.reductionDate);
+    const dateDiff = b.updatedAtUtc.localeCompare(a.updatedAtUtc);
     return dateDiff !== 0
       ? dateDiff
       : b.createdAtUtc.localeCompare(a.createdAtUtc);
   });
   for (const r of sortedReductions) {
     if (!latestReductionByLien.has(r.lienId)) {
-      latestReductionByLien.set(r.lienId, r.amount);
+      latestReductionByLien.set(
+        r.lienId,
+        Math.round((r.amount ?? 0) * 100) / 100,
+      );
       latestReductionDateByLien.set(r.lienId, dateConverter(r.reductionDate));
     }
   }
@@ -185,25 +189,27 @@ async function enrichLiens(
     const paymentAmount = paymentsByLien.get(lien.id) ?? null;
     const reductionAmount = latestReductionByLien.get(lien.id) ?? null;
     const reductionDate = latestReductionDateByLien.get(lien.id) ?? null;
+    const originalAmount = lien.totalBilling ?? 0;
+    const totalBalance =
+      originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0);
     // A lien can bundle multiple medical billing line items; totalBilling is
     // the server-aggregated sum across those. The DTO also has a legacy
     // single-value originalAmount field, but we don't consume it on the
     // client — the aggregate is the only "billing amount" this view needs.
-    const originalAmount = lien.totalBilling ?? 0;
     return {
       ...lien,
       facility: lien.facility ?? "",
       facilityName:
         lien.facilityName || facilityName(lien.facilityId ?? "") || "",
       serviceDate: lien.initialServiceDate,
-      purchaseDateDate: lien.purchaseDate,
+      purchaseDate: lien.purchaseDate,
       originalAmount,
       reductionAmount,
       reductionDate,
       purchaseAmount: lien.purchaseAmount ?? 0,
       isServicing: lien.isServicing ?? false,
       paymentAmount,
-      balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
+      balance: totalBalance,
       closedAtUtc: lien.closedAtUtc ?? null,
     };
   });
@@ -298,6 +304,15 @@ export function useCases(query: CasesQuery) {
   });
 }
 
+export function useLiens(query: LiensQuery) {
+  return useQuery({
+    queryKey: ["liens", query],
+    queryFn: () => liensService.getLiens(query),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
 async function fetchProcedureCodes() {
   const codes = await lookupService.getMedicalProcedureCodes();
   const uniqueCodes = Array.from(
@@ -331,6 +346,67 @@ export function useMedicareCosts(id: string) {
     queryKey: ["medicareCosts", id],
     queryFn: () => findMedicareCost(id),
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCreateMedicalCode() {
+  const queryClient = useQueryClient();
+
+  // 1. Get your codes and lookup function here (from the previous step)
+  const { data: medicalCodes } = useMedicareProcedureCodes();
+
+  const findCodeByDescription = (description: string) => {
+    if (!medicalCodes) return "";
+    return medicalCodes.find((c) => c.value === description)?.key ?? "";
+  };
+
+  // 2. Define the execution logic inside the hook
+  const createMedicalCodeLiens = async (
+    payload: CreateMedicalCodeLiensDto,
+    isEditing: boolean,
+    lienId: string,
+  ) => {
+    const selectedCode =
+      payload.code ||
+      (typeof (payload as any).procedureCode === "string"
+        ? (payload as any).procedureCode
+        : "");
+
+    const request: CreateMedicalCodeLiensDto = {
+      id: payload.id,
+      liensId: lienId,
+      code: findCodeByDescription(selectedCode),
+      medicareCost: parseFloat(payload.medicareCost).toFixed(2),
+      billingAmount: parseFloat(payload.billingAmount).toFixed(2),
+      purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+      payee: payload.payee,
+      outboundCheckNumber: payload.outboundCheckNumber,
+    };
+
+    const res = isEditing
+      ? await casesService.updateMedicalCodeLiens(request)
+      : await casesService.createMedicalCodeLiens(request);
+
+    return res;
+  };
+
+  // 3. Return the mutation using TanStack Query
+  return useMutation({
+    mutationFn: ({
+      payload,
+      isEditing,
+      lienId,
+    }: {
+      payload: CreateMedicalCodeLiensDto;
+      isEditing: boolean;
+      lienId: string;
+    }) => createMedicalCodeLiens(payload, isEditing, lienId),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["cases"],
+      });
+    },
   });
 }
 

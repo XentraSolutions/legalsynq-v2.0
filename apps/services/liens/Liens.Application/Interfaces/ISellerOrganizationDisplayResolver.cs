@@ -12,6 +12,15 @@ public interface ISellerOrganizationDisplayResolver
         string? fallbackEmail = null,
         bool includeIdentityOwnerEmailFallback = false,
         CancellationToken ct = default);
+
+    Task<SellerOrganizationDisplay> ResolveAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        IReadOnlyList<CompanyContactPerson> sellerContacts,
+        Guid? sellerUserId = null,
+        string? fallbackEmail = null,
+        bool includeIdentityOwnerEmailFallback = false,
+        CancellationToken ct = default);
 }
 
 public sealed record SellerOrganizationDisplay(

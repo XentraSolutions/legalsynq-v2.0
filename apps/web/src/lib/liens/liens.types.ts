@@ -268,6 +268,7 @@ export interface PaginationMeta {
 // "Internal" (NormalizeIntakeStatus rejects anything else, e.g. "Sold" or
 // "Draft") or the API 400s.
 export interface CreateLienParams {
+  caseId: string;
   sellerStatus: string;
   source?: string;
 }
@@ -288,10 +289,6 @@ export interface LienFundingCompanyParams {
   fundingCompanyId?: string;
   fundingCompanyContactId?: string;
   facilityId?: string;
-  handlingLawFirmId: string;
-  caseManagerId: string;
-  caseId: string;
-  createCaseIfMissing: boolean;
 }
 
 export interface LienMedicalCodesParams {

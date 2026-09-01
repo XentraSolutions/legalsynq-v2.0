@@ -18,7 +18,7 @@ import type {
   CreateLienOfferRequestDto,
   SaleFinalizationResultDto,
   SaveSellingLienInformationRequest,
-  SaveSellingCaseInformationRequest,
+  SaveSellingProviderFundingRequest,
   SaveSellingMedicalPricingRequest,
   SaveSellingDocumentsRequest,
   PrepareSellingLienRequest,
@@ -27,11 +27,27 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  MoveToManagementRequest,
+  CaseDraftRequest,
+  CaseDraftResult,
+  FinalizeCaseDraftRequest,
+  FinalizeCaseDraftResult,
+  UpdateCaseRequest,
+  UpdateCaseResult,
+  CaseDetailResult,
+  UpdateCasePlaintiffRequest,
+  UpdateCasePlaintiffResult,
+  CaseSearchQuery,
+  CaseSearchItem,
 } from "./liens.types";
 import type {
   MonthlyAgingReport,
   MonthlyAgingReportQuery,
 } from "./aging-report.types";
+import type {
+  SellingOperationsDashboardQuery,
+  SellingOperationsDashboardResponse,
+} from "./dashboard-analytics.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
   CreateLienParams,
@@ -43,6 +59,8 @@ import type {
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
+  SellerLienMessage,
+  SellerLienMessagesResult,
 } from "./liens.types";
 
 export interface LienListResult {
@@ -52,6 +70,11 @@ export interface LienListResult {
 
 export interface LienOffersResult {
   items: LienOfferItem[];
+}
+
+export interface CaseSearchResult {
+  items: CaseSearchItem[];
+  pagination: PaginationMeta;
 }
 
 async function readJson(response: Response): Promise<string | null> {
@@ -89,6 +112,20 @@ export const liensService = {
     return data;
   },
 
+  async getLienMessages(id: string): Promise<SellerLienMessagesResult> {
+    const { data } = await liensApi.getMessages(id);
+    return data;
+  },
+
+  async sendLienMessage(id: string, message: string, files: File[] = []): Promise<SellerLienMessage> {
+    const trimmed = message.trim();
+    const response = files.length > 0
+      ? await liensApi.sendMessageForm(id, buildMessageForm(trimmed, files))
+      : await liensApi.sendMessage(id, { message: trimmed });
+    const { data } = response;
+    return { ...data, isCurrentUser: true };
+  },
+
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {
     const { data } = await liensApi.getDashboard(query);
     return data;
@@ -98,6 +135,13 @@ export const liensService = {
     query: MonthlyAgingReportQuery,
   ): Promise<MonthlyAgingReport> {
     const { data } = await liensApi.getMonthlyAgingReport(query);
+    return data;
+  },
+
+  async getAnalyticsDashboard(
+    query: SellingOperationsDashboardQuery = {},
+  ): Promise<SellingOperationsDashboardResponse> {
+    const { data } = await liensApi.getAnalyticsDashboard(query);
     return data;
   },
 
@@ -117,6 +161,11 @@ export const liensService = {
 
   async confirmUpload(id: string): Promise<any> {
     const { data } = await liensApi.confirmUpload(id);
+    return data;
+  },
+
+  async cancelUpload(id: string): Promise<any> {
+    const { data } = await liensApi.cancelUpload(id);
     return data;
   },
 
@@ -146,6 +195,71 @@ export const liensService = {
     return data;
   },
 
+  async createCaseDraft(request: CaseDraftRequest): Promise<CaseDraftResult> {
+    const { data } = await liensApi.createCaseDraft(request);
+    return data;
+  },
+
+  async updateCaseDraft(
+    draftId: string,
+    request: CaseDraftRequest,
+  ): Promise<CaseDraftResult> {
+    const { data } = await liensApi.updateCaseDraft(draftId, request);
+    return data;
+  },
+
+  async getCaseDraftById(draftId: string): Promise<CaseDraftResult> {
+    const { data } = await liensApi.getCaseDraftById(draftId);
+    return data;
+  },
+
+  async finalizeCaseDraft(
+    draftId: string,
+    request: FinalizeCaseDraftRequest,
+  ): Promise<FinalizeCaseDraftResult> {
+    const { data } = await liensApi.finalizeCaseDraft(draftId, request);
+    return data;
+  },
+
+  async updateCase(
+    caseId: string,
+    request: UpdateCaseRequest,
+  ): Promise<UpdateCaseResult> {
+    const { data } = await liensApi.updateCase(caseId, request);
+    return data;
+  },
+
+  async getCaseById(caseId: string): Promise<CaseDetailResult> {
+    const { data } = await liensApi.getCaseById(caseId);
+    return data;
+  },
+
+  async searchCases(query: CaseSearchQuery = {}): Promise<CaseSearchResult> {
+    const { data } = await liensApi.searchCases(query);
+    // The endpoint only returns `items`/`totalCount` — page/pageSize aren't
+    // echoed back, unlike PaginatedResultDto<T>, so pagination is built from
+    // what was requested rather than mapPagination().
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? (data.items.length || 1);
+    return {
+      items: data.items,
+      pagination: {
+        page,
+        pageSize,
+        totalCount: data.totalCount,
+        totalPages: Math.ceil(data.totalCount / Math.max(pageSize, 1)),
+      },
+    };
+  },
+
+  async updateCasePlaintiff(
+    caseId: string,
+    request: UpdateCasePlaintiffRequest,
+  ): Promise<UpdateCasePlaintiffResult> {
+    const { data } = await liensApi.updateCasePlaintiff(caseId, request);
+    return data;
+  },
+
   async saveLienInformation(
     lienId: string,
     request: SaveSellingLienInformationRequest,
@@ -154,11 +268,11 @@ export const liensService = {
     return data;
   },
 
-  async saveCaseInformation(
+  async saveProviderFundingDetails(
     lienId: string,
-    request: SaveSellingCaseInformationRequest,
+    request: SaveSellingProviderFundingRequest,
   ): Promise<any> {
-    const { data } = await liensApi.saveCaseInformation(lienId, request);
+    const { data } = await liensApi.saveProviderFundingDetails(lienId, request);
     return data;
   },
 
@@ -223,6 +337,14 @@ export const liensService = {
     return data;
   },
 
+  async moveToManagement(
+    lienId: string,
+    request: MoveToManagementRequest = {},
+  ): Promise<any> {
+    const { data } = await liensApi.moveToManagement(lienId, request);
+    return data;
+  },
+
   async getFundingCompanies(): Promise<SellingLookupItem[]> {
     const { data } = await sellingLookupsApi.fundingCompanies();
     return data.items;
@@ -258,3 +380,10 @@ export const liensService = {
     return data.items;
   },
 };
+
+function buildMessageForm(message: string, files: File[]): FormData {
+  const form = new FormData();
+  form.append("message", message);
+  files.forEach((file) => form.append("files", file, file.name));
+  return form;
+}

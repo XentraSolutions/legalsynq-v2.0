@@ -67,11 +67,52 @@ describe("SynqLien catch-all proxy", () => {
           "Content-Type": "application/json",
         },
         body: "{}",
+        redirect: "manual",
       },
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Correlation-Id")).toBe(
       "corr-public-response",
     );
+  });
+
+  test("preserves seller message attachment redirects through the document access proxy", async () => {
+    vi.mocked(cookies).mockResolvedValue({
+      get: vi.fn((name: string) =>
+        name === "platform_session" ? { value: "session-token" } : undefined,
+      ),
+    } as never);
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/documents/access/attachment-token",
+          "X-Correlation-Id": "corr-message-attachment",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { GET } = await import("./route");
+    const [req, ctx] = makeRequest(
+      "api/liens/selling/liens/lien-1/message-attachments/attachment-1/view",
+      { method: "GET" },
+    );
+
+    const response = await GET(req, ctx);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:5010/liens/api/liens/selling/liens/lien-1/message-attachments/attachment-1/view",
+      expect.objectContaining({
+        method: "GET",
+        headers: {
+          Authorization: "Bearer session-token",
+        },
+        redirect: "manual",
+      }),
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/api/lien/documents/access/attachment-token");
+    expect(response.headers.get("X-Correlation-Id")).toBe("corr-message-attachment");
   });
 });

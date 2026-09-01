@@ -143,6 +143,7 @@ public static class TenantProvisioningEndpoints
             db.Users.Add(user);
             db.UserTenants.Add(UserTenant.Create(user.Id, identityTenant.Id));
             identityTenant.SetOwner(user.Id);
+            org.SetOwner(user.Id);
 
             var membership = UserOrganizationMembership.Create(
                 userId:         user.Id,
@@ -188,7 +189,17 @@ public static class TenantProvisioningEndpoints
                     user.Id, string.Join(", ", rolesResult.SkippedDuplicates));
 
             var warnings = new List<string>();
-            var setupLink = TenantPortalUrlHelper.Build(identityTenant, "accept-invite", rawSetupToken, notificationOptions.Value);
+            var provResult = await provisioningService.ProvisionAsync(identityTenant, ct);
+
+            var errors = new List<string>();
+            if (!provResult.Success) errors.Add(provResult.ErrorMessage ?? "DNS provisioning failed.");
+
+            var identityTenantForLink = await db.Tenants
+                .Include(t => t.Domains)
+                .FirstOrDefaultAsync(t => t.Id == identityTenant.Id, ct)
+                ?? identityTenant;
+
+            var setupLink = TenantPortalUrlHelper.Build(identityTenantForLink, "accept-invite", rawSetupToken, notificationOptions.Value);
             if (setupLink is null)
             {
                 warnings.Add("Administrator setup link was created but the portal URL is not configured.");
@@ -201,14 +212,6 @@ public static class TenantProvisioningEndpoints
                 if (!emailResult.Success)
                     warnings.Add($"Tenant acceptance email failed: {emailResult.Error ?? "delivery unavailable"}");
             }
-
-            // The acceptance notification is intentionally dispatched before
-            // infrastructure provisioning begins. It confirms the review decision;
-            // it does not claim that DNS or product setup has completed.
-            var provResult = await provisioningService.ProvisionAsync(identityTenant, ct);
-
-            var errors = new List<string>();
-            if (!provResult.Success) errors.Add(provResult.ErrorMessage ?? "DNS provisioning failed.");
 
             // Preserve the established generic provisioning behavior: manually
             // created tenants receive their setup invitation after the DNS attempt,

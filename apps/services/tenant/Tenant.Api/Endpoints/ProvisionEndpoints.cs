@@ -77,19 +77,20 @@ public static class ProvisionEndpoints
 
         // ── GET /api/v1/tenants/{id}/subdomain ────────────────────────────────
         //
-        // Service-to-service: returns the subdomain slug for a given tenant.
+        // Service-to-service: returns the subdomain slug and effective platform hostname for a given tenant.
         // Used by CareConnect to build tenant-branded email links.
         //
         // Auth: X-Provisioning-Token (same secret as /provision) OR admin JWT.
         // Dev mode (ProvisioningSecret empty): allowed without token.
         //
-        // 200 { subdomain: "acme" }
+        // 200 { subdomain: "acme", hostname: "acme.legalsynq.net" }
         // 401 missing/invalid auth
         // 404 tenant not found
         group.MapGet("/{id:guid}/subdomain", async (
             Guid            id,
             HttpContext      httpContext,
             ITenantService   svc,
+            IDomainRepository domains,
             IConfiguration   configuration,
             ILoggerFactory   loggerFactory,
             CancellationToken ct) =>
@@ -100,7 +101,8 @@ public static class ProvisionEndpoints
 
             var result = await svc.GetByIdAsync(id, ct);
             if (result is null) return Results.NotFound();
-            return Results.Ok(new { subdomain = result.Subdomain });
+            var domain = await domains.GetActivePrimarySubdomainByTenantAsync(id, ct);
+            return Results.Ok(new { subdomain = result.Subdomain, hostname = domain?.Host });
         })
         .AllowAnonymous();
     }

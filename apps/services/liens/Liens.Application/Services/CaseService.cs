@@ -13,20 +13,32 @@ public sealed class CaseService : ICaseService
 {
     private const string LegacyMetadataMarker = "[legacy-meta]";
     private readonly ICaseRepository           _caseRepo;
+    private readonly ILienRepository           _lienRepo;
     private readonly IContactRepository        _contactRepo;
+    private readonly ICompanyRepository        _companyRepo;
+    private readonly ISettlementService        _settlementService;
+    private readonly ILookupValueService       _lookupValueService;
     private readonly IAuditPublisher           _audit;
     private readonly ILienTaskGenerationDispatcher _taskGenDispatcher;
     private readonly ILogger<CaseService>          _logger;
 
     public CaseService(
         ICaseRepository caseRepo,
+        ILienRepository lienRepo,
         IContactRepository contactRepo,
+        ICompanyRepository companyRepo,
+        ISettlementService settlementService,
+        ILookupValueService lookupValueService,
         IAuditPublisher audit,
         ILienTaskGenerationDispatcher taskGenDispatcher,
         ILogger<CaseService> logger)
     {
         _caseRepo          = caseRepo;
+        _lienRepo          = lienRepo;
         _contactRepo       = contactRepo;
+        _companyRepo       = companyRepo;
+        _settlementService = settlementService;
+        _lookupValueService = lookupValueService;
         _audit             = audit;
         _taskGenDispatcher = taskGenDispatcher;
         _logger            = logger;
@@ -45,14 +57,27 @@ public sealed class CaseService : ICaseService
         var keyword = search?.Trim();
         var (items, totalCount) = await _caseRepo.SearchAsync(
             tenantId,
-            hasKeyword ? null : search,
+            search,
             status,
-            hasKeyword ? 1 : page,
-            hasKeyword ? FuzzySearchScorer.CandidateLimit : pageSize,
+            page,
+            pageSize,
             orgId,
             ct: ct);
+        var useFuzzyFallback = hasKeyword && totalCount == 0;
 
-        if (hasKeyword)
+        if (useFuzzyFallback)
+        {
+            (items, totalCount) = await _caseRepo.SearchAsync(
+                tenantId,
+                null,
+                status,
+                1,
+                FuzzySearchScorer.CandidateLimit,
+                orgId,
+                ct: ct);
+        }
+
+        if (useFuzzyFallback)
         {
             var matches = items
                 .Select(item => new { Item = item, Score = GetCaseKeywordScore(item, keyword!) })
@@ -105,12 +130,36 @@ public sealed class CaseService : ICaseService
             hasKeyword ? 1 : page,
             hasKeyword ? FuzzySearchScorer.CandidateLimit : limit,
             lawFirmOrgId,
-            sortBy,
-            sortDirection,
+            hasKeyword ? null : sortBy,
+            hasKeyword ? null : sortDirection,
             accidentTypeId,
             caseManagerId,
             lawFirmIds,
             ct);
+
+        if (hasKeyword)
+        {
+            for (var candidatePage = 2; items.Count < totalCount; candidatePage++)
+            {
+                var (nextPage, _) = await _caseRepo.SearchAsync(
+                    tenantId,
+                    null,
+                    statusId,
+                    candidatePage,
+                    FuzzySearchScorer.CandidateLimit,
+                    lawFirmOrgId,
+                    null,
+                    null,
+                    accidentTypeId,
+                    caseManagerId,
+                    lawFirmIds,
+                    ct);
+                if (nextPage.Count == 0)
+                    break;
+
+                items.AddRange(nextPage);
+            }
+        }
 
         var lawFirmContacts = await _contactRepo.GetAllByTypeAsync(
             tenantId,
@@ -122,6 +171,15 @@ public sealed class CaseService : ICaseService
         var lawFirmByOrgId = lawFirmContacts
             .GroupBy(c => c.OrgId)
             .ToDictionary(g => g.Key, g => g.First());
+        var lawFirmCompanyById = (await _companyRepo.GetCompaniesByIdsAsync(
+                tenantId,
+                items
+                    .Where(item => item.HandlingLawFirmCompanyId.HasValue)
+                    .Select(item => item.HandlingLawFirmCompanyId!.Value)
+                    .Distinct()
+                    .ToList(),
+                ct))
+            .ToDictionary(company => company.Id);
 
         var needsCaseManagers = items.Any(item =>
             !string.IsNullOrWhiteSpace(GetMetadataValue(ParseCaseMetadata(item.Notes), "caseManagerId")));
@@ -145,7 +203,13 @@ public sealed class CaseService : ICaseService
 
             return new CaseSearchCandidate(
                 item,
-                ResolveLawFirmName(item.OrgId, lawFirmId, lawFirmById, lawFirmByOrgId),
+                ResolveLawFirmName(
+                    item.OrgId,
+                    item.HandlingLawFirmCompanyId,
+                    lawFirmId,
+                    lawFirmById,
+                    lawFirmByOrgId,
+                    lawFirmCompanyById),
                 ResolveCaseManagerName(caseManagerIdValue, caseManagerById));
         }).ToList();
 
@@ -294,7 +358,16 @@ public sealed class CaseService : ICaseService
                     lawFirmId: request.LawFirmId,
                     accidentTypeId: request.AccidentTypeId,
                     caseManagerId: request.CaseManagerId,
-                    statusLabel: request.StatusLabel)));
+                    statusLabel: request.StatusLabel)),
+            clientAddressLine1: request.ClientStreetAddress,
+            clientCity: request.ClientCity,
+            clientState: request.ClientState,
+            clientPostalCode: request.ClientZipcode,
+            incidentState: request.StateOfIncident,
+            currentMedicalStatus: request.CurrentMedicalStatus,
+            trackingFollowUpDate: request.TrackingFollowUpDate,
+            minorComp: ParseNullableCaseFlag(request.MinorComp),
+            caseDropped: ParseNullableCaseFlag(request.CaseDropped));
 
         await _caseRepo.AddAsync(entity, ct);
 
@@ -528,7 +601,17 @@ public sealed class CaseService : ICaseService
             policyNumber: request.PolicyNumber,
             claimNumber: request.ClaimNumber,
             description: request.Description,
-            notes: SerializeCaseNotes(request.Notes ?? noteBody, mergedMetadata));
+            notes: SerializeCaseNotes(request.Notes ?? noteBody, mergedMetadata),
+            clientAddressLine1: request.ClientStreetAddress ?? entity.ClientAddressLine1,
+            clientCity: request.ClientCity ?? entity.ClientCity,
+            clientState: request.ClientState ?? entity.ClientState,
+            clientPostalCode: request.ClientZipcode ?? entity.ClientPostalCode,
+            incidentState: request.StateOfIncident ?? entity.IncidentState,
+            currentMedicalStatus: request.CurrentMedicalStatus ?? entity.CurrentMedicalStatus,
+            trackingFollowUpDate: request.TrackingFollowUpDate ?? entity.TrackingFollowUpDate,
+            minorComp: request.MinorComp is null ? entity.MinorComp : ParseNullableCaseFlag(request.MinorComp),
+            caseDropped: request.CaseDropped is null ? entity.CaseDropped : ParseNullableCaseFlag(request.CaseDropped),
+            attorneyContactPersonId: entity.AttorneyContactPersonId);
 
         if (request.Status is not null && request.Status != entity.Status)
             entity.TransitionStatus(request.Status, actingUserId);
@@ -572,6 +655,16 @@ public sealed class CaseService : ICaseService
             lawFirm = FirstNonEmpty(lawFirmContact?.Organization, lawFirmContact?.DisplayName);
         }
 
+        if (string.IsNullOrWhiteSpace(lawFirm) && entity.HandlingLawFirmCompanyId.HasValue)
+        {
+            var lawFirmCompany = (await _companyRepo.GetCompaniesByIdsAsync(
+                    tenantId,
+                    [entity.HandlingLawFirmCompanyId.Value],
+                    ct))
+                .FirstOrDefault();
+            lawFirm = lawFirmCompany?.Name;
+        }
+
         if (string.IsNullOrWhiteSpace(lawFirm))
         {
             var defaultLawFirm = (await _contactRepo.GetAllByTypeAsync(
@@ -591,7 +684,23 @@ public sealed class CaseService : ICaseService
             caseManager = caseManagerContact?.DisplayName;
         }
 
-        return MapToResponse(entity, lawFirm, caseManager);
+        var (lienStatus, lienStatusId) = await ResolveLienStatusAsync(
+            tenantId,
+            entity.Id,
+            ct);
+        var (settlementStatus, settlementStatusId) = await ResolveSettlementStatusAsync(
+            tenantId,
+            entity.Id,
+            ct);
+
+        return MapToResponse(
+            entity,
+            lawFirm: lawFirm,
+            caseManager: caseManager,
+            lienStatus: lienStatus,
+            lienStatusId: lienStatusId,
+            settlementStatus: settlementStatus,
+            settlementStatusId: settlementStatusId);
     }
 
     public async Task<bool> ReassignLawFirmAsync(
@@ -677,7 +786,11 @@ public sealed class CaseService : ICaseService
     private static CaseResponse MapToResponse(
         Case entity,
         string? lawFirm = null,
-        string? caseManager = null)
+        string? caseManager = null,
+        string? lienStatus = null,
+        string? lienStatusId = null,
+        string? settlementStatus = null,
+        string? settlementStatusId = null)
     {
         var noteBody = ExtractUserNotes(entity.Notes);
         var metadata = ParseCaseMetadata(entity.Notes);
@@ -705,26 +818,39 @@ public sealed class CaseService : ICaseService
             ClientPhone = entity.ClientPhone,
             ClientEmail = entity.ClientEmail,
             ClientAddress = entity.ClientAddress,
-            ClientStreetAddress = address.Address,
-            ClientCity = address.City,
-            ClientState = address.State,
-            ClientZipcode = address.Zipcode,
+            ClientStreetAddress = FirstNonEmpty(entity.ClientAddressLine1, address.Address),
+            ClientCity = FirstNonEmpty(entity.ClientCity, address.City),
+            ClientState = FirstNonEmpty(entity.ClientState, address.State),
+            ClientZipcode = FirstNonEmpty(entity.ClientPostalCode, address.Zipcode),
             InsuranceCarrier = entity.InsuranceCarrier,
             PolicyNumber = entity.PolicyNumber,
             ClaimNumber = entity.ClaimNumber,
             DemandAmount = entity.DemandAmount,
             SettlementAmount = entity.SettlementAmount,
+            LienStatus = lienStatus ?? string.Empty,
+            LienStatusId = lienStatusId ?? string.Empty,
+            SettlementStatus = settlementStatus ?? string.Empty,
+            SettlementStatusId = settlementStatusId ?? string.Empty,
             Description = entity.Description,
             Notes = noteBody,
             Sex = GetMetadataValue(metadata, "gender"),
             CaseType = GetMetadataValue(metadata, "accidentType"),
-            CurrentMedicalStatus = GetMetadataValue(metadata, "currentMedicalStatus"),
-            StateOfIncident = GetMetadataValue(metadata, "stateOfIncident", "accidentState", "state"),
-            TrackingFollowUpDate = ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
+            CurrentMedicalStatus = FirstNonEmpty(
+                entity.CurrentMedicalStatus,
+                GetMetadataValue(metadata, "currentMedicalStatus")),
+            StateOfIncident = FirstNonEmpty(
+                entity.IncidentState,
+                GetMetadataValue(metadata, "stateOfIncident", "accidentState", "state")),
+            TrackingFollowUpDate = entity.TrackingFollowUpDate ??
+                ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
             LeadId = GetMetadataValue(metadata, "leadId"),
             ShareCase = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "shareCase")),
-            MinorComp = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "minorComp")),
-            CaseDropped = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "caseDropped")),
+            MinorComp = entity.MinorComp.HasValue
+                ? NormalizeCaseFlagForResponse(entity.MinorComp.Value)
+                : NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "minorComp")),
+            CaseDropped = entity.CaseDropped.HasValue
+                ? NormalizeCaseFlagForResponse(entity.CaseDropped.Value)
+                : NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "caseDropped")),
             ChildSupportLiens = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "childSupportLiens")),
             IsUccFiled = NormalizeCaseFlagForResponseOrDefaultFalse(
                 FirstNonEmpty(
@@ -736,6 +862,7 @@ public sealed class CaseService : ICaseService
             CaseManagerId = caseManagerId,
             CaseManager = caseManagerName,
             AttorneyId = FirstNonEmpty(
+                entity.AttorneyContactPersonId?.ToString(),
                 GetMetadataValue(metadata, "attorneyId"),
                 GetMetadataValue(metadata, "attorney")),
             SwitchedDate = GetMetadataValue(metadata, "switchedDate"),
@@ -746,6 +873,148 @@ public sealed class CaseService : ICaseService
             CreatedAtUtc = entity.CreatedAtUtc,
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
+    }
+
+    private async Task<(string Status, string StatusId)> ResolveLienStatusAsync(
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        var liensByRecency = (await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct))
+            .OrderByDescending(lien => lien.CreatedAtUtc)
+            .ThenByDescending(lien => lien.Id)
+            .ToList();
+        var representativeLien = liensByRecency
+            .FirstOrDefault(lien => LienStatus.Open.Contains(lien.Status))
+            ?? liensByRecency.FirstOrDefault();
+        if (representativeLien is null)
+            return (string.Empty, string.Empty);
+
+        var statusLabel = representativeLien.Status switch
+        {
+            LienStatus.Cancelled or LienStatus.Declined => "Rejected",
+            LienStatus.Settled or LienStatus.Withdrawn => "Closed",
+            _ => "Open",
+        };
+        var statusLookup = await _lookupValueService.GetByCodeAsync(
+            tenantId,
+            LookupCategory.LienStatus,
+            representativeLien.Status,
+            ct);
+
+        return (statusLabel, statusLookup?.Id.ToString() ?? string.Empty);
+    }
+
+    private async Task<(string Status, string StatusId)> ResolveSettlementStatusAsync(
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        var liens = await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        if (liens.Count == 0)
+            return (string.Empty, string.Empty);
+        var allLiensClosed = liens.All(lien => lien.Status == LienStatus.Settled);
+
+        var payments = await _settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
+        var settlements = await _settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
+        var hasNoRecoveryDeclaration = payments.Any(payment =>
+                IsNoRecoveryValue(payment.SettlementStatusId) ||
+                (IsLegacyLienStatusValue(payment.SettlementStatusId) &&
+                 IsNoRecoveryValue(payment.SettlementTypeId))) ||
+            settlements.Any(settlement => IsNoRecoveryValue(settlement.Status));
+        if (hasNoRecoveryDeclaration)
+            return ("No Recovery", "4");
+
+        var latestPayment = payments
+            .OrderByDescending(payment => payment.CreatedAtUtc)
+            .ThenByDescending(payment => payment.Id)
+            .FirstOrDefault();
+        var matchingSettlement = latestPayment is null
+            ? null
+            : settlements
+                .Where(settlement =>
+                    settlement.LienId == latestPayment.LienId &&
+                    settlement.PaymentNumber == latestPayment.PaymentNumber)
+                .OrderByDescending(settlement => settlement.CreatedAtUtc)
+                .ThenByDescending(settlement => settlement.Id)
+                .FirstOrDefault();
+        var latestSettlement = settlements
+            .OrderByDescending(settlement => settlement.CreatedAtUtc)
+            .ThenByDescending(settlement => settlement.Id)
+            .FirstOrDefault();
+        var statusId = FirstNonEmpty(
+            latestPayment?.SettlementStatusId,
+            matchingSettlement?.Status,
+            latestSettlement?.Status);
+
+        if (statusId is null)
+            return (string.Empty, string.Empty);
+
+        var settlementTypes = await _lookupValueService.GetByCategoryAsync(
+            tenantId,
+            LookupCategory.SettlementType,
+            ct);
+        var settlementStatuses = await _lookupValueService.GetByCategoryAsync(
+            tenantId,
+            LookupCategory.SettlementStatus,
+            ct);
+        var lookup = settlementTypes
+            .Concat(settlementStatuses)
+            .FirstOrDefault(value =>
+                string.Equals(value.Id.ToString(), statusId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value.Code, statusId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value.Name, statusId, StringComparison.OrdinalIgnoreCase));
+        var statusName = lookup?.Name ?? ResolveLegacySettlementStatusName(statusId);
+        var isNoRecovery = IsNoRecoverySettlementStatus(statusId, lookup?.Code, statusName);
+
+        if (!allLiensClosed && !isNoRecovery)
+            return (string.Empty, string.Empty);
+
+        return isNoRecovery
+            ? ("No Recovery", "4")
+            : (statusName, statusId);
+    }
+
+    private static bool IsNoRecoverySettlementStatus(
+        string statusId,
+        string? statusCode,
+        string statusName) =>
+        IsNoRecoveryValue(statusId) ||
+        IsNoRecoveryValue(statusCode) ||
+        IsNoRecoveryValue(statusName);
+
+    private static bool IsNoRecoveryValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Trim()
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        return normalized == "4" ||
+               string.Equals(normalized, "NoRecovery", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLegacyLienStatusValue(string? value) =>
+        string.Equals(value?.Trim(), "Open", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value?.Trim(), "Closed", StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveLegacySettlementStatusName(string value) => value switch
+    {
+        "4" => "No Recovery",
+        _ when int.TryParse(value, out _) => string.Empty,
+        _ => HumanizeLegacyCode(value),
+    };
+
+    private static string HumanizeLegacyCode(string value)
+    {
+        if (!value.Contains('_'))
+            return value;
+
+        return string.Join(' ', value
+            .Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
     }
 
     private static string? GetMetadataValue(
@@ -954,14 +1223,22 @@ public sealed class CaseService : ICaseService
 
     private static string? ResolveLawFirmName(
         Guid orgId,
+        Guid? handlingLawFirmCompanyId,
         string? lawFirmId,
         IReadOnlyDictionary<Guid, Contact> lawFirmById,
-        IReadOnlyDictionary<Guid, Contact> lawFirmByOrgId)
+        IReadOnlyDictionary<Guid, Contact> lawFirmByOrgId,
+        IReadOnlyDictionary<Guid, Company> lawFirmCompanyById)
     {
         if (Guid.TryParse(lawFirmId, out var parsedLawFirmId) &&
             lawFirmById.TryGetValue(parsedLawFirmId, out var lawFirmContactById))
         {
             return FirstNonEmpty(lawFirmContactById.Organization, lawFirmContactById.DisplayName);
+        }
+
+        if (handlingLawFirmCompanyId.HasValue &&
+            lawFirmCompanyById.TryGetValue(handlingLawFirmCompanyId.Value, out var lawFirmCompany))
+        {
+            return lawFirmCompany.Name;
         }
 
         if (lawFirmByOrgId.TryGetValue(orgId, out var lawFirmContactByOrg))
@@ -990,6 +1267,10 @@ public sealed class CaseService : ICaseService
 
     private static string ResolveCaseStatusLabel(string status, string? customStatusLabel)
     {
+        var litigationStatus = NormalizeConcreteLitigationStatus(status);
+        if (litigationStatus is not null)
+            return litigationStatus;
+
         if (!string.IsNullOrWhiteSpace(customStatusLabel))
             return customStatusLabel.Trim();
 
@@ -1006,10 +1287,30 @@ public sealed class CaseService : ICaseService
 
     private static string ResolveCaseStatusValue(string status, string? customStatusLabel)
     {
+        var litigationStatus = NormalizeConcreteLitigationStatus(status);
+        if (litigationStatus is not null)
+            return litigationStatus;
+
         if (!string.IsNullOrWhiteSpace(customStatusLabel))
             return customStatusLabel.Trim();
 
         return status;
+    }
+
+    private static string? NormalizeConcreteLitigationStatus(string status)
+    {
+        var normalized = status.Trim()
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("(", string.Empty, StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "LITIGATIONPENDING" => CaseStatus.LitigationPending,
+            "LITIGATIONOPEN" => CaseStatus.LitigationOpen,
+            _ => null,
+        };
     }
 
     private static string? NormalizeCaseFlagForStorage(string? value)
@@ -1035,6 +1336,21 @@ public sealed class CaseService : ICaseService
             "TRUE" or "YES" or "Y" => "Yes",
             "FALSE" or "NO" or "N" => "No",
             _ => value.Trim(),
+        };
+    }
+
+    private static string NormalizeCaseFlagForResponse(bool value) => value ? "Yes" : "No";
+
+    private static bool? ParseNullableCaseFlag(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "TRUE" or "YES" or "Y" or "1" => true,
+            "FALSE" or "NO" or "N" or "0" => false,
+            _ => null,
         };
     }
 

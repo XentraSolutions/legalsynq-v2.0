@@ -389,10 +389,10 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     [InlineData("Demand Sent", CaseStatus.DemandSent)]
     [InlineData("Negotiations", CaseStatus.InNegotiation)]
     [InlineData("Litigation", "Litigation")]
-    [InlineData("Litigation(Pending)", "Litigation (Pending)")]
-    [InlineData("Litigation (Pending)", "Litigation (Pending)")]
-    [InlineData("Litigation(Open)", "Litigation (Open)")]
-    [InlineData("Litigation (Open)", "Litigation (Open)")]
+    [InlineData("Litigation(Pending)", CaseStatus.LitigationPending)]
+    [InlineData("Litigation (Pending)", CaseStatus.LitigationPending)]
+    [InlineData("Litigation(Open)", CaseStatus.LitigationOpen)]
+    [InlineData("Litigation (Open)", CaseStatus.LitigationOpen)]
     [InlineData("Litigation(Close)", "Litigation (Closed)")]
     [InlineData("Litigation (Close)", "Litigation (Closed)")]
     [InlineData("Litigation(Closed)", "Litigation (Closed)")]
@@ -427,12 +427,13 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("Litigation(Pending)", "Litigation (Pending)")]
-    [InlineData("Litigation(Open)", "Litigation (Open)")]
-    [InlineData("Litigation(Closed)", "Litigation (Closed)")]
+    [InlineData("Litigation(Pending)", CaseStatus.LitigationPending, CaseStatus.LitigationPending)]
+    [InlineData("Litigation(Open)", CaseStatus.LitigationOpen, CaseStatus.LitigationOpen)]
+    [InlineData("Litigation(Closed)", "Litigation (Closed)", CaseStatus.InNegotiation)]
     public async Task LegacyCreateCase_normalizes_litigation_variant_status_label(
         string legacyStatus,
-        string expectedStatus)
+        string expectedStatus,
+        string expectedPersistedStatus)
     {
         var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
         {
@@ -456,6 +457,129 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
         detailBody!.RootElement.GetProperty("status").GetString().Should().Be(expectedStatus);
         detailBody.RootElement.GetProperty("statusLabel").GetString().Should().Be(expectedStatus);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Cases.FindAsync(Guid.Parse(caseId));
+        persisted!.Status.Should().Be(expectedPersistedStatus);
+    }
+
+    [Fact]
+    public async Task LegacyCaseSearch_filters_litigation_open_and_pending_independently()
+    {
+        var pendingCode = $"LIT-P-{Guid.CreateVersion7():N}"[..20];
+        var openCode = $"LIT-O-{Guid.CreateVersion7():N}"[..20];
+
+        foreach (var (code, status) in new[]
+        {
+            (pendingCode, "Litigation(Pending)"),
+            (openCode, "Litigation(Open)"),
+        })
+        {
+            var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+            {
+                code,
+                firstname = "Legacy",
+                lastname = "Litigation Filter",
+                caseStatusId = status,
+            });
+
+            create.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await create.Content.ReadAsStringAsync()}");
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = "LIT-",
+            statusId = "Litigation(Pending)",
+            page = 1,
+            limit = 20,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var caseNumbers = body!.RootElement.GetProperty("data").EnumerateArray()
+            .Select(item => item.GetProperty("caseNumber").GetString())
+            .ToList();
+
+        caseNumbers.Should().Contain(pendingCode);
+        caseNumbers.Should().NotContain(openCode);
+    }
+
+    [Fact]
+    public async Task CaseSearch_returns_a_keyword_match_beyond_the_initial_fuzzy_candidate_page()
+    {
+        var targetCaseNumber = $"SEARCH-PAGE-{Guid.CreateVersion7():N}"[..30];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                targetCaseNumber,
+                "Search",
+                "Target",
+                SeedHelper.UserId));
+
+            var newerCases = Enumerable.Range(0, 5_000)
+                .Select(index => Case.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    $"CANDIDATE-{index:D5}-{Guid.CreateVersion7():N}"[..30],
+                    "Candidate",
+                    index.ToString("D5"),
+                    SeedHelper.UserId));
+            db.Cases.AddRange(newerCases);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = targetCaseNumber,
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("data").EnumerateArray()
+            .Select(item => item.GetProperty("caseNumber").GetString())
+            .Should().Contain(targetCaseNumber);
+    }
+
+    [Theory]
+    [InlineData(CaseStatus.LitigationPending)]
+    [InlineData(CaseStatus.LitigationOpen)]
+    public async Task GetCaseById_prefers_concrete_litigation_status_over_stale_legacy_label(
+        string persistedStatus)
+    {
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIT-DETAIL-{Guid.CreateVersion7():N}"[..20],
+            "Legacy",
+            "Litigation",
+            SeedHelper.UserId,
+            notes: "[legacy-meta]\nstatusLabel=Litigation");
+        caseEntity.TransitionStatus(persistedStatus, SeedHelper.UserId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/cases/{caseEntity.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("status").GetString().Should().Be(persistedStatus);
+        body.RootElement.GetProperty("statusLabel").GetString().Should().Be(persistedStatus);
     }
 
     [Fact]

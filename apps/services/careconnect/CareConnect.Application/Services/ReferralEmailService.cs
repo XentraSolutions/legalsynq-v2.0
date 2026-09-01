@@ -65,8 +65,9 @@ public class ReferralEmailService : IReferralEmailService
     // ── Tenant URL helper ─────────────────────────────────────────────────────
     //
     // Builds a tenant-branded URL:
+    //   Tenant hostname available → https://{hostname}{path}
     //   AppBaseDomain configured → https://{subdomain}.{AppBaseDomain}{path}
-    //   AppBaseDomain empty / subdomain unavailable → {AppBaseUrl}{path}
+    //   AppBaseDomain empty / tenant host unavailable → {AppBaseUrl}{path}
     //
     // Subdomain is sourced from ITenantSubdomainCache (Singleton), so the result
     // survives across DI scopes and request lifetimes.
@@ -74,25 +75,30 @@ public class ReferralEmailService : IReferralEmailService
     private async Task<string> BuildTenantUrlAsync(
         Guid tenantId, string path, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_options.AppBaseDomain))
-            return _options.AppBaseUrl + path;
-
-        if (!_subdomainCache.TryGetValue(tenantId, out var subdomain))
+        if (!_subdomainCache.TryGetValue(tenantId, out var tenantHost))
         {
-            subdomain = await _tenantClient.GetSubdomainAsync(tenantId, ct);
-            if (!string.IsNullOrWhiteSpace(subdomain))
-                _subdomainCache.TryAdd(tenantId, subdomain!);
+            tenantHost = await _tenantClient.GetTenantHostAsync(tenantId, ct);
+            if (tenantHost is not null)
+                _subdomainCache.TryAdd(tenantId, tenantHost);
         }
 
-        if (string.IsNullOrWhiteSpace(subdomain))
+        if (!string.IsNullOrWhiteSpace(tenantHost?.Hostname))
+            return $"https://{tenantHost.Hostname}{path}";
+
+        if (!string.IsNullOrEmpty(_options.AppBaseDomain) &&
+            !string.IsNullOrWhiteSpace(tenantHost?.Subdomain))
+        {
+            return $"https://{tenantHost.Subdomain}.{_options.AppBaseDomain}{path}";
+        }
+
+        if (tenantHost is null)
         {
             _logger.LogDebug(
-                "ReferralEmailService: subdomain not found for tenant {TenantId} — using AppBaseUrl fallback.",
+                "ReferralEmailService: tenant host not found for tenant {TenantId} — using AppBaseUrl fallback.",
                 tenantId);
-            return _options.AppBaseUrl + path;
         }
 
-        return $"https://{subdomain}.{_options.AppBaseDomain}{path}";
+        return _options.AppBaseUrl + path;
     }
 
     // ── Token helpers ─────────────────────────────────────────────────────────
@@ -1020,6 +1026,14 @@ public class ReferralEmailService : IReferralEmailService
         return string.IsNullOrWhiteSpace(withZip) ? null : withZip;
     }
 
+    private static string? ReferralOriginationName(Referral r)
+    {
+        var firstName = r.ReferralAttribution?.FirstName?.Trim();
+        var lastName = r.ReferralAttribution?.LastName?.Trim();
+        var name = string.Join(" ", new[] { firstName, lastName }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
     /// <summary>Titled section with orange-gradient rule and a data table.</summary>
     private static string Section(string title, string rows)
         => string.IsNullOrEmpty(rows) ? "" : $"""
@@ -1087,6 +1101,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
+        var lienCompanyRows =
+            Row("Name",  r.LienCompanyName) +
+            Row("Email", r.LienCompanyEmail is not null
+                ? $"<a href='mailto:{r.LienCompanyEmail}' style='color:#1a56db'>{r.LienCompanyEmail}</a>"
+                : null);
+
         var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
@@ -1116,6 +1136,7 @@ public class ReferralEmailService : IReferralEmailService
             {locationLine}
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
+            {Section("Lien Company", lienCompanyRows)}
             {notesBlock}
             <p style="margin-top:28px">
               <a href="{entryLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">{ctaLabel}</a>
@@ -1138,12 +1159,19 @@ public class ReferralEmailService : IReferralEmailService
             Row("Urgency",           r.Urgency) +
             Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
             Row("Type of Treatment", treatmentTypeName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Notes",             r.Notes);
 
         var providerRows =
             Row("Provider", provName, bold: true) +
             Row("Provider Location", FormatLocation(r, p)) +
             Row("Contact",  string.IsNullOrWhiteSpace(p.Phone) ? null : p.Phone);
+
+        var lienCompanyRows =
+            Row("Name",  r.LienCompanyName) +
+            Row("Email", r.LienCompanyEmail is not null
+                ? $"<a href='mailto:{r.LienCompanyEmail}' style='color:#1a56db'>{r.LienCompanyEmail}</a>"
+                : null);
 
         var footer = firmName is not null
             ? $"This referral was submitted on behalf of <strong>{firmName}</strong>."
@@ -1158,6 +1186,7 @@ public class ReferralEmailService : IReferralEmailService
             </p>
             {Section("Patient Details", patientRows)}
             {Section("Provider", providerRows)}
+            {Section("Lien Company", lienCompanyRows)}
             <div style="text-align:center;margin:28px 0">
               <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">Track Referral Status</a>
             </div>
@@ -1191,6 +1220,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
+        var lienCompanyRows =
+            Row("Name",  r.LienCompanyName) +
+            Row("Email", r.LienCompanyEmail is not null
+                ? $"<a href='mailto:{r.LienCompanyEmail}' style='color:#1a56db'>{r.LienCompanyEmail}</a>"
+                : null);
+
         var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
@@ -1219,6 +1254,7 @@ public class ReferralEmailService : IReferralEmailService
             {locationLine}
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
+            {Section("Lien Company", lienCompanyRows)}
             {notesBlock}
             <p style="margin-top:28px">
               <a href="{entryLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">{ctaLabel}</a>
@@ -1260,6 +1296,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName, bold: true) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = $"<strong>{provName}</strong> will be in touch with your client to continue coordinating care.";
@@ -1328,6 +1365,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = $"You may search for an alternative provider or contact <strong>{provName}</strong> directly for more information.";
@@ -1376,6 +1414,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = "If this cancellation was unexpected, please contact the involved parties for more information.";
@@ -1404,7 +1443,8 @@ public class ReferralEmailService : IReferralEmailService
         var summaryRows =
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
-            Row("From",     senderLabel);
+            Row("From",     senderLabel) +
+            Row("Referral Origination", isFromReferrer ? null : ReferralOriginationName(r));
 
         var footer = "Reply directly in the referral thread using the button above.";
         IReadOnlyCollection<ReferralAttachment> commentAttachments = comment.Attachments ?? [];

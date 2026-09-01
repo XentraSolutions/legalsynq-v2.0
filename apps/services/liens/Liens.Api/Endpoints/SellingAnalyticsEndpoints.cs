@@ -299,8 +299,8 @@ public static class SellingAnalyticsEndpoints
     private static SellingOperationsDashboardQuery ParseDashboardQuery(HttpRequest request)
     {
         var errors = new Dictionary<string, string[]>();
-        var startDate = ParseDate(request, "startDate", errors);
-        var endDate = ParseDate(request, "endDate", errors);
+        var startDate = ParseDashboardDate(request, "startDate", "dateFrom", errors);
+        var endDate = ParseDashboardDate(request, "endDate", "dateTo", errors);
         if (startDate.HasValue != endDate.HasValue)
             AddError(errors, "dateRange", "startDate and endDate must be provided together.");
         if (startDate.HasValue && endDate.HasValue && startDate.Value > endDate.Value)
@@ -339,6 +339,25 @@ public static class SellingAnalyticsEndpoints
             EndDate = endDate,
             Compare = compare,
         };
+    }
+
+    private static DateOnly? ParseDashboardDate(
+        HttpRequest request,
+        string canonicalKey,
+        string aliasKey,
+        Dictionary<string, string[]> errors)
+    {
+        var canonical = ParseDate(request, canonicalKey, errors);
+        var alias = ParseDate(request, aliasKey, errors);
+        if (canonical.HasValue && alias.HasValue && canonical.Value != alias.Value)
+        {
+            AddError(
+                errors,
+                "dateRange",
+                $"{canonicalKey} and {aliasKey} must match when both are provided.");
+        }
+
+        return canonical ?? alias;
     }
 
     private static void ValidateExportRequest(SellingAnalyticsExportRequest request)

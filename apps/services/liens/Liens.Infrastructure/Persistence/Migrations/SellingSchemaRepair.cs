@@ -9,10 +9,10 @@ namespace Liens.Infrastructure.Persistence.Migrations;
 public static class SellingSchemaRepair
 {
     private const string RepairLockName = "legalsynq-liens-selling-schema-repair";
-    private const int ExpectedTableCount = 7;
-    private const int ExpectedColumnCount = 13;
-    private const int ExpectedIndexCount = 31;
-    private const int ExpectedForeignKeyCount = 16;
+    private const int ExpectedTableCount = 9;
+    private const int ExpectedColumnCount = 37;
+    private const int ExpectedIndexCount = 43;
+    private const int ExpectedForeignKeyCount = 21;
     private const int ExpectedCheckConstraintCount = 1;
     private const int ExpectedCompanyTypeSeedCount = 4;
     private const int ExpectedContactTypeSeedCount = 28;
@@ -117,6 +117,13 @@ public static class SellingSchemaRepair
         new AddSellingPartyCompatibility(),
         new AddScopedContactPersonTypes(),
         new AddReceivableDueDate(),
+        new AddCasePaymentLedgerFields(),
+        new AddWeeklyAgingReportIndex(),
+        new AddLegacyReportParityFields(),
+        new AddLienImportedCreatedByName(),
+        new AddLienSellingCaseReference(),
+        new AddSellingCaseDraft(),
+        new AddSellingCaseDraftConcurrencyToken(),
     ];
 
     private static async Task<bool> AcquireRepairLockAsync(
@@ -155,7 +162,9 @@ public static class SellingSchemaRepair
                       'liens_CompanyContactPersons',
                       'liens_SellingPartyAliases',
                       'liens_SellingPartyBackfillCheckpoints',
-                      'liens_SellingPartyBackfillQuarantines')
+                      'liens_SellingPartyBackfillQuarantines',
+                      'liens_LegacyFieldMigrationStates',
+                      'liens_SellingCaseDrafts')
                 """;
 
             var tableCount = Convert.ToInt32(await tableCommand.ExecuteScalarAsync(cancellationToken));
@@ -173,10 +182,13 @@ public static class SellingSchemaRepair
                  WHERE TABLE_SCHEMA = DATABASE()
                    AND ((TABLE_NAME = 'liens_SellingPortfolioBuyers' AND COLUMN_NAME = 'BuyerCompanyId')
                      OR (TABLE_NAME = 'liens_SellingBuyerAccessLinks' AND COLUMN_NAME IN ('BuyerCompanyContactPersonId', 'BuyerCompanyId'))
-                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId', 'ReceivableDueDate'))
+                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId', 'ReceivableDueDate', 'SellingCaseId', 'MovedToManagementAtUtc'))
                      OR (TABLE_NAME = 'liens_LienOffers' AND COLUMN_NAME = 'BuyerCompanyId')
-                     OR (TABLE_NAME = 'liens_Cases' AND COLUMN_NAME IN ('CaseManagerContactPersonId', 'HandlingLawFirmCompanyId'))
-                     OR (TABLE_NAME = 'liens_ContactPersonTypes' AND COLUMN_NAME IN ('TenantId', 'OrgId')))) AS ColumnCount,
+                     OR (TABLE_NAME = 'liens_Cases' AND COLUMN_NAME IN ('CaseManagerContactPersonId', 'HandlingLawFirmCompanyId', 'AttorneyContactPersonId', 'CaseDropped', 'ClientAddressLine1', 'ClientCity', 'ClientPostalCode', 'ClientState', 'CurrentMedicalStatus', 'ImportedCreatedByName', 'IncidentState', 'MinorComp', 'TrackingFollowUpDate'))
+                     OR (TABLE_NAME = 'liens_ContactPersonTypes' AND COLUMN_NAME IN ('TenantId', 'OrgId'))
+                     OR (TABLE_NAME = 'liens_SettlementPaymentDetails' AND COLUMN_NAME IN ('ReceiptId', 'PaymentMethod', 'SettlementType', 'SettlementStatus', 'DetailsContext', 'PostingStatus', 'VoidedAtUtc', 'VoidedByUserId', 'VoidReason'))
+                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME = 'ImportedCreatedByName')
+                     OR (TABLE_NAME = 'liens_SellingCaseDrafts' AND COLUMN_NAME = 'ConcurrencyToken'))) AS ColumnCount,
                 (SELECT COUNT(DISTINCT INDEX_NAME)
                  FROM information_schema.STATISTICS
                  WHERE TABLE_SCHEMA = DATABASE()
@@ -210,8 +222,20 @@ public static class SellingSchemaRepair
                        'UX_SellingPartyBackfillQuarantines_SourceReason',
                        'IX_SettlementPayments_Tenant_Date_Deleted',
                        'IX_SettlementPayments_Tenant_Lien_Deleted',
+                       'IX_SettlementPayments_Tenant_Case_Status_Date',
+                       'IX_SettlementPayments_Tenant_Receipt',
+                       'IX_SellingBuyerAccessLinks_WeeklyAging',
+                       'IX_Cases_AttorneyContactPersonId',
+                       'IX_LegacyFieldMigrationStates_ImportRunId',
+                       'UX_LegacyFieldMigrationStates_Source_FieldGroup',
                        'IX_Liens_Tenant_Seller_FundingCompanyCompanyId',
-                       'IX_Liens_Tenant_Seller_ReceivableDueDate')) AS IndexCount,
+                       'IX_Liens_Tenant_Seller_ReceivableDueDate',
+                       'IX_Liens_SellingCaseId',
+                       'IX_liens_SellingCaseDrafts_CaseManagerContactPersonId',
+                       'IX_liens_SellingCaseDrafts_HandlingLawFirmCompanyId',
+                       'IX_SellingCaseDrafts_Tenant_Org_CreatedAtUtc',
+                       'IX_SellingCaseDrafts_Tenant_Org_FinalizedAtUtc',
+                       'UX_SellingCaseDrafts_CaseId')) AS IndexCount,
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -232,7 +256,12 @@ public static class SellingSchemaRepair
                        'FK_liens_SellingBuyerAccessLinks_liens_CompanyContactPersons_Bu~',
                        'FK_liens_SellingPortfolioBuyers_liens_Companies_BuyerCompanyId',
                        'FK_liens_SellingPartyAliases_liens_Companies_CompanyId',
-                       'FK_liens_SellingPartyAliases_liens_CompanyContactPersons_Compan~')) AS ForeignKeyCount,
+                       'FK_liens_SellingPartyAliases_liens_CompanyContactPersons_Compan~',
+                       'FK_Cases_AttorneyContactPerson',
+                       'FK_liens_Liens_liens_Cases_SellingCaseId',
+                       'FK_liens_SellingCaseDrafts_liens_Cases_CaseId',
+                       'FK_liens_SellingCaseDrafts_liens_Companies_HandlingLawFirmCompa~',
+                       'FK_liens_SellingCaseDrafts_liens_CompanyContactPersons_CaseMana~')) AS ForeignKeyCount,
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()

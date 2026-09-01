@@ -133,6 +133,35 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             SellingLienStatus.Approval,
             SellingLienStatus.SubmittedForSale,
             SellingLienStatus.PreparedForSale);
+        var approvalItem = body.Items.Single(item => item.LienId == approval.Id);
+        approvalItem.CreatedAtUtc.Should().NotBe(default);
+        approvalItem.CreateDate.Should().Be(approvalItem.CreatedAtUtc);
+    }
+
+    [Fact]
+    public async Task Lien_list_defaults_to_all_tab_when_tab_is_omitted()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-ALL-{Guid.NewGuid():N}"[..32],
+            "All",
+            "Tabs",
+            SeedHelper.UserId);
+        var pending = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m, caseId: caseEntity.Id);
+        var internalLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Internal, 2_000m, 1_600m, 0m, caseId: caseEntity.Id);
+        var sold = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Sold, 3_000m, 2_400m, 0m, caseId: caseEntity.Id);
+
+        await SeedDashboardLiensAsync(db => db.AddRange(caseEntity, pending, internalLien, sold));
+
+        var response = await _client.GetAsync($"/api/liens/selling/liens?caseId={caseEntity.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(3);
+        body.Items.Select(item => item.LienId).Should().BeEquivalentTo([pending.Id, internalLien.Id, sold.Id]);
     }
 
     [Fact]
@@ -359,6 +388,93 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Items[0].LienId.Should().Be(pending.Id);
     }
 
+    [Fact]
+    public async Task Lien_list_defaults_to_create_date_sort()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var olderLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m);
+        var newerLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 2_000m, 1_600m, 0m);
+        SetCreatedAtUtc(olderLien, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        SetCreatedAtUtc(newerLien, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(olderLien, newerLien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&fundingCompanyId={fundingCompanyId}&sortDirection=desc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.Items.Select(item => item.LienId).Should().Equal(newerLien.Id, olderLien.Id);
+    }
+
+    [Theory]
+    [InlineData("createDate")]
+    [InlineData("createdAtUtc")]
+    public async Task Lien_list_supports_creation_timestamp_sort_aliases(string sortBy)
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var olderLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m);
+        var newerLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 2_000m, 1_600m, 0m);
+        SetCreatedAtUtc(olderLien, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        SetCreatedAtUtc(newerLien, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(olderLien, newerLien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&fundingCompanyId={fundingCompanyId}&sortBy={sortBy}&sortDirection=asc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.Items.Select(item => item.LienId).Should().Equal(olderLien.Id, newerLien.Id);
+    }
+
+    [Fact]
+    public async Task Lien_list_filters_rows_and_total_count_by_case_id()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var targetCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-TARGET-{Guid.NewGuid():N}"[..32],
+            "Target",
+            "Plaintiff",
+            SeedHelper.UserId);
+        var otherCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-OTHER-{Guid.NewGuid():N}"[..32],
+            "Other",
+            "Plaintiff",
+            SeedHelper.UserId);
+        var matchingLien = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            1_000m,
+            800m,
+            0m,
+            caseId: targetCase.Id);
+        var otherLien = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            2_000m,
+            1_600m,
+            0m,
+            caseId: otherCase.Id);
+
+        await SeedDashboardLiensAsync(db => db.AddRange(targetCase, otherCase, matchingLien, otherLien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=all&caseId={targetCase.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(1);
+        body.Items.Should().ContainSingle(item =>
+            item.LienId == matchingLien.Id && item.CaseId == targetCase.Id);
+        body.Items.Should().NotContain(item => item.LienId == otherLien.Id);
+    }
+
     private async Task SeedDashboardLiensAsync(Action<LiensDbContext> arrange)
     {
         using var scope = _factory.Services.CreateScope();
@@ -375,7 +491,8 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         decimal highestBidAmount,
         Guid? sellerOrgId = null,
         decimal? purchasePrice = null,
-        DateTime? soldAtUtc = null)
+        DateTime? soldAtUtc = null,
+        Guid? caseId = null)
     {
         var orgId = sellerOrgId ?? SeedHelper.OrgId;
         var lien = Lien.Create(
@@ -385,7 +502,7 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             LienType.MedicalLien,
             originalAmount,
             SeedHelper.UserId,
-            caseId: SeedHelper.CaseId,
+            caseId: caseId ?? SeedHelper.CaseId,
             facilityId: SeedHelper.FacilityId,
             initialServiceDate: new DateOnly(2026, 1, 15));
 
@@ -439,4 +556,7 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         typeof(Lien).GetProperty(nameof(Lien.OrgId))!.SetValue(lien, orgId);
         typeof(Lien).GetProperty(nameof(Lien.SellingOrgId))!.SetValue(lien, sellingOrgId);
     }
+
+    private static void SetCreatedAtUtc(Lien lien, DateTime createdAtUtc) =>
+        typeof(Lien).GetProperty(nameof(Lien.CreatedAtUtc))!.SetValue(lien, createdAtUtc);
 }

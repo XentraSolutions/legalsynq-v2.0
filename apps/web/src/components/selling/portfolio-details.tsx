@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Clipboard, Copy } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
-import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
+import { ProviderFundingDetailsPanel } from "./lien-detail/provider-funding-details-panel";
 import { MedicalCodesInformationPanel } from "./lien-detail/medical-codes-information-panel";
-import { EditLienInformationModal } from "./lien-detail/edit-lien-information-modal";
-import { EditCaseInformationModal } from "./lien-detail/edit-case-information-modal";
 import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-modal";
+import { detailEditHref } from "./lien-wizard/shared";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
@@ -19,12 +19,14 @@ import {
 } from "@/lib/selling/selling-detail.mapper";
 import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
 import { useLienActivity } from "@/lib/selling/use-lien-activity";
+import { PaymentTab } from "./lien-detail/payment-tab";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { toast } from "sonner";
 import { Tabs } from "@/components/selling/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
 import { Button } from "@/components/selling/button";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
+import { MessagesTab } from "@/components/selling/messages-tab";
 
 interface LienDetailPanelProps {
   lien: LienDetailsResult;
@@ -36,11 +38,13 @@ const BASE_PATH = "/selling/portfolio";
 const TABS = [
   { key: "details", label: "Details" },
   { key: "documents", label: "Documents" },
+  { key: "payment", label: "Payment" },
   { key: "activity", label: "Activity" },
+  { key: "messages", label: "Messages" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-type EditModalKey = "lien-information" | "case-information" | "medical-pricing";
+type EditModalKey = "medical-pricing";
 
 export function PortfolioDetailSkeleton() {
   return (
@@ -85,6 +89,7 @@ export function PortfolioDetailPanel({
   lien,
   onRefresh,
 }: LienDetailPanelProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [editModal, setEditModal] = useState<EditModalKey | null>(null);
   const { data: docs = [] } = useLienDocuments(lien.lienId);
@@ -145,17 +150,21 @@ export function PortfolioDetailPanel({
         <>
           <LienInformationPanel
             lien={lien.lienInformation}
+            caseInformation={lien.caseInformation}
             onEdit={
-              canEdit ? () => setEditModal("lien-information") : undefined
+              canEdit
+                ? () => router.push(detailEditHref(lien.lienId, 1))
+                : undefined
             }
           />
-          <FundingCompanyAndCaseInformationPanel
+          <ProviderFundingDetailsPanel
             fundingCompany={lien.fundingCompany}
             facility={lien.facility}
             medicalProvider={lien.medicalProvider}
-            caseInformation={lien.caseInformation}
             onEdit={
-              canEdit ? () => setEditModal("case-information") : undefined
+              canEdit
+                ? () => router.push(detailEditHref(lien.lienId, 2))
+                : undefined
             }
           />
           <MedicalCodesInformationPanel
@@ -165,33 +174,10 @@ export function PortfolioDetailPanel({
         </>
       )}
       {activeTab === "documents" && <DocumentsTab lien={lien} />}
+      {activeTab === "payment" && <PaymentTab lien={lien} />}
       {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
+      {activeTab === "messages" && <MessagesTab lienId={lien.lienId} />}
 
-      {editModal === "lien-information" && (
-        <EditLienInformationModal
-          lienId={lien.lienId}
-          lien={lien.lienInformation}
-          onClose={() => setEditModal(null)}
-          onSaved={() => {
-            setEditModal(null);
-            onRefresh();
-          }}
-        />
-      )}
-      {editModal === "case-information" && (
-        <EditCaseInformationModal
-          lienId={lien.lienId}
-          fundingCompany={lien.fundingCompany}
-          medicalProvider={lien.medicalProvider}
-          facility={lien.facility}
-          caseInformation={lien.caseInformation}
-          onClose={() => setEditModal(null)}
-          onSaved={() => {
-            setEditModal(null);
-            onRefresh();
-          }}
-        />
-      )}
       {editModal === "medical-pricing" && (
         <EditMedicalPricingModal
           lienId={lien.lienId}
@@ -308,7 +294,10 @@ function ActivityTab({ lienId }: { lienId: string }) {
   );
 }
 
-function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
+// Only `lien.lienId` is actually read below — widened to a Pick so the
+// case detail page's Documents tab can reuse this per lien without needing
+// a full LienDetailsResult for each of the case's liens.
+export function DocumentsTab({ lien }: { lien: Pick<LienDetailsResult, "lienId"> }) {
   const { data: docs = [], isLoading } = useLienDocuments(lien.lienId);
   const saveLienDocuments = useSaveLienDocuments(lien.lienId);
   const [showUpload, setShowUpload] = useState(false);
@@ -354,7 +343,7 @@ function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
           </div>
         ) : docs.length === 0 ? (
           <div className="py-10 text-center">
-            <Copy className="h-6 w-6 text-gray-300" />
+            <Copy className="h-6 w-6 text-gray-300 mx-auto" />
             <p className="text-sm text-gray-400 mt-2">
               No documents attached to this lien yet
             </p>

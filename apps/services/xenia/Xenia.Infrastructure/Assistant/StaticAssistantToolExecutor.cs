@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Xenia.Application.Assistant;
 
@@ -655,10 +656,17 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 jurisdiction = lien.Jurisdiction,
                 isConfidential = lien.IsConfidential,
                 createdAtUtc = lien.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(lien.CreatedAtUtc),
                 updatedAtUtc = lien.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(lien.UpdatedAtUtc),
+                incidentDate = lien.IncidentDate,
+                incidentDisplayDate = FormatLegacyDisplayDate(lien.IncidentDate),
                 purchaseDate = lien.PurchaseDate,
+                purchaseDisplayDate = FormatLegacyDisplayDate(lien.PurchaseDate),
                 initialServiceDate = lien.InitialServiceDate,
+                initialServiceDisplayDate = FormatLegacyDisplayDate(lien.InitialServiceDate),
                 endServiceDate = lien.EndServiceDate,
+                endServiceDisplayDate = FormatLegacyDisplayDate(lien.EndServiceDate),
                 url = BuildLienUrl(lien.LienId),
             },
             note = lookup.SafeError,
@@ -752,8 +760,11 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 originalAmount = lien.OriginalAmount,
                 currentBalance = lien.CurrentBalance,
                 createdAtUtc = lien.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(lien.CreatedAtUtc),
                 updatedAtUtc = lien.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(lien.UpdatedAtUtc),
                 purchaseDate = lien.PurchaseDate,
+                purchaseDisplayDate = FormatLegacyDisplayDate(lien.PurchaseDate),
                 url = BuildLienUrl(lien.LienId),
             }),
         }, JsonOptions);
@@ -836,7 +847,9 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 lienType,
                 days,
                 createdFromUtc = outcome.WindowFromUtc ?? createdFromUtc,
+                createdFromDisplayDate = FormatLegacyDisplayDate(outcome.WindowFromUtc ?? createdFromUtc),
                 createdToUtc = outcome.WindowToUtc ?? createdToUtc,
+                createdToDisplayDate = FormatLegacyDisplayDate(outcome.WindowToUtc ?? createdToUtc),
             },
             summary = new
             {
@@ -847,7 +860,9 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 openLienCount = outcome.OpenLienCount,
                 closedLienCount = outcome.ClosedLienCount,
                 windowFromUtc = outcome.WindowFromUtc,
+                windowFromDisplayDate = FormatLegacyDisplayDate(outcome.WindowFromUtc),
                 windowToUtc = outcome.WindowToUtc,
+                windowToDisplayDate = FormatLegacyDisplayDate(outcome.WindowToUtc),
             },
             statusCounts = outcome.StatusCounts.Select(item => new
             {
@@ -864,6 +879,7 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 subjectDisplayName = lien.SubjectDisplayName,
                 caseNumber = lien.CaseNumber,
                 updatedAtUtc = lien.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(lien.UpdatedAtUtc),
                 url = BuildLienUrl(lien.LienId),
             }),
         }, JsonOptions);
@@ -934,7 +950,9 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 lawFirm = item.LawFirm,
                 caseManager = item.CaseManager,
                 dateOfLoss = item.DateOfLoss,
+                dateOfLossDisplayDate = FormatLegacyDisplayDate(item.DateOfLoss),
                 clientDateOfBirth = item.ClientDateOfBirth,
+                clientDateOfBirthDisplayDate = FormatLegacyDisplayDate(item.ClientDateOfBirth),
                 isClientMinor = item.IsClientMinor,
                 clientPhone = item.ClientPhone,
                 clientEmail = item.ClientEmail,
@@ -944,7 +962,13 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 demandAmount = item.DemandAmount,
                 settlementAmount = item.SettlementAmount,
                 createdAtUtc = item.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(item.CreatedAtUtc),
                 updatedAtUtc = item.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(item.UpdatedAtUtc),
+                openedAtUtc = item.OpenedAtUtc,
+                openedAtDisplayDate = FormatLegacyDisplayDate(item.OpenedAtUtc),
+                closedAtUtc = item.ClosedAtUtc,
+                closedAtDisplayDate = FormatLegacyDisplayDate(item.ClosedAtUtc),
                 url = BuildCaseUrl(item.CaseId),
             },
             liens = item.Liens.Select(lien => new
@@ -957,6 +981,8 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 subjectDisplayName = lien.SubjectDisplayName,
                 originalAmount = lien.OriginalAmount,
                 currentBalance = lien.CurrentBalance,
+                purchaseDate = lien.PurchaseDate,
+                purchaseDisplayDate = FormatLegacyDisplayDate(lien.PurchaseDate),
                 url = BuildLienUrl(lien.LienId),
             }),
         }, JsonOptions);
@@ -1019,6 +1045,7 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
             tool = tool.ToolKey,
             status = "available",
             insights = outcome.Insights,
+            displayDates = BuildCaseInsightsDisplayDates(outcome.Insights),
         }, JsonOptions);
 
         var citations = new List<AssistantToolCitationDto>
@@ -1129,8 +1156,15 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 stateOfIncident = item.StateOfIncident,
                 accidentType = item.AccidentType,
                 dateOfLoss = item.DateOfLoss,
+                dateOfLossDisplayDate = FormatLegacyDisplayDate(item.DateOfLoss),
                 createdAtUtc = item.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(item.CreatedAtUtc),
                 updatedAtUtc = item.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(item.UpdatedAtUtc),
+                openedAtUtc = item.OpenedAtUtc,
+                openedAtDisplayDate = FormatLegacyDisplayDate(item.OpenedAtUtc),
+                closedAtUtc = item.ClosedAtUtc,
+                closedAtDisplayDate = FormatLegacyDisplayDate(item.ClosedAtUtc),
                 url = BuildCaseUrl(item.CaseId),
             }),
         }, JsonOptions);
@@ -1199,8 +1233,13 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 caseId = task.CaseId,
                 lienIds = task.LienIds,
                 dueDateUtc = task.DueDateUtc,
+                dueDisplayDate = FormatLegacyDisplayDate(task.DueDateUtc),
                 isOverdue = task.IsOverdue,
                 isDueToday = task.IsDueToday,
+                createdAtUtc = task.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(task.CreatedAtUtc),
+                updatedAtUtc = task.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(task.UpdatedAtUtc),
                 url = BuildTaskUrl(task.TaskId),
             }),
         }, JsonOptions);
@@ -1269,7 +1308,12 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 caseId = item.CaseId,
                 lienId = item.LienId,
                 dueDate = item.DueDate,
+                dueDisplayDate = FormatLegacyDisplayDate(item.DueDate),
                 isOverdue = item.IsOverdue,
+                createdAtUtc = item.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(item.CreatedAtUtc),
+                updatedAtUtc = item.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(item.UpdatedAtUtc),
                 url = BuildServicingUrl(item.ServicingItemId),
             }),
         }, JsonOptions);
@@ -1325,6 +1369,12 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
             tool = tool.ToolKey,
             status = "available",
             dateWindow = outcome.DateWindow,
+            dateWindowDisplay = new
+            {
+                preset = outcome.DateWindow.Preset,
+                from = FormatLegacyDisplayDate(outcome.DateWindow.FromUtc),
+                to = FormatLegacyDisplayDate(outcome.DateWindow.ToUtc),
+            },
             summary = new
             {
                 outcome.TotalCaseCount,
@@ -1344,6 +1394,12 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 status = item.Status,
                 lawFirm = item.LawFirm,
                 caseManager = item.CaseManager,
+                createdAtUtc = item.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(item.CreatedAtUtc),
+                updatedAtUtc = item.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(item.UpdatedAtUtc),
+                dateOfLoss = item.DateOfLoss,
+                dateOfLossDisplayDate = FormatLegacyDisplayDate(item.DateOfLoss),
                 url = BuildCaseUrl(item.CaseId),
             }),
             recentLiens = outcome.RecentLiens.Select(lien => new
@@ -1355,6 +1411,12 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 lienType = lien.LienType,
                 subjectDisplayName = lien.SubjectDisplayName,
                 currentBalance = lien.CurrentBalance,
+                createdAtUtc = lien.CreatedAtUtc,
+                createdAtDisplayDate = FormatLegacyDisplayDate(lien.CreatedAtUtc),
+                updatedAtUtc = lien.UpdatedAtUtc,
+                updatedAtDisplayDate = FormatLegacyDisplayDate(lien.UpdatedAtUtc),
+                purchaseDate = lien.PurchaseDate,
+                purchaseDisplayDate = FormatLegacyDisplayDate(lien.PurchaseDate),
                 url = BuildLienUrl(lien.LienId),
             }),
         }, JsonOptions);
@@ -1815,6 +1877,87 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
             OutputJson = trimmed,
             OutputCharacters = trimmed.Length,
         };
+    }
+
+    private static object BuildCaseInsightsDisplayDates(SynqLienCaseInsightsResult insights)
+        => new
+        {
+            dateContract = "Use these MM/DD/YYYY display fields in user-facing answers. Raw *Utc fields are UTC instants; date-only fields are exact calendar dates.",
+            dateWindow = new
+            {
+                preset = insights.DateWindow.Preset,
+                from = FormatLegacyDisplayDate(insights.DateWindow.FromUtc),
+                to = FormatLegacyDisplayDate(insights.DateWindow.ToUtc),
+            },
+            @case = new
+            {
+                dateOfLoss = FormatLegacyDisplayDate(insights.Case.DateOfLoss),
+                clientDateOfBirth = FormatLegacyDisplayDate(insights.Case.ClientDateOfBirth),
+                createdAt = FormatLegacyDisplayDate(insights.Case.CreatedAtUtc),
+                updatedAt = FormatLegacyDisplayDate(insights.Case.UpdatedAtUtc),
+                openedAt = FormatLegacyDisplayDate(insights.Case.OpenedAtUtc),
+                closedAt = FormatLegacyDisplayDate(insights.Case.ClosedAtUtc),
+            },
+            liens = insights.Liens.Select(lien => new
+            {
+                id = lien.LienId,
+                lienNumber = lien.LienNumber,
+                purchaseDate = FormatLegacyDisplayDate(lien.PurchaseDate),
+                initialServiceDate = FormatLegacyDisplayDate(lien.InitialServiceDate),
+                endServiceDate = FormatLegacyDisplayDate(lien.EndServiceDate),
+                createdAt = FormatLegacyDisplayDate(lien.CreatedAtUtc),
+                updatedAt = FormatLegacyDisplayDate(lien.UpdatedAtUtc),
+            }),
+            recentDocuments = insights.RecentDocuments.Select(document => new
+            {
+                id = document.ServicingItemId,
+                uploadedAt = FormatLegacyDisplayDate(document.UploadedAtUtc),
+                updatedAt = FormatLegacyDisplayDate(document.UpdatedAtUtc),
+            }),
+            recentNotes = insights.RecentNotes.Select(note => new
+            {
+                id = note.NoteId,
+                createdAt = FormatLegacyDisplayDate(note.CreatedAtUtc),
+                updatedAt = FormatLegacyDisplayDate(note.UpdatedAtUtc),
+            }),
+            recentServicing = insights.RecentServicing.Select(item => new
+            {
+                id = item.ServicingItemId,
+                dueDate = FormatLegacyDisplayDate(item.DueDate),
+                createdAt = FormatLegacyDisplayDate(item.CreatedAtUtc),
+                updatedAt = FormatLegacyDisplayDate(item.UpdatedAtUtc),
+            }),
+            recentTasks = insights.RecentTasks.Select(task => new
+            {
+                id = task.TaskId,
+                dueDate = FormatLegacyDisplayDate(task.DueDateUtc),
+                createdAt = FormatLegacyDisplayDate(task.CreatedAtUtc),
+                updatedAt = FormatLegacyDisplayDate(task.UpdatedAtUtc),
+            }),
+            importantUpdates = insights.ImportantUpdates.Select(update => new
+            {
+                update.ActivityType,
+                update.SourceId,
+                occurredAt = FormatLegacyDisplayDate(update.OccurredAtUtc),
+            }),
+        };
+
+    private static string? FormatLegacyDisplayDate(DateOnly? value)
+        => value?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+
+    private static string FormatLegacyDisplayDate(DateTime value)
+        => FormatLegacyDisplayDate((DateTime?)value) ?? string.Empty;
+
+    private static string? FormatLegacyDisplayDate(DateTime? value)
+    {
+        if (!value.HasValue)
+            return null;
+
+        var utc = value.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            : value.Value.ToUniversalTime();
+
+        return utc.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
     }
 
     private static string BuildReferralUrl(Guid referralId)

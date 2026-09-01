@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
 import { LienInfoParams } from "@/lib/liens/liens.types";
 import { toast } from "sonner";
 import LienInfo from "../forms/add-medical-lien/lien-info";
 import { LienWizardShell } from "./shell";
-import { buildFormsFromLien } from "./shared";
+import {
+  buildFormsFromLien,
+  detailHref,
+  DETAIL_EDIT_PARAM,
+  DETAIL_EDIT_VALUE,
+} from "./shared";
 import { SkeletonField, SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
 // Mirrors LienInfo's layout: title, a 2x2 field grid (status/date,
@@ -25,7 +30,9 @@ function LienInfoSkeleton() {
 
 export interface LienInfoStepProps {
   // Existing lien being edited (route: edit/step-1). Omitted on the
-  // brand-new /add page, where step 1 doubles as lien creation.
+  // brand-new /add page, where step 1 doubles as lien creation — the case
+  // itself is picked via CaseSelect (or created via the separate
+  // @/components/selling/case-wizard flow) before this step ever submits.
   lienId?: string;
   caseId?: string;
 }
@@ -34,6 +41,9 @@ export interface LienInfoStepProps {
 // edit an existing one's info (/edit/step-1, lienId from the route).
 export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetailEdit =
+    !!lienId && searchParams.get(DETAIL_EDIT_PARAM) === DETAIL_EDIT_VALUE;
   const [hydrating, setHydrating] = useState(!!lienId);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
@@ -79,27 +89,40 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
 
       // The lien only gets created once. Re-submitting step 1 after coming
       // back to it (via /edit/step-1) must update that same lien's info,
-      // not POST /liens again.
+      // not POST /liens again. Note: the case a lien belongs to can only be
+      // set at creation (CreateLienParams.caseId is required) — there's no
+      // endpoint to reassign it afterward, so CaseSelect here is effectively
+      // read-only once the lien exists.
       if (lienId) {
         await liensService.createLienInfo(lienId, request);
+        if (isDetailEdit) {
+          toast.success("Lien information updated.");
+          router.push(detailHref(lienId));
+          return;
+        }
         router.push(`/selling/portfolio/lien/${lienId}/edit/step-2`);
         return;
       }
 
-      // There's no "create draft" endpoint — a lien only gets an id via
-      // POST /liens (liensService.createLien), then the rest of step 1's
-      // fields are saved with a separate PUT .../lien-information call.
-      // See the comment on liensApi.createLien for the backend source.
+      if (!formData.caseId) return;
       const created = await liensService.createLien({
+        caseId: formData.caseId,
         sellerStatus: request.sellerStatus,
         source: "Single",
       });
       await liensService.createLienInfo(created.lienId, request);
       toast.success("Liens Created");
-      // Move the URL onto the resumable draft route so a refresh (or the
-      // back button) continues editing this lien instead of creating another
-      // bare one. The backend has no draft-listing endpoint yet, so this URL
-      // is the only way progress survives a refresh.
+      // Swap /add's history entry for the resumable edit/step-1 URL
+      // *without* triggering a Next navigation (router.replace immediately
+      // followed by router.push collapses into a single transition — the
+      // replace never lands), then router.push step 2 as a normal
+      // navigation on top of it. Back from step 2 now lands on step 1 with
+      // this lien's id, not a blank /add that would create a second lien.
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `/selling/portfolio/lien/${created.lienId}/edit/step-1`,
+      );
       router.push(`/selling/portfolio/lien/${created.lienId}/edit/step-2`);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -119,8 +142,24 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       skeleton={<LienInfoSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
-      onBack={() => router.back()}
+      onBack={
+        isDetailEdit && lienId
+          ? () => router.push(detailHref(lienId))
+          : lienId
+            ? () => router.push("/selling/portfolio/lien")
+            : () => router.back()
+      }
+      onCancel={
+        isDetailEdit && lienId
+          ? () => router.push(detailHref(lienId))
+          : lienId
+            ? () => router.push("/selling/portfolio/lien")
+            : () => router.back()
+      }
       onContinue={handleContinue}
+      detailEditReturnHref={
+        isDetailEdit && lienId ? detailHref(lienId) : undefined
+      }
     >
       <LienInfo
         caseId={caseId}

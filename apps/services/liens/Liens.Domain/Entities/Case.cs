@@ -19,6 +19,10 @@ public class Case : AuditableEntity
     public string? ClientPhone    { get; private set; }
     public string? ClientEmail    { get; private set; }
     public string? ClientAddress  { get; private set; }
+    public string? ClientAddressLine1 { get; private set; }
+    public string? ClientCity { get; private set; }
+    public string? ClientState { get; private set; }
+    public string? ClientPostalCode { get; private set; }
 
     public string Status          { get; private set; } = CaseStatus.PreDemand;
     public DateOnly? DateOfIncident { get; private set; }
@@ -34,8 +38,15 @@ public class Case : AuditableEntity
 
     public string? Description { get; private set; }
     public string? Notes       { get; private set; }
+    public string? IncidentState { get; private set; }
+    public string? CurrentMedicalStatus { get; private set; }
+    public DateOnly? TrackingFollowUpDate { get; private set; }
+    public bool? MinorComp { get; private set; }
+    public bool? CaseDropped { get; private set; }
+    public string? ImportedCreatedByName { get; private set; }
     public Guid? HandlingLawFirmCompanyId { get; private set; }
     public Guid? CaseManagerContactPersonId { get; private set; }
+    public Guid? AttorneyContactPersonId { get; private set; }
 
     private Case() { }
 
@@ -113,7 +124,16 @@ public class Case : AuditableEntity
         string? policyNumber = null,
         string? claimNumber = null,
         string? description = null,
-        string? notes = null)
+        string? notes = null,
+        string? clientAddressLine1 = null,
+        string? clientCity = null,
+        string? clientState = null,
+        string? clientPostalCode = null,
+        string? incidentState = null,
+        string? currentMedicalStatus = null,
+        DateOnly? trackingFollowUpDate = null,
+        bool? minorComp = null,
+        bool? caseDropped = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (orgId == Guid.Empty) throw new ArgumentException("OrgId is required.", nameof(orgId));
@@ -137,8 +157,17 @@ public class Case : AuditableEntity
             ClientPhone       = clientPhone?.Trim(),
             ClientEmail       = clientEmail?.Trim(),
             ClientAddress     = clientAddress?.Trim(),
+            ClientAddressLine1 = clientAddressLine1?.Trim(),
+            ClientCity        = clientCity?.Trim(),
+            ClientState       = clientState?.Trim(),
+            ClientPostalCode  = clientPostalCode?.Trim(),
             Status            = CaseStatus.PreDemand,
             DateOfIncident    = dateOfIncident,
+            IncidentState     = incidentState?.Trim(),
+            CurrentMedicalStatus = currentMedicalStatus?.Trim(),
+            TrackingFollowUpDate = trackingFollowUpDate,
+            MinorComp         = minorComp,
+            CaseDropped       = caseDropped,
             OpenedAtUtc       = now,
             InsuranceCarrier  = insuranceCarrier?.Trim(),
             PolicyNumber      = policyNumber?.Trim(),
@@ -167,7 +196,17 @@ public class Case : AuditableEntity
         string? policyNumber = null,
         string? claimNumber = null,
         string? description = null,
-        string? notes = null)
+        string? notes = null,
+        string? clientAddressLine1 = null,
+        string? clientCity = null,
+        string? clientState = null,
+        string? clientPostalCode = null,
+        string? incidentState = null,
+        string? currentMedicalStatus = null,
+        DateOnly? trackingFollowUpDate = null,
+        bool? minorComp = null,
+        bool? caseDropped = null,
+        Guid? attorneyContactPersonId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(clientFirstName);
         ArgumentException.ThrowIfNullOrWhiteSpace(clientLastName);
@@ -180,7 +219,17 @@ public class Case : AuditableEntity
         ClientPhone       = clientPhone?.Trim();
         ClientEmail       = clientEmail?.Trim();
         ClientAddress     = clientAddress?.Trim();
+        ClientAddressLine1 = clientAddressLine1?.Trim();
+        ClientCity        = clientCity?.Trim();
+        ClientState       = clientState?.Trim();
+        ClientPostalCode  = clientPostalCode?.Trim();
         DateOfIncident    = dateOfIncident;
+        IncidentState     = incidentState?.Trim();
+        CurrentMedicalStatus = currentMedicalStatus?.Trim();
+        TrackingFollowUpDate = trackingFollowUpDate;
+        MinorComp         = minorComp;
+        CaseDropped       = caseDropped;
+        AttorneyContactPersonId = attorneyContactPersonId;
         InsuranceCarrier  = insuranceCarrier?.Trim();
         PolicyNumber      = policyNumber?.Trim();
         ClaimNumber       = claimNumber?.Trim();

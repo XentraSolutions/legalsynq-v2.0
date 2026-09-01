@@ -24,6 +24,8 @@ export interface CaseResponseDto {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  lienStatus?: string;
+  lienStatusId?: string;
   lawFirmId?: string | null;
   lawFirm?: string | null;
   caseManagerId?: string | null;
@@ -37,6 +39,8 @@ export interface CaseResponseDto {
   claimNumber?: string | null;
   demandAmount?: number | null;
   settlementAmount?: number | null;
+  settlementStatus: string;
+  settlementStatusId: string;
   description?: string | null;
   notes?: string | null;
   openedAtUtc?: string | null;
@@ -66,6 +70,8 @@ export interface CaseDocument {
   id: string;
   liensId: string;
   caseId: string;
+  typeId?: string;
+  documentTypeId?: string;
   url: string;
   created: string;
   mimeType: string;
@@ -271,11 +277,14 @@ export interface CaseDetail {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  lienStatus: string;
   insuranceCarrier: string;
   policyNumber: string;
   claimNumber: string;
   demandAmount: number | null;
   settlementAmount: number | null;
+  settlementStatus: string;
+  settlementStatusId: string;
   description: string | null;
   notes: string | null;
   trackingFollowUp: string;
@@ -440,6 +449,8 @@ export interface CasesFilters {
   accidentTypeId: string | null;
   statusId: string | null;
   caseManagerId: string | null;
+  sortBy?: string;
+  sortDirection?: string;
 }
 
 export interface CaseLiensFilters {
@@ -605,6 +616,7 @@ export interface CreateMedicalCodeLiensDto {
   purchaseAmount: string;
   payee: string;
   outboundCheckNumber: string;
+  codeRows?: any;
 }
 
 export interface CreateMedicalPaymentDto {

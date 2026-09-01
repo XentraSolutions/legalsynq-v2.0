@@ -5,6 +5,8 @@ import { MyNetworkClient }         from '@/components/careconnect/my-network-cli
 import { PublicNetworkAccessCodePanel } from '@/components/careconnect/public-network-access-code-panel';
 import { tenantServerApi }         from '@/lib/tenant-api';
 import type { CareConnectAccessCodeMetadata } from '@/lib/tenant-api';
+import { resolveTenantFromCode }   from '@/lib/public-network-api';
+import { ProductRole }             from '@/types';
 import type { NetworkDetail, SpecialtyOption } from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +21,24 @@ export const dynamic = 'force-dynamic';
 export default async function MyNetworkPage() {
   const session = await requireOrg();
   const canManageAccessCode = session.isPlatformAdmin || session.isTenantAdmin;
+  // 4-AC3: only a Tenant/Platform Admin may toggle a provider's Public/Private
+  // visibility — NetworkManager is intentionally excluded, unlike canManageAll below.
+  const canManageVisibility = session.isPlatformAdmin || session.isTenantAdmin;
+  // Tenant portal's own network-management screen — NetworkManager/admin only.
+  // Law firms use the separate "Network Setup" screen instead (network-setup/page.tsx).
+  const canManageAll =
+    session.isPlatformAdmin ||
+    session.isTenantAdmin ||
+    session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+  const canAddProviders = canManageAll;
+
+  let tenantName = session.tenantCode;
+  try {
+    const resolved = await resolveTenantFromCode(session.tenantCode);
+    if (resolved?.displayName) tenantName = resolved.displayName;
+  } catch {
+    // Keep the tenant code as a fallback display name.
+  }
 
   let network: NetworkDetail | null = null;
   let fetchError: string | null = null;
@@ -57,7 +77,17 @@ export default async function MyNetworkPage() {
       {canManageAccessCode && accessCodeStatus && (
         <PublicNetworkAccessCodePanel initialStatus={accessCodeStatus} />
       )}
-      <MyNetworkClient initialNetwork={network} fetchError={fetchError} specialtyOptions={specialtyOptions} />
+      <MyNetworkClient
+        initialNetwork={network}
+        fetchError={fetchError}
+        specialtyOptions={specialtyOptions}
+        tenantName={tenantName}
+        canManageAll={canManageAll}
+        canManageVisibility={canManageVisibility}
+        canAddProviders={canAddProviders}
+        callerOrgId={session.orgId ?? null}
+        showNetworkUrl
+      />
     </div>
   );
 }

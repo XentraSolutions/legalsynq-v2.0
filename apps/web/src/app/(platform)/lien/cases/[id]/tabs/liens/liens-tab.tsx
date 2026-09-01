@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CaseLienItemMetadata, casesService, type CaseDetail, type CaseLienItem } from "@/lib/cases";
+import {
+  CaseLienItemMetadata,
+  casesService,
+  type CaseDetail,
+  type CaseLienItem,
+} from "@/lib/cases";
 import type { LiensQuery } from "@/lib/liens";
 import { useCaseLiens, useDeleteLien } from "@/hooks/use-case-liens";
 import { StatusBadge } from "@/components/lien/status-badge";
@@ -24,7 +29,6 @@ import {
   LienUpdatesSection,
   type CaseLienUpdateRow,
 } from "./sections/lien-updates-section";
-
 
 export function LiensTab({
   caseId,
@@ -73,7 +77,8 @@ export function LiensTab({
     [liensPagination.pageSize, filters],
   );
   const { data: filteredLiens } = useCaseLiens(caseId, serverQuery, "liens");
-  const liensData = (filteredLiens?.items ?? liensProp) as unknown as (CaseLienItem & CaseLienItemMetadata)[];
+  const liensData = (filteredLiens?.items ??
+    liensProp) as unknown as (CaseLienItem & CaseLienItemMetadata)[];
 
   const fetchData = useCallback(async () => {
     const updates = await casesService.getCaseLiensUpdates(caseId);
@@ -164,14 +169,16 @@ export function LiensTab({
     }
   };
 
-  const totalBilling = filtered.reduce(
-    (sum, l) => sum + (l.originalAmount ?? 0),
-    0,
-  );
-  const totalPurchase = filtered.reduce(
-    (sum, l) => sum + (l.purchaseAmount ?? 0),
-    0,
-  );
+  const totalBilling =
+    filtered.reduce(
+      (sum, l) => sum + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const totalPurchase =
+    filtered.reduce(
+      (sum, l) => sum + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
 
   const lienRowColumns: ColumnDef<(typeof displayLiens)[number], any>[] = [
     {
@@ -241,15 +248,15 @@ export function LiensTab({
         </span>
       ),
     },
-     {
-    id: "payment",
-    header: "Amount Received",
-    cell: ({row}) => (
-      <span className="text-sm text-gray-700 tabular-nums">
-        {formatCurrency(row.original.paymentAmount ?? 0)}
-      </span>
-    ),
-  },
+    {
+      id: "payment",
+      header: "Amount Received",
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(row.original.paymentAmount ?? 0)}
+        </span>
+      ),
+    },
     {
       id: "status",
       header: "Lien Status",

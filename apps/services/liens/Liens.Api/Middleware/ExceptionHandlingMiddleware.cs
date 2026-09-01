@@ -127,7 +127,7 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception");
+            _logger.LogError(ex, "Unhandled exception. TraceId={TraceId}", context.TraceIdentifier);
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsJsonAsync(new
@@ -135,7 +135,8 @@ public class ExceptionHandlingMiddleware
                 error = new
                 {
                     code = "server_error",
-                    message = "An unexpected error occurred."
+                    message = "An unexpected error occurred.",
+                    traceId = context.TraceIdentifier
                 }
             });
         }

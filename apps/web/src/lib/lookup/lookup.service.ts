@@ -40,11 +40,7 @@ export const lookupService = {
       costs.find((item) => item.facilityType?.toLowerCase() === "asc") ??
       costs[0];
 
-    if (!ascCost) {
-      throw new Error(data.message || "Procedure cost not found.");
-    }
-
-    return ascCost;
+    return ascCost ?? { code, facilityType: "", total: "" };
   },
   async getLookupAll(): Promise<LookupResponse> {
     const { data } = await lookupApi.getLookupAll();

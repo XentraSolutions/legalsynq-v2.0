@@ -96,6 +96,11 @@ public static class ServiceLegacyEndpoints
         public string? accidentTypeId { get; init; }
         public string? statusId { get; init; }
         public string? caseManagerId { get; init; }
+        public string? keyword { get; init; }
+        public string? search { get; init; }
+        public string? sortBy { get; init; }
+        public string? sortDirection { get; init; }
+        public bool legacyFormat { get; init; }
     }
 
     private readonly record struct LegacyServiceCaseMetrics(
@@ -104,6 +109,10 @@ public static class ServiceLegacyEndpoints
         decimal SettlementAmount = 0m,
         decimal BillingAmount = 0m,
         decimal PurchaseAmount = 0m);
+
+    private readonly record struct LegacyServiceCsvRow(
+        CaseResponse Case,
+        LegacyServiceCaseMetrics Metrics);
 
     private readonly record struct LegacyMedicalAmounts(
         decimal PurchaseAmount = 0m,
@@ -305,6 +314,7 @@ public static class ServiceLegacyEndpoints
             .Where(payment =>
                 payment.TenantId == tenantId &&
                 !payment.IsDeleted &&
+                payment.PostingStatus != SettlementPaymentDetail.VoidedStatus &&
                 distinctCaseIds.Contains(payment.CaseId))
             .Select(payment => new
             {
@@ -892,29 +902,99 @@ public static class ServiceLegacyEndpoints
     private static async Task<IResult> GenerateServiceCsvLegacy(
         LegacyGenerateCaseCsvRequest request,
         ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
-        Guid? orgId = Guid.TryParse(request.lawFirmId, out var lawFirmId) ? lawFirmId : null;
-        var result = await caseService.SearchAsync(tenantId, null, request.statusId, 1, 1000, orgId, ct);
+        byte[] bytes;
 
-        if (!string.IsNullOrWhiteSpace(request.caseId) && Guid.TryParse(request.caseId, out var caseId))
-            result = new PaginatedResult<CaseResponse> { Items = result.Items.Where(c => c.Id == caseId).ToList(), Page = 1, PageSize = result.Items.Count, TotalCount = result.Items.Count };
-
-        if (result.Items.Count == 0)
+        if (request.legacyFormat)
         {
-            return Results.NotFound(new { isSuccess = false, message = "No data generated.", data = (object?)null });
-        }
+            Guid? orgId = Guid.TryParse(request.lawFirmId, out var lawFirmId) ? lawFirmId : null;
+            var legacyResult = await caseService.SearchAsync(
+                tenantId,
+                null,
+                request.statusId,
+                1,
+                1000,
+                orgId,
+                ct);
 
-        var sb = new StringBuilder();
-        sb.AppendLine("CaseId,CaseNumber,ClientFirstName,ClientLastName,Status,DateOfLoss");
-        foreach (var item in result.Items)
+            if (!string.IsNullOrWhiteSpace(request.caseId) &&
+                Guid.TryParse(request.caseId, out var legacyCaseId))
+            {
+                legacyResult = new PaginatedResult<CaseResponse>
+                {
+                    Items = legacyResult.Items.Where(c => c.Id == legacyCaseId).ToList(),
+                    Page = 1,
+                    PageSize = legacyResult.Items.Count,
+                    TotalCount = legacyResult.Items.Count,
+                };
+            }
+
+            if (legacyResult.Items.Count == 0)
+                return NoServiceCsvData();
+
+            bytes = BuildLegacyServiceCsv(legacyResult.Items);
+        }
+        else
         {
-            sb.AppendLine($"{item.Id},{CsvEscape(item.CaseNumber)},{CsvEscape(item.ClientFirstName)},{CsvEscape(item.ClientLastName)},{CsvEscape(item.Status)},{item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture)}");
-        }
+            const int pageSize = 100;
+            var page = 1;
+            var cases = new List<CaseResponse>();
+            var keyword = !string.IsNullOrWhiteSpace(request.keyword)
+                ? request.keyword
+                : request.search;
 
-        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+            while (true)
+            {
+                var result = await caseService.SearchV3Async(
+                    tenantId: tenantId,
+                    keyword: keyword,
+                    statusId: request.statusId,
+                    page: page,
+                    limit: pageSize,
+                    sortBy: request.sortBy,
+                    sortDirection: request.sortDirection,
+                    accidentTypeId: request.accidentTypeId,
+                    caseManagerId: request.caseManagerId,
+                    lawFirmIds: request.lawFirmId,
+                    ct: ct);
+
+                if (result.Items.Count == 0)
+                    break;
+
+                cases.AddRange(result.Items);
+                if (cases.Count >= result.TotalCount)
+                    break;
+
+                page++;
+            }
+
+            var filtered = cases
+                .Where(item => string.IsNullOrWhiteSpace(request.caseId) ||
+                               string.Equals(item.Id.ToString(), request.caseId, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(item.CaseNumber, request.caseId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (filtered.Count == 0)
+                return NoServiceCsvData();
+
+            var rows = new List<LegacyServiceCsvRow>(filtered.Count);
+            foreach (var batch in filtered.Chunk(pageSize))
+            {
+                var metricsByCaseId = await GetLegacyServiceCaseMetricsAsync(
+                    db,
+                    tenantId,
+                    batch.Select(item => item.Id).ToArray(),
+                    ct);
+                rows.AddRange(batch.Select(item => new LegacyServiceCsvRow(
+                    item,
+                    metricsByCaseId.GetValueOrDefault(item.Id))));
+            }
+
+            bytes = BuildServiceTableCsv(rows);
+        }
         var exportItem = new
         {
             base64 = Convert.ToBase64String(bytes),
@@ -930,29 +1010,151 @@ public static class ServiceLegacyEndpoints
         });
     }
 
+    private static IResult NoServiceCsvData() => Results.NotFound(new
+    {
+        isSuccess = false,
+        message = "No data generated.",
+        data = (object?)null,
+    });
+
+    private static byte[] BuildServiceTableCsv(IReadOnlyList<LegacyServiceCsvRow> rows)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Case number,Plaintiff Name,Current Law Firm,Current Status,Settlement Status,Billing Amount,Purchase Amount,Amount Settled,Settled Date");
+
+        foreach (var row in rows)
+        {
+            sb.AppendLine(string.Join(",", new[]
+            {
+                CsvEscape(row.Case.CaseNumber),
+                CsvEscape(row.Case.ClientDisplayName),
+                CsvEscape(row.Case.LawFirm ?? string.Empty),
+                CsvEscape(row.Case.Status),
+                CsvEscape(row.Metrics.SettlementStatus ?? string.Empty),
+                CsvEscape(row.Metrics.BillingAmount.ToString("#,##0.00", CultureInfo.InvariantCulture)),
+                CsvEscape(row.Metrics.PurchaseAmount.ToString("#,##0.00", CultureInfo.InvariantCulture)),
+                CsvEscape(row.Metrics.SettlementAmount.ToString("#,##0.00", CultureInfo.InvariantCulture)),
+                CsvEscape(row.Metrics.SettlementDate ?? string.Empty),
+            }));
+        }
+
+        return Encoding.UTF8.GetBytes(sb.ToString());
+    }
+
+    private static byte[] BuildLegacyServiceCsv(IReadOnlyList<CaseResponse> items)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("CaseId,CaseNumber,ClientFirstName,ClientLastName,Status,DateOfLoss");
+        foreach (var item in items)
+        {
+            sb.AppendLine($"{item.Id},{CsvEscape(item.CaseNumber)},{CsvEscape(item.ClientFirstName)},{CsvEscape(item.ClientLastName)},{CsvEscape(item.Status)},{item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture)}");
+        }
+
+        return Encoding.UTF8.GetBytes(sb.ToString());
+    }
+
     private static async Task<IResult> UpdateLienStatusBulkLegacy(
         LegacyUpdateMultipleLienStatusRequest request,
         ILienService lienService,
+        ISettlementService settlementService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var userId = RequireUserId(ctx);
-        if (string.IsNullOrWhiteSpace(request.lienIds) || string.IsNullOrWhiteSpace(request.lienStatus))
+        if (!Guid.TryParse(request.caseId, out var caseId) ||
+            string.IsNullOrWhiteSpace(request.lienIds) ||
+            string.IsNullOrWhiteSpace(request.lienStatus) ||
+            !TryParseLegacyClosedDate(request.closedDate, out var closedDate))
         {
             return Results.BadRequest(new { isSuccess = false, message = "Invalid request" });
         }
 
-        var lienIds = request.lienIds
+        var rawLienIds = request.lienIds
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(value => Guid.TryParse(value, out var id) ? id : Guid.Empty)
-            .Where(id => id != Guid.Empty)
             .ToList();
+        if (rawLienIds.Count == 0 || rawLienIds.Any(value => !Guid.TryParse(value, out _)))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid lienIds" });
+        }
 
-        foreach (var lienId in lienIds)
-            await lienService.SetLegacyMedicalStatusAsync(tenantId, lienId, userId, request.lienStatus.Trim(), ct);
+        var lienIds = rawLienIds.Select(Guid.Parse).Distinct().ToList();
+        var caseExists = await db.Cases.AsNoTracking()
+            .AnyAsync(item => item.TenantId == tenantId && item.Id == caseId, ct);
+        var selectedLiens = await db.Liens.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && lienIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.CaseId })
+            .ToListAsync(ct);
+        if (!caseExists ||
+            selectedLiens.Count != lienIds.Count ||
+            selectedLiens.Any(item => item.CaseId != caseId))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Case and liens must belong to the authenticated tenant and match each other",
+            });
+        }
 
-        return Results.Ok(new { isSuccess = true, message = "Successfully updated lien statuses." });
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        try
+        {
+            foreach (var lienId in lienIds)
+            {
+                await lienService.SetLegacyMedicalStatusAsync(
+                    tenantId,
+                    lienId,
+                    userId,
+                    request.lienStatus.Trim(),
+                    ct);
+                await settlementService.CreatePaymentAsync(
+                    tenantId,
+                    userId,
+                    new CreateSettlementPaymentDetailRequest
+                    {
+                        CaseId = caseId,
+                        LienId = lienId,
+                        Amount = 0m,
+                        PaymentDate = closedDate,
+                        Notes = request.note,
+                        SettlementType = "other",
+                        SettlementStatus = "4",
+                    },
+                    ct);
+            }
+
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+
+        return Results.Ok(new { isSuccess = true, message = "Lien(s) successfully updated." });
+    }
+
+    private static bool TryParseLegacyClosedDate(string? value, out DateOnly closedDate)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            closedDate = default;
+            return false;
+        }
+
+        return DateOnly.TryParseExact(
+                   value.Trim(),
+                   ["yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy"],
+                   CultureInfo.InvariantCulture,
+                   DateTimeStyles.None,
+                   out closedDate) ||
+               DateOnly.TryParse(value.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out closedDate);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -1133,9 +1335,11 @@ public static class ServiceLegacyEndpoints
     private static string ResolveUpdatedByName(
         Guid? userId,
         IReadOnlyDictionary<Guid, string> userNames)
-        => userId.HasValue && userNames.TryGetValue(userId.Value, out var userName)
-            ? userName
-            : string.Empty;
+        => !userId.HasValue
+            ? string.Empty
+            : userNames.TryGetValue(userId.Value, out var userName) && !string.IsNullOrWhiteSpace(userName)
+                ? userName
+                : userId.Value.ToString();
 
     private static object MapLegacyServiceCase(CaseResponse item) => new
     {

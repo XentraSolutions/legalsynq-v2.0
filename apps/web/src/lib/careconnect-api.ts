@@ -26,7 +26,6 @@ import type {
   NetworkSummary,
   NetworkDetail,
   NetworkProviderItem,
-  CreateNetworkRequest,
   UpdateNetworkRequest,
   NetworkProviderMarker,
   ProviderSearchResult,
@@ -40,6 +39,13 @@ import type {
   ReferralAttributionAccessCode,
   GeneratedReferralAttributionAccessCode,
   CreateReferralAttributionAccessCodeRequest,
+  PendingReferralRequest,
+  ConvertPendingReferralRequest,
+  UpdatePendingReferralRequest,
+  TreatmentTypeOption,
+  LawFirmUserSummary,
+  InviteLawFirmUserRequest,
+  LawFirmUserInviteResult,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -60,6 +66,11 @@ export const careConnectApi = {
   specialties: {
     list: () =>
       apiClient.get<SpecialtyOption[]>(`/careconnect/api/specialties`),
+  },
+
+  treatmentTypes: {
+    list: () =>
+      apiClient.get<TreatmentTypeOption[]>(`/careconnect/api/treatment-types`),
   },
 
   providers: {
@@ -145,7 +156,7 @@ export const careConnectApi = {
       apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
   },
 
-  // ── Referral Attribution configuration (tenant admin) ────────────────────────
+  // ── Referral Origination configuration (tenant admin) ────────────────────────
   referralAttributions: {
     /** GET /api/referral-attributions/options — active options for the current tenant (law firm dropdown) */
     options: () =>
@@ -171,12 +182,12 @@ export const careConnectApi = {
   },
 
   // ── Referral Representative access codes (tenant admin) ──────────────────────
-  // Admin generates a code scoped to one attribution; the representative enters it
+  // Admin generates a code scoped to one origination; the representative enters it
   // themselves at the anonymous portal — see representative-portal-api.ts, not this
-  // file. No admin-typed user linking. Exactly one active code per attribution —
-  // scoped lookup only, no cross-attribution list.
+  // file. No admin-typed user linking. Exactly one active code per origination —
+  // scoped lookup only, no cross-origination list.
   referralAttributionAccessCodes: {
-    /** GET .../by-attribution/{id} — the attribution's single active code, or undefined (204) if none. */
+    /** GET .../by-attribution/{id} — the origination's single active code, or undefined (204) if none. */
     getByAttribution: (referralAttributionId: string) =>
       apiClient.get<ReferralAttributionAccessCode | undefined>(
         `/careconnect/api/referral-representative-access-codes/by-attribution/${referralAttributionId}`,
@@ -290,17 +301,17 @@ export const careConnectApi = {
 
   // CC2-INT-B06: Provider networks (client-side mutations from interactive pages)
   networks: {
-    /** POST /api/networks — create a new network */
-    create: (data: CreateNetworkRequest) =>
-      apiClient.post<NetworkSummary>(`/careconnect/api/networks`, data),
+    /**
+     * GET /api/networks — single-tenant-network cutover: lists (and bootstraps, on
+     * first call for a tenant) the tenant's one shared network. There is no longer a
+     * separate "create a network" action — every tenant gets exactly one automatically.
+     */
+    list: () =>
+      apiClient.get<NetworkSummary[]>(`/careconnect/api/networks`),
 
-    /** PUT /api/networks/{id} — update network name/description */
+    /** PUT /api/networks/{id} — update network name/description (tenant admin only) */
     update: (id: string, data: UpdateNetworkRequest) =>
       apiClient.put<NetworkSummary>(`/careconnect/api/networks/${id}`, data),
-
-    /** DELETE /api/networks/{id} — soft-delete a network */
-    delete: (id: string) =>
-      apiClient.delete<void>(`/careconnect/api/networks/${id}`),
 
     /**
      * CC2-INT-B06-01: Search the shared global provider registry.
@@ -341,6 +352,59 @@ export const careConnectApi = {
     /** GET /api/networks/{id}/providers/markers — map markers for the network */
     getMarkers: (id: string) =>
       apiClient.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
+  },
+
+  // LSV3-1083: Law Firm Company Super Admin/Manager — a CareConnectReferrerAdmin
+  // manages the users belonging to their own law firm. Always scoped to the
+  // caller's own organization server-side — there is no orgId parameter here.
+  lawFirmUsers: {
+    list: () =>
+      apiClient.get<LawFirmUserSummary[]>(`/careconnect/api/law-firm-users`),
+
+    invite: (request: InviteLawFirmUserRequest) =>
+      apiClient.post<LawFirmUserInviteResult>(`/careconnect/api/law-firm-users/invite`, request),
+
+    resendInvite: (userId: string) =>
+      apiClient.post<void>(`/careconnect/api/law-firm-users/${userId}/resend-invite`, {}),
+
+    activate: (userId: string) =>
+      apiClient.post<void>(`/careconnect/api/law-firm-users/${userId}/activate`, {}),
+
+    deactivate: (userId: string) =>
+      apiClient.post<void>(`/careconnect/api/law-firm-users/${userId}/deactivate`, {}),
+
+    assignRole: (userId: string, roleCode: string) =>
+      apiClient.post<{ assignmentId: string }>(`/careconnect/api/law-firm-users/${userId}/roles`, { roleCode }),
+
+    revokeRole: (userId: string, assignmentId: string) =>
+      apiClient.delete<void>(`/careconnect/api/law-firm-users/${userId}/roles/${assignmentId}`),
+  },
+
+  pendingReferralRequests: {
+    search: (params: { status?: string; page?: number; pageSize?: number } = {}) =>
+      apiClient.get<PagedResponse<PendingReferralRequest>>(
+        `/careconnect/api/pending-referral-requests${toQs(params as Record<string, unknown>)}`,
+      ),
+    getById: (id: string) =>
+      apiClient.get<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}`),
+    update: (id: string, body: UpdatePendingReferralRequest) =>
+      apiClient.put<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}`, body),
+    decline: (id: string) =>
+      apiClient.post<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}/decline`, {}),
+    uploadAttachment: (id: string, file: File) => {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      return apiClient.postForm<AttachmentSummary>(
+        `/careconnect/api/pending-referral-requests/${id}/attachments/upload`,
+        form,
+      );
+    },
+    getAttachmentSignedUrl: (id: string, attachmentId: string, download = false) =>
+      apiClient.get<SignedUrlResponse>(
+        `/careconnect/api/pending-referral-requests/${id}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
+      ),
+    convert: (id: string, body: ConvertPendingReferralRequest) =>
+      apiClient.post<ReferralDetail>(`/careconnect/api/pending-referral-requests/${id}/convert`, body),
   },
 
   // CC2-INT-B09: Provider tenant self-onboarding

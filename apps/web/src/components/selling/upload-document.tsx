@@ -44,6 +44,10 @@ const DEFAULT_ACCEPTED_FILES: Accept = {
   ],
 };
 
+export const SELLING_DOCUMENT_MAX_FILE_SIZE_MB = 25;
+export const SELLING_DOCUMENT_MAX_FILE_SIZE_BYTES =
+  SELLING_DOCUMENT_MAX_FILE_SIZE_MB * 1024 * 1024;
+
 const SellingUploadDocument = forwardRef<
   FileDropzoneRef,
   SellingUploadDocumentProps
@@ -115,7 +119,9 @@ const SellingUploadDocument = forwardRef<
   const multiple = config?.isMultiple ?? isMultiple ?? true;
   const acceptedFiles = config?.accepted ?? DEFAULT_ACCEPTED_FILES;
   const acceptedLabel =
-    typeof acceptedFiles === "string" ? acceptedFiles : ".csv,.xlsx,.xls,.docx";
+    typeof acceptedFiles === "string"
+      ? acceptedFiles
+      : ".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.docx";
   const { getRootProps, getInputProps } = useDropzone({
     onDrop,
     onDropRejected: (rejectedFiles) => {
@@ -125,7 +131,7 @@ const SellingUploadDocument = forwardRef<
     validator: nameValidator,
     multiple,
     accept: acceptedFiles as Accept,
-    maxSize: 50 * 1024 * 1024,
+    maxSize: SELLING_DOCUMENT_MAX_FILE_SIZE_BYTES,
     disabled,
   });
 
@@ -133,7 +139,9 @@ const SellingUploadDocument = forwardRef<
     rejections.forEach((rejection) => {
       rejection.errors.forEach((err) => {
         if (err.code === "file-too-large") {
-          setErrorMessage("This file is too large. Max size allowed is 5MB.");
+          setErrorMessage(
+            `This file is too large. Maximum size is ${SELLING_DOCUMENT_MAX_FILE_SIZE_MB} MB.`,
+          );
         } else {
           setErrorMessage(err.message);
         }
@@ -162,7 +170,7 @@ const SellingUploadDocument = forwardRef<
           Click or drag file to upload
         </p>
         <p className={`text-xs mt-1 ${disabled ? "text-gray-300" : "text-gray-400"}`}>
-          {acceptedLabel} (max 50MB)
+          {acceptedLabel} (max {SELLING_DOCUMENT_MAX_FILE_SIZE_MB} MB)
         </p>
       </div>
       {errorMessage && (

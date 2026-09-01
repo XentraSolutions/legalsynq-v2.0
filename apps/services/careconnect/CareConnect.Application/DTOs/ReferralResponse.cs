@@ -26,6 +26,9 @@ public class ReferralResponse
     public string Status { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public string? DeclineNotes { get; set; }
+    public string Origin { get; set; } = string.Empty;
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 
@@ -57,6 +60,6 @@ public class ReferralResponse
     public Guid?   TreatmentTypeId   { get; set; }
     public string? TreatmentTypeName { get; set; }
 
-    // Referral Attribution — who or what originated this referral. Null = "Not specified".
+    // Referral Origination — who or what originated this referral. Null = "Not specified".
     public ReferralAttributionSummary? ReferralAttribution { get; set; }
 }

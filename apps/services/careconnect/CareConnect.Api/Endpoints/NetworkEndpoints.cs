@@ -20,9 +20,16 @@ using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
 namespace CareConnect.Api.Endpoints;
 
 // CC2-INT-B06 / CC2-INT-B06-01 — provider network management + shared provider registry.
-// Access: CARECONNECT_NETWORK_MANAGER product role, or PlatformAdmin / TenantAdmin bypass.
+// Access: CARECONNECT_NETWORK_MANAGER or CARECONNECT_REFERRER_ADMIN (LSV3-1084, law-firm-scoped
+// network self-management) product role, or PlatformAdmin / TenantAdmin bypass.
 public static class NetworkEndpoints
 {
+    private static readonly string[] LawFirmDirectoryRoles =
+    [
+        ProductRoleCodes.CareConnectReferrer,
+        ProductRoleCodes.CareConnectReferrerAdmin,
+    ];
+
     // BLK-SEC-06: HttpContext.Items key Program.cs stashes the raw physical TCP peer address
     // under, captured before UseForwardedHeaders can rewrite Connection.RemoteIpAddress from a
     // client-supplied X-Forwarded-For header. See the provider-import endpoint below.
@@ -34,41 +41,21 @@ public static class NetworkEndpoints
             .RequireAuthorization(Policies.AuthenticatedUser);
 
         // ── List networks ──────────────────────────────────────────────────────
+        // Single-tenant-network cutover: bootstraps the tenant's one shared network on
+        // first access so callers always have a network id to work with — there is no
+        // longer a separate "create network" action.
         group.MapGet("/", async (
             INetworkService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var networks = await service.GetAllAsync(tenantId, ct);
+            _ = await service.GetOrCreateTenantNetworkAsync(tenantId, ct);
+            var networks = await service.GetAllAsync(tenantId, ct,
+                callerOrgId: ctx.OrgId, isTenantAdmin: IsSystemAdmin(ctx), isNetworkManager: IsNetworkManager(ctx));
             return Results.Ok(networks);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
-
-        // ── Create network ─────────────────────────────────────────────────────
-        group.MapPost("/", async (
-            [FromBody] CreateNetworkRequest request,
-            INetworkService service,
-            ICurrentRequestContext ctx,
-            IAuditEventClient auditClient,
-            HttpContext http,
-            CancellationToken ct) =>
-        {
-            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var network = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
-            // BLK-COMP-01: Audit network creation — every network lifecycle event is traceable.
-            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
-            _ = EmitNetworkAuditAsync(auditClient,
-                eventType:     "careconnect.network.created",
-                action:        "NetworkCreated",
-                description:   $"Network '{network.Name}' created by user.",
-                tenantId:      tenantId,
-                actorUserId:   ctx.UserId,
-                networkId:     network.Id,
-                correlationId: correlationId);
-            return Results.Created($"/api/networks/{network.Id}", network);
-        })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Get network detail ─────────────────────────────────────────────────
         group.MapGet("/{id:guid}", async (
@@ -78,10 +65,11 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var network = await service.GetByIdAsync(tenantId, id, ct);
+            var network = await service.GetByIdAsync(tenantId, id, ct,
+                callerOrgId: ctx.OrgId, isTenantAdmin: IsSystemAdmin(ctx), isNetworkManager: IsNetworkManager(ctx));
             return Results.Ok(network);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Update network ─────────────────────────────────────────────────────
         group.MapPut("/{id:guid}", async (
@@ -95,7 +83,11 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var network = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
+            var network = await service.UpdateAsync(
+                tenantId, id, ctx.UserId, request, ct,
+                isTenantAdmin: IsSystemAdmin(ctx),
+                callerOrgId: ctx.OrgId,
+                isNetworkManager: IsNetworkManager(ctx));
             // BLK-PERF-02: Network metadata changed — evict all public surface cache entries
             // for this tenant+network so the next public read reflects the update.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
@@ -112,37 +104,10 @@ public static class NetworkEndpoints
                 correlationId: correlationId);
             return Results.Ok(network);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
-        // ── Delete network ─────────────────────────────────────────────────────
-        group.MapDelete("/{id:guid}", async (
-            Guid id,
-            INetworkService service,
-            ICurrentRequestContext ctx,
-            IAuditEventClient auditClient,
-            IMemoryCache cache,
-            HttpContext http,
-            CancellationToken ct) =>
-        {
-            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await service.DeleteAsync(tenantId, id, ct);
-            // BLK-PERF-02: Network deleted — evict all public surface cache entries
-            // for this tenant+network (list + detail + providers + markers).
-            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
-                cache.Remove(key);
-            // BLK-COMP-01: Audit network deletion.
-            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
-            _ = EmitNetworkAuditAsync(auditClient,
-                eventType:     "careconnect.network.deleted",
-                action:        "NetworkDeleted",
-                description:   $"Network '{id}' deleted by user.",
-                tenantId:      tenantId,
-                actorUserId:   ctx.UserId,
-                networkId:     id,
-                correlationId: correlationId);
-            return Results.NoContent();
-        })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        // Single-tenant-network cutover: DELETE /api/networks/{id} was removed — deleting
+        // the tenant's sole shared network is not a supported self-service action.
 
         // ── Search shared provider registry ────────────────────────────────────
         // CC2-INT-B06-01: Global cross-tenant search. Returns up to 20 matching providers.
@@ -163,7 +128,7 @@ public static class NetworkEndpoints
             var results = await service.SearchProvidersAsync(name, phone, npi, city, ct);
             return Results.Ok(results);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Add provider to network (match-or-create) ──────────────────────────
         // CC2-INT-B06-01: Body: { existingProviderId } | { newProvider: {...} }
@@ -179,7 +144,14 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var provider = await service.AddProviderAsync(tenantId, id, request, ctx.UserId, ct);
+            var provider = await service.AddProviderAsync(
+                tenantId,
+                id,
+                request,
+                ctx.UserId,
+                ct,
+                owningOrganizationId: ctx.OrgId,
+                isTenantAdmin: IsSystemAdmin(ctx));
             // BLK-PERF-02: Provider membership changed — evict public provider/marker/detail/list
             // cache entries for this tenant+network so the directory reflects the addition.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
@@ -197,7 +169,7 @@ public static class NetworkEndpoints
                 metadata:      JsonSerializer.Serialize(new { networkProviderId = provider.NetworkProviderId, providerId = provider.ProviderId, facilityId = provider.FacilityId }));
             return Results.Ok(provider);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Edit a provider through a tenant-owned network ────────────────────
         // The shared provider record may only be changed here after verifying the
@@ -212,14 +184,23 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var provider = await service.UpdateProviderAsync(tenantId, id, providerId, request, ctx.UserId, ct);
+            var provider = await service.UpdateProviderAsync(
+                tenantId,
+                id,
+                providerId,
+                request,
+                ctx.UserId,
+                ct,
+                isTenantAdmin: IsSystemAdmin(ctx),
+                callerOrgId: ctx.OrgId,
+                isNetworkManager: IsNetworkManager(ctx));
 
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
                 cache.Remove(key);
 
             return Results.Ok(provider);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Remove provider from network ───────────────────────────────────────
         group.MapDelete("/{id:guid}/providers/{providerId:guid}", async (
@@ -239,7 +220,11 @@ public static class NetworkEndpoints
             // its original behavior — membership-only soft delete, Facility untouched — since
             // it's a distinct action from Delete location, not merely a different UI trigger
             // for the same one.
-            await service.RemoveProviderAsync(tenantId, id, providerId, cascadeFacility, ctx.UserId, ct);
+            await service.RemoveProviderAsync(
+                tenantId, id, providerId, cascadeFacility, ctx.UserId, ct,
+                isTenantAdmin: IsSystemAdmin(ctx),
+                callerOrgId: ctx.OrgId,
+                isNetworkManager: IsNetworkManager(ctx));
             // BLK-PERF-02: Provider removed from network — evict public provider/marker/detail/list
             // cache entries for this tenant+network so the directory reflects the removal.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
@@ -257,7 +242,7 @@ public static class NetworkEndpoints
                 metadata:      JsonSerializer.Serialize(new { providerId = providerId }));
             return Results.NoContent();
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Map markers for providers in network ───────────────────────────────
         group.MapGet("/{id:guid}/providers/markers", async (
@@ -267,10 +252,11 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var markers = await service.GetMarkersAsync(tenantId, id, ct);
+            var markers = await service.GetMarkersAsync(tenantId, id, ct,
+                callerOrgId: ctx.OrgId, isTenantAdmin: IsSystemAdmin(ctx), isNetworkManager: IsNetworkManager(ctx));
             return Results.Ok(markers);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── List providers in network ──────────────────────────────────────────
         group.MapGet("/{id:guid}/providers", async (
@@ -280,10 +266,11 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var detail = await service.GetByIdAsync(tenantId, id, ct);
+            var detail = await service.GetByIdAsync(tenantId, id, ct,
+                callerOrgId: ctx.OrgId, isTenantAdmin: IsSystemAdmin(ctx), isNetworkManager: IsNetworkManager(ctx));
             return Results.Ok(detail.Providers);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager, ProductRoleCodes.CareConnectReferrerAdmin);
 
         // ── Network Referral Monitor ────────────────────────────────────────────
         // GET /api/network/referrals — all referrals for this tenant's network,
@@ -306,10 +293,12 @@ public static class NetworkEndpoints
             CancellationToken    ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var networks = await service.GetAllAsync(tenantId, ct);
+            // CareConnectReferrer is a plain (non-admin) role — never sees everything,
+            // only Public providers plus their own org's Private providers.
+            var networks = await service.GetAllAsync(tenantId, ct, callerOrgId: ctx.OrgId);
             return Results.Ok(networks);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmDirectoryRoles);
 
         // Get network with full provider list
         dirGroup.MapGet("/{id:guid}", async (
@@ -319,10 +308,10 @@ public static class NetworkEndpoints
             CancellationToken     ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var detail = await service.GetByIdAsync(tenantId, id, ct);
+            var detail = await service.GetByIdAsync(tenantId, id, ct, callerOrgId: ctx.OrgId);
             return Results.Ok(detail);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmDirectoryRoles);
 
         // Get provider map markers for a specific network
         dirGroup.MapGet("/{id:guid}/markers", async (
@@ -332,10 +321,10 @@ public static class NetworkEndpoints
             CancellationToken     ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var markers = await service.GetMarkersAsync(tenantId, id, ct);
+            var markers = await service.GetMarkersAsync(tenantId, id, ct, callerOrgId: ctx.OrgId);
             return Results.Ok(markers);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmDirectoryRoles);
 
         app.MapPost("/api/networks/{id:guid}/providers/import", async (
             Guid id,
@@ -399,6 +388,12 @@ public static class NetworkEndpoints
         .AllowAnonymous()
         .DisableAntiforgery();
     }
+
+    private static bool IsSystemAdmin(ICurrentRequestContext ctx) =>
+        ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsNetworkManager(ICurrentRequestContext ctx) =>
+        ctx.ProductRoles.Contains($"{ProductCodes.SynqCareConnect}:{ProductRoleCodes.CareConnectNetworkManager}", StringComparer.OrdinalIgnoreCase);
 
     private static bool IsLoopbackCaller(HttpContext http)
     {

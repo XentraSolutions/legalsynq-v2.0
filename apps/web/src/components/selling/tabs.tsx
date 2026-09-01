@@ -67,8 +67,8 @@ function TabButton({
         "h-[30px] px-3 text-sm font-medium transition-colors rounded-md flex-1 cursor-pointer " +
         (active
           ? bordered
-            ? "border-b-2 border-indigo-600 text-indigo-600 "
-            : "bg-white border border-[#E5E5E5] shadow-sm text-gray-900"
+            ? "border-b-2 border-[#EE7132] text-[#EE7132] "
+            : "bg-[#EE7132] border border-[#F4A076] shadow-sm text-white"
           : "border border-transparent text-gray-500 hover:text-gray-700")
       }
       aria-current={active && bordered ? "page" : undefined}

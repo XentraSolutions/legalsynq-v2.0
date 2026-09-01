@@ -20,6 +20,7 @@ export interface MedicalCodesDescriptionProps {
   lienId?: string;
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
+  mode?: "add" | "edit";
 }
 
 const INITIAL_FORM = {
@@ -42,6 +43,7 @@ const INITIAL_ROW = {
 };
 
 function formatCurrency(value: number) {
+  if (!value) return "$ 0.00";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -54,6 +56,7 @@ function roundToTwo(value: number) {
 }
 
 function parseNumber(value: string) {
+  if (!value) return;
   const parsed = Number(value.replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -83,29 +86,50 @@ export default function MedicalCodesDescription(
   }, [rows, data?.codeRows]);
 
   useEffect(() => {
-    setForm((prev: any) => ({ ...prev, medicareCost: medicareCosts }));
+    if (!editingId) {
+      setForm((prev: any) => ({ ...prev, medicareCost: medicareCosts }));
+    }
   }, [medicareCosts]);
 
   function validateForm() {
     const previousRows = Array.isArray(data?.codeRows) ? data.codeRows : [];
     const rowsChanged = JSON.stringify(rows) !== JSON.stringify(previousRows);
-    const valid = rowsChanged ? rows.length > 0 && !form.procedure : false;
+    const valid = rowsChanged || rows.length > 0;
     if (valid) onFormValid?.(valid, { ...form, codeRows: rows });
   }
   function cleanNumericInput(raw: string): string {
+    // Remove everything except digits and dots
     const cleaned = raw.replace(/[^\d.]/g, "");
+
+    // Split by the decimal point to isolate the whole number and decimals
     const parts = cleaned.split(".");
-    return parts.length > 2 ? parts[0] + "." + parts[1] : cleaned;
+
+    if (parts.length > 2) {
+      // If there are multiple dots, keep only the first dot and join the rest
+      return parts[0] + "." + parts.slice(1).join("");
+    }
+
+    return cleaned;
   }
 
   const currentBilling = form.billingAmount;
   const currentPurchase = form.purchaseAmount;
+
   const handleParentInputChange = (raw: string) => {
     const sanitized = cleanNumericInput(raw);
+
+    // Allow the user to type a lone decimal point or trailing dot without resetting to NaN immediately
+    if (sanitized === "" || sanitized === ".") {
+      setForm({ ...form, purchaseAmount: sanitized });
+      return;
+    }
+
     const n = parseFloat(sanitized);
     if (!isNaN(n)) {
-      setForm({ ...form, purchaseAmount: n });
-      return;
+      // If it ends with a dot (e.g. "12."), keep it as a string temporarily so the user can type decimals,
+      // otherwise store the parsed number.
+      const valueToStore = sanitized.endsWith(".") ? sanitized : n;
+      setForm({ ...form, purchaseAmount: valueToStore });
     } else {
       setForm({ ...form, purchaseAmount: sanitized });
     }
@@ -136,14 +160,19 @@ export default function MedicalCodesDescription(
   };
 
   const totals = useMemo(() => {
-    return rows.reduce(
+    const total = rows.reduce(
       (tot, row) => ({
-        medicare: tot.medicare + row.medicareCost,
-        billing: tot.billing + row.billingAmount,
-        purchase: tot.purchase + row.purchaseAmount,
+        medicare: tot.medicare + Math.round((row.medicareCost ?? 0) * 100),
+        billing: tot.billing + Math.round((row.billingAmount ?? 0) * 100),
+        purchase: tot.purchase + Math.round((row.purchaseAmount ?? 0) * 100),
       }),
       { medicare: 0, billing: 0, purchase: 0 },
     );
+    return {
+      medicare: total.medicare / 100,
+      billing: total.billing / 100,
+      purchase: total.purchase / 100,
+    };
   }, [rows, data]);
 
   function resetLine() {
@@ -161,12 +190,12 @@ export default function MedicalCodesDescription(
     if (form.purchaseAmountType == "percent") {
       const val =
         typeof inverseValue == "string"
-          ? parseNumber(inverseValue)
+          ? parseNumber(inverseValue ?? 0)
           : inverseValue;
       return val;
     } else {
       return typeof currentPurchase == "string"
-        ? parseNumber(currentPurchase)
+        ? parseNumber(currentPurchase ?? 0)
         : currentPurchase;
     }
   };
@@ -176,34 +205,56 @@ export default function MedicalCodesDescription(
     );
 
     setTimeout(async () => {
-      const response = await createMedicalCodeLiens(
-        {
-          ...form,
-          id: form.id,
+      if (props.lienId) {
+        const response = await createMedicalCodeLiens(
+          {
+            ...form,
+            id: form.id,
+            code: form.procedureCode,
+            description: selectedOption?.label ?? "",
+            medicareCost: parseNumber(form.medicareCost),
+            billingAmount: parseNumber(currentBilling),
+            purchaseAmount: getCurrentValue(),
+          },
+          editingId != "",
+        );
+
+        const nextRow = {
+          id: editingId || response.data,
           code: form.procedureCode,
           description: selectedOption?.label ?? "",
           medicareCost: parseNumber(form.medicareCost),
           billingAmount: parseNumber(currentBilling),
           purchaseAmount: getCurrentValue(),
-        },
-        editingId != "",
-      );
+        };
 
-      const nextRow = {
-        id: editingId || response.data,
-        code: form.procedureCode,
-        description: selectedOption?.label ?? "",
-        medicareCost: parseNumber(form.medicareCost),
-        billingAmount: parseNumber(currentBilling),
-        purchaseAmount: getCurrentValue(),
-      };
+        setRows((current: any) => {
+          if (editingId) {
+            return current.map((row: any) =>
+              row.id === editingId ? nextRow : row,
+            );
+          }
+          return [...current, nextRow];
+        });
+      } else {
+        const nextRow = {
+          id: rows.length.toString(),
+          code: form.procedureCode,
+          description: selectedOption?.label ?? "",
+          medicareCost: parseNumber(form.medicareCost),
+          billingAmount: parseNumber(currentBilling),
+          purchaseAmount: getCurrentValue(),
+        };
 
-      setRows((current) => {
-        if (editingId) {
-          return current.map((row) => (row.id === editingId ? nextRow : row));
-        }
-        return [...current, nextRow];
-      });
+        setRows((current: any) => {
+          if (editingId) {
+            return current.map((row: any) =>
+              row.id === editingId ? nextRow : row,
+            );
+          }
+          return [...current, nextRow];
+        });
+      }
       validateForm();
     }, 100);
     resetLine();
@@ -228,9 +279,9 @@ export default function MedicalCodesDescription(
         id: payload.id,
         liensId: props.lienId ?? "",
         code: findCodeByDescription(selectedCode),
-        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
-        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
-        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+        medicareCost: parseFloat(payload.medicareCost ?? 0).toFixed(2),
+        billingAmount: parseFloat(payload.billingAmount ?? 0).toFixed(2),
+        purchaseAmount: parseFloat(payload.purchaseAmount ?? 0).toFixed(2),
         payee: payload.payee,
         outboundCheckNumber: payload.outboundCheckNumber,
       };
@@ -280,7 +331,7 @@ export default function MedicalCodesDescription(
   }
 
   function handleDeleteRow(id: string) {
-    // setRows((current) => current.filter((row) => row.id !== id));
+    console.log(editingId);
     if (editingId === id) {
       resetLine();
     }
@@ -288,6 +339,15 @@ export default function MedicalCodesDescription(
   }
 
   async function deleteCode(id: string) {
+    if (props.mode == "add") {
+      setRows((current) => current.filter((row) => row.id !== id));
+      addToast({
+        type: "success",
+        title: `Deleted`,
+      });
+      return;
+    }
+
     try {
       await casesService.deleteMedicalCodeLiens(id);
       addToast({
@@ -309,8 +369,7 @@ export default function MedicalCodesDescription(
     }
   }
 
-  const isLineValid =
-    currentBilling > 0 && currentPurchase > 0 && !!form.procedureCode;
+  const isLineValid = currentBilling > 0 && !!form.procedureCode;
 
   return (
     <div className="container-fluid">

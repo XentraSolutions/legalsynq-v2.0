@@ -34,10 +34,12 @@ const MAX_MESSAGE_LENGTH = 400;
 export async function postFundingOfferedLienMessage(
   id: string,
   message: string,
+  files: File[] = [],
   options: FundingOfferedLienMessageOptions = {},
 ): Promise<FundingOfferedLienMessageResult> {
   const normalizedId = id.trim();
   const trimmedMessage = message.trim();
+  const hasFiles = files.length > 0;
 
   if (!normalizedId) {
     return errorResult(
@@ -48,12 +50,12 @@ export async function postFundingOfferedLienMessage(
     );
   }
 
-  if (!trimmedMessage) {
+  if (!trimmedMessage && !hasFiles) {
     return errorResult(
       400,
       "message-required",
       "Message could not be sent",
-      "Enter a message before sending.",
+      "Enter a message or attach a file before sending.",
     );
   }
 
@@ -69,15 +71,24 @@ export async function postFundingOfferedLienMessage(
   const fetcher = options.fetchImpl ?? fetch;
 
   try {
-    const response = await fetcher(buildFundingOfferedLienMessageUrl(normalizedId), {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ message: trimmedMessage }),
-      cache: "no-store",
-    });
+    const response = hasFiles
+      ? await fetcher(buildFundingOfferedLienMessageUrl(normalizedId), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+          },
+          body: buildMessageForm(trimmedMessage, files),
+          cache: "no-store",
+        })
+      : await fetcher(buildFundingOfferedLienMessageUrl(normalizedId), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ message: trimmedMessage }),
+          cache: "no-store",
+        });
     const correlationId = response.headers.get("x-correlation-id");
     const body = await readJson(response);
 
@@ -104,6 +115,15 @@ export async function postFundingOfferedLienMessage(
       "Network error. Please check your connection and try again.",
     );
   }
+}
+
+function buildMessageForm(message: string, files: File[]): FormData {
+  const formData = new FormData();
+  formData.set("message", message);
+  for (const file of files) {
+    formData.append("files", file, file.name);
+  }
+  return formData;
 }
 
 export async function submitFundingOfferedLienResponse(
@@ -238,7 +258,36 @@ function normalizeMessage(body: unknown): OfferedLienMessage | undefined {
     message: candidate.message,
     createdAtUtc: candidate.createdAtUtc,
     isCurrentUser: true,
+    attachments: normalizeMessageAttachments(candidate.attachments),
   };
+}
+
+function normalizeMessageAttachments(value: unknown): OfferedLienMessage["attachments"] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap(item => {
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as NonNullable<OfferedLienMessage["attachments"]>[number];
+    if (
+      typeof candidate.id !== "string" ||
+      typeof candidate.fileName !== "string" ||
+      typeof candidate.contentType !== "string" ||
+      typeof candidate.fileSizeBytes !== "number" ||
+      typeof candidate.createdAtUtc !== "string"
+    ) {
+      return [];
+    }
+
+    return [{
+      id: candidate.id,
+      fileName: candidate.fileName,
+      contentType: candidate.contentType,
+      fileSizeBytes: candidate.fileSizeBytes,
+      createdAtUtc: candidate.createdAtUtc,
+      viewUrl: typeof candidate.viewUrl === "string" ? candidate.viewUrl : null,
+      downloadUrl: typeof candidate.downloadUrl === "string" ? candidate.downloadUrl : null,
+    }];
+  });
 }
 
 function normalizeError(

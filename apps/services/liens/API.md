@@ -12,6 +12,7 @@
 - [Bills of Sale](#bills-of-sale-endpoints)
 - [Lien Offers](#lien-offers-endpoints)
 - [Contacts](#contacts-endpoints)
+- [Settlement Reductions](#settlement-reduction-endpoints)
 - [Settlement Payments](#settlement-payment-endpoints)
 - [Servicing](#servicing-endpoints)
 - [Reports](#reports-endpoints)
@@ -132,6 +133,7 @@ Search and list liens with optional filters.
 
 Buying-facing lien list responses exclude liens in `Rejected`, `Declined`, or `Cancelled` status and normalize the remaining statuses to `Open` or `Closed`. Selling-specific workflow statuses remain available on selling endpoints and on direct lien detail responses.
 All liens API timestamp responses are serialized in U.S. Pacific time (`-07:00` or `-08:00` depending on DST). Legacy string-formatted timestamps use the same Pacific conversion.
+`LienResponse.purchaseDate` and `LienResponse.initialServiceDate` are formatted as `MM/dd/yyyy` when present.
 
 **Permission:** `SYNQ_LIENS.lien:read`
 
@@ -264,6 +266,7 @@ Update an existing lien.
 | `lienType` | `string` | No | Type of lien |
 | `status` | `string` | No | Current status. Buying list endpoints exclude `Rejected`, `Declined`, and `Cancelled` liens and normalize remaining values to `Open` or `Closed`; direct lien detail responses may still return workflow statuses used by selling flows. |
 | `caseId` | `guid` | Yes | Associated case ID |
+| `sellingCaseId` | `guid` | Yes | Original Selling case ID when moved to Liens Management |
 | `facilityId` | `guid` | Yes | Associated facility ID |
 | `originalAmount` | `decimal` | No | Original lien amount |
 | `currentBalance` | `decimal` | Yes | Current balance |
@@ -279,6 +282,7 @@ Update an existing lien.
 | `sellingOrgId` | `guid` | Yes | Selling organization ID |
 | `buyingOrgId` | `guid` | Yes | Buying organization ID |
 | `holdingOrgId` | `guid` | Yes | Holding organization ID |
+| `sellerStatus` | `string` | Yes | Selling workflow status, including `Internal` |
 | `incidentDate` | `date` | Yes | Date of incident |
 | `description` | `string` | Yes | Description |
 | `openedAtUtc` | `datetime` | Yes | When the lien was opened |
@@ -291,6 +295,233 @@ Update an existing lien.
 ## Selling Endpoints
 
 Base path: `/api/liens/selling`
+
+### Case-first Selling intake
+
+Selling lien creation is a two-step case workflow. First call `POST /case-drafts` with
+`accidentTypeId`, `accidentState`, `dateOfLoss`, `handlingLawFirmId`, `caseManagerId`, and
+`caseTrackingNotes`; Selling defaults the case status to `PreDemand`. Update an unfinalized draft with
+`PUT /case-drafts/{draftId}`. Then call
+`POST /case-drafts/{draftId}/plaintiff` with `firstName`, `lastName`, `birthdate`, `email`, `phone`,
+`gender`, `address`, `city`, `state`, and `zipcode`; this atomically creates the canonical case and
+returns `caseId`. Draft creation and plaintiff finalization do not require `Idempotency-Key`.
+
+After finalization, the update workflow uses the same two steps: `PUT /cases/{caseId}` accepts the
+case-information fields from `POST /case-drafts`, then `PUT /cases/{caseId}/plaintiff` accepts the plaintiff
+fields from `POST /case-drafts/{draftId}/plaintiff`. Both routes only update finalized Selling cases owned by the
+authenticated tenant and seller organization.
+
+`GET /cases/{caseId}` returns those same case-information and plaintiff fields for a finalized Selling case,
+including `draftId`, `caseId`, and `caseNumber`. It is limited to the authenticated tenant and seller organization.
+
+`POST /liens` now requires that returned `caseId`, plus `sellerStatus` (`Pending` or `Internal`) and an
+optional `source`. The route rejects cases outside the authenticated tenant/seller organization.
+
+`PUT /liens/{lienId}/lien-information` requires `sellerStatus` and `listingVisibility`. Omitted
+`initialServiceDate`, `endServiceDate`, `receivableDueDate`, and `notes` fields preserve their current values;
+supplying one of those fields as `null` clears its current value.
+
+`PUT /liens/{lienId}/case-information` is now restricted to lien-owned `fundingCompanyId`,
+`fundingCompanyContactId`, `facilityId`, and `medicalProviderId`; it no longer accepts `caseId`,
+`createCaseIfMissing`, `handlingLawFirmId`, or `caseManagerId`. `facilityId` may reference either an active
+seller-owned legacy facility or an active seller-owned Company Directory Medical Facility.
+
+`GET /lookups/document-types` returns the fixed Selling document codes `MedicalBill`, `MedicalRecord`,
+`LienAgreement`, `SettlementStatement`, `Other`, `ItemizedBill`, `HCFA-1500`, `SignedLien`, and
+`LetterOfProtection`.
+
+### GET `/api/liens/selling/liens/{lienId}/messages`
+
+Returns the authenticated seller's persisted message thread for a seller-scoped lien. The endpoint is tenant- and
+seller-organization-scoped and returns every persisted offer-thread message for the lien across buyer contacts.
+
+**Permission:** `SYNQ_LIENS.lien_sale:read`
+
+**Response:** `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": "message-guid",
+      "senderType": "buyer",
+      "senderName": "Buyer Reviewer",
+      "senderInitials": "BR",
+      "senderEmail": "buyer@capital.test",
+      "message": "Can you confirm the signed LOP is final?",
+      "createdAtUtc": "2026-07-28T12:30:00Z",
+      "isCurrentUser": false,
+      "attachments": [
+        {
+          "id": "attachment-guid",
+          "fileName": "signed-lop.pdf",
+          "contentType": "application/pdf",
+          "fileSizeBytes": 245760,
+          "createdAtUtc": "2026-07-28T12:30:00Z",
+          "viewUrl": "/api/selling/api/liens/selling/liens/{lienId}/message-attachments/{attachment-guid}/view",
+          "downloadUrl": "/api/selling/api/liens/selling/liens/{lienId}/message-attachments/{attachment-guid}/download"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### POST `/api/liens/selling/liens/{lienId}/messages`
+
+Posts a message from the authenticated seller detail page into the same persisted offer thread used by the public
+buyer/seller links and authenticated funding-company portal. The lien must already have an offer/access-link thread
+with a buyer; otherwise the endpoint returns `409 message_thread_unavailable`. Seller messages use
+`senderType=seller` and notify the buyer with the same `lien.offer.message.created` email workflow used by public
+seller replies.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Request:**
+
+Text-only messages may be sent as JSON:
+
+```json
+{
+  "message": "The LOP is final and attached to the package."
+}
+```
+
+Messages with attachments are sent as `multipart/form-data` with a `message` field and repeated `files` parts:
+
+```text
+message=The LOP is final and attached to the package.
+files=@signed-lop.pdf
+files=@supporting-bill.pdf
+```
+
+Message text is trimmed and limited to 400 characters. Either text or at least one file is required. Up to 10 files are
+accepted per message; each file uses the service upload limit and must be one of `.pdf`, `.jpg`, `.jpeg`, `.png`,
+`.docx`, `.xlsx`, `.xls`, or `.csv`. Attachments are stored in Documents with
+`referenceType=SellingPortalMessage` and returned as message-scoped metadata with same-origin view/download URLs.
+
+**Response:** `201 Created`, same message shape as the public message endpoint.
+
+### GET `/api/liens/selling/liens/{lienId}/message-attachments/{attachmentId}/view`
+
+Issues a short-lived Documents view access URL for a message attachment on the authenticated seller's lien, then
+redirects to that URL. The endpoint enforces the seller's tenant, seller organization, lien, and attachment ownership.
+
+**Permission:** `SYNQ_LIENS.lien_sale:read`
+
+**Response:** `302 Found`
+
+### GET `/api/liens/selling/liens/{lienId}/message-attachments/{attachmentId}/download`
+
+Same validation and ownership checks as the authenticated message-attachment view endpoint, but requests a Documents
+download URL.
+
+**Permission:** `SYNQ_LIENS.lien_sale:read`
+
+**Response:** `302 Found`
+
+### POST `/api/liens/selling/liens/{lienId}/move-to-management`
+
+Moves a Selling lien into Liens Management without creating a second lien record. Existing same-tenant,
+same-organization case and lien data remain on the same records; the `caseId` is preserved in `sellingCaseId`
+and `sellerStatus` becomes `Internal`. When no case exists, the API creates a same-tenant, same-organization
+management case from the lien information, falling back to `Jane Doe` when no plaintiff/client name is present.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Header:** `Idempotency-Key` is required.
+
+```json
+{
+  "reason": "Retained internally"
+}
+```
+
+Every lien shown on the Selling **Pending** tab is eligible, including `Pending`, `Approval`, `PreparedForSale`,
+and `SubmittedForSale`. Submitted liens are atomically withdrawn, buyer access revoked, and pending offers
+withdrawn before they become internal. Management receives the Selling billing amount as its billing total and
+the Selling ask amount as its purchase total. The lien purchase date is set to the UTC calendar date on which the
+move completes. Existing Management medical-code rows are retained when no Selling-pricing rows exist. For a
+historical single blank compatibility row, the Management medical-code response recovers code, description, and
+amounts from the retained Selling-pricing row and lien totals. Canonical medical-facility and medical-provider selections are projected through reusable legacy
+facility/contact records into Management's `LegacyMedicalFacilityInfo` compatibility record; the record is created
+when it does not already exist, so both selectors resolve immediately through the Management APIs. The funding company is resolved from
+the authenticated tenant's organization name. An active canonical Funding Company with that name is reused, or created
+and linked to the tenant when absent, then exposed through the same Management compatibility record. Existing `Internal`
+liens and legacy draft liens with no seller status remain eligible for backward compatibility.
+
+### POST `/api/liens/selling/liens/{lienId}/move-to-management-v2`
+
+Moves a seller-scoped lien into Liens Management by setting `SellerStatus=Internal` and linking the lien to a
+tenant/seller-owned case. The same canonical case link is used by Selling and Liens Management, and the chosen case is
+also persisted on the lien's `sellingCaseId` reference. If the lien already has a valid case, that case is reused. Otherwise, when
+`caseInfo` is provided, the API first searches the same tenant and seller organization for an existing case with the
+same first name, last name, DOB, and date of loss. Matching an existing case is not an error: the lien is added to that
+case and processing continues. If no match exists, a new case is created from `caseInfo`; if `caseInfo` is omitted, a
+generic `Jane Doe` case is created. When the lien already has a seller-owned case, supplied `caseInfo` updates that
+same case while preserving phone, email, insurance, policy, claim, description, medical-status, tracking, and canonical
+party fields that are outside the move request.
+
+Submitted-for-sale liens are first returned to draft Selling state, active buyer links are revoked, pending buyer offers
+are expired, and then the lien is moved to Internal. Selling medical-pricing rows are copied into Management
+`LegacyMedicalCode` rows so Management billing and purchase totals match Selling billing and target-sale amounts.
+The original lien record retains its purchase/service/due dates, notes, financial values, and canonical company links.
+All lien-scoped servicing and Selling document-reference rows are associated with the resolved Management case, while
+funding-company, medical-facility, and medical-provider details are projected into Management's compatibility read model.
+Facility/provider IDs in that read model reference the legacy records understood by Management while the lien retains
+its canonical Company Directory associations.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Headers:**
+
+| Header | Required | Description |
+|---|---|---|
+| `Idempotency-Key` | Yes | Suppresses duplicate move processing for the same caller/lien |
+
+**Request:**
+
+```json
+{
+  "reason": "Keep internally",
+  "caseInfo": {
+    "clientFirstName": "Jane",
+    "clientLastName": "Doe",
+    "clientDob": "1990-01-15",
+    "clientAddress": "123 Main St",
+    "clientCity": "Los Angeles",
+    "clientState": "CA",
+    "clientZipCode": "90001",
+    "isServicing": true,
+    "statusLabel": "Pre-demand",
+    "accidentTypeId": "MVA",
+    "stateOfIncident": "CA",
+    "dateOfIncident": "2026-08-01",
+    "lawFirmId": "guid-or-code",
+    "caseManagerId": "guid-or-code",
+    "notes": "Brief case notes"
+  }
+}
+```
+
+`caseInfo` is optional. When supplied, `clientFirstName`, `clientLastName`, `clientDob`, `statusLabel`,
+`accidentTypeId`, `stateOfIncident`, and `lawFirmId` are required. Duplicate matching only runs when first name,
+last name, DOB, and date of loss are all supplied.
+
+**Response:** `200 OK`
+
+```json
+{
+  "lienId": "guid",
+  "caseId": "guid",
+  "sellingCaseId": "guid",
+  "caseCreated": false,
+  "caseNumber": "SC-01A03CDAC567",
+  "sellerStatus": "Internal",
+  "status": "Draft",
+  "message": "Lien moved to management and added to an existing case."
+}
+```
 
 ### POST `/api/liens/selling/liens/{lienId}/confirm-sale`
 
@@ -315,12 +546,12 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
-organization display, seller notification email, and handling law firm data. Buyer-facing seller name is the
+organization display, active seller Company Directory contact-person data, seller notification email, and handling law firm data. Buyer-facing seller name is the
 `idt_Users.FirstName` + `LastName` display name for the seller user who confirms/submits the offer
 (`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user), scoped to the seller organization when Identity
 validates membership. Seller company represents the selling
-organization (`sellerOrgId`) resolved from Identity, with fallback only to
-non-law-firm and non-case-manager contacts in that seller organization. Handling law firm and case manager names stay in
+organization (`sellerOrgId`) resolved from Identity, with fallback to active `liens_CompanyContactPersons` joined through
+active `liens_Companies` in that seller organization. Handling law firm and case manager names stay in
 the asset/case fields and are not used as the seller display. Handling law firm is the selected standalone law-firm
 contact's `liens_Contacts.Organization` value, falling back to `DisplayName` for legacy or incomplete firm records. In
 buyer and seller notification Asset Overview sections, Contact Person, Email Address, and Handling Law Firm all come
@@ -340,7 +571,7 @@ such as `localhost` or `127.0.0.1` are rejected because the email CTA must work 
 `New Lien Offer` copy with a response CTA. The seller receives the same branded format with buyer/funding-company
 information and a `View Lien Details` CTA. Neither email inserts sample
 document data; both include only real supporting document names found in lien/case document metadata. The LegalSynq mark
-and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
+and Figma-matched section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain; that public browser route renders in `apps/web`,
@@ -572,6 +803,11 @@ non-actionable rows expose `view` only.
 Returns the authenticated funding-company detail view for one offered lien. The `{accessLinkId}` is the `id` returned
 by `GET /api/liens/selling/buyer/liens`; access is scoped to the authenticated buyer contact matched by email, using the
 same `BuyerContactId` filtering as the list endpoint.
+The `submittedAtUtc` field uses the lien's submitted-for-sale timestamp when present, serialized with the DST-aware
+U.S. Pacific offset, and falls back to notification or access-link creation time only for legacy rows without a
+sale-submission timestamp.
+The `notes` field returns the persisted lien notes shown in the seller portfolio; lien description is used only when
+those notes are blank.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -645,8 +881,12 @@ same `BuyerContactId` filtering as the list endpoint.
 }
 ```
 
-`documents`, `messages`, and `activity` are returned only from persisted records. They are empty arrays when no matching
-servicing documents, portal messages, or buyer response activity exist. `allowedActions` exposes `accept` and `decline`
+`documents`, `messages`, and `activity` are returned only from persisted records. Funding-company document rows include
+uploaded document servicing metadata attached to the offered lien: `LegacyCaseDocument`, `LegacyLienDocument`,
+`LegacyMedicalDocument`, and seller-wizard `SellingDocumentReference` rows. Document categories resolve from canonical
+`documentTypeId` metadata through the tenant's active `DocumentCategory` lookup when available, then fall back to
+document metadata such as `documentType`. These arrays are empty when no matching servicing documents, portal messages,
+or buyer response activity exist. `allowedActions` exposes `accept` and `decline`
 only when the access link has not recorded a response and the lien itself is still actionable. `viewUrl` and
 `downloadUrl` are same-origin tenant-portal BFF paths for authenticated funding-portal document access. They are `null`
 when the servicing item does not contain a resolvable Documents-service id.
@@ -758,6 +998,9 @@ email and authenticated funding-company views. Handling law firm is the selected
 contacts remain case/asset metadata and are not used as the buyer-facing seller identity. For buyer-purpose links, the `account` block indicates whether the access link has already
 activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
 can render `Log In` instead of `Activate Free Account`.
+The lien `submittedAtUtc` field is the submitted-for-sale timestamp when present, serialized with the DST-aware U.S.
+Pacific offset; it falls back to the notification submission or access-link creation timestamp only for legacy rows
+without a persisted sale-submission timestamp.
 
 ```json
 {
@@ -820,7 +1063,18 @@ can render `Log In` instead of `Activate Free Account`.
       "senderName": "Buyer contact",
       "senderEmail": "buyer@company.test",
       "message": "Can you confirm the signed LOP is final?",
-      "createdAtUtc": "2026-07-23T14:05:00Z"
+      "createdAtUtc": "2026-07-23T14:05:00Z",
+      "attachments": [
+        {
+          "id": "attachment-guid",
+          "fileName": "signed-lop.pdf",
+          "contentType": "application/pdf",
+          "fileSizeBytes": 245760,
+          "createdAtUtc": "2026-07-23T14:05:00Z",
+          "viewUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/view",
+          "downloadUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/download"
+        }
+      ]
     }
   ],
   "account": {
@@ -837,11 +1091,17 @@ For seller-view links, `audience` is `seller`; the same JSON includes buyer/fund
 can post messages, but response and activation endpoints reject that token with `403 read-only-link`. Seller-view JSON
 does not include an account-action requirement; `account` may be `null`.
 
-The `documents` array is limited to servicing document records attached to the offered lien. Selling v2 document
-references (`SellingDocumentReference`) are read from their JSON metadata, while legacy lien document records still use
-the existing semicolon metadata. Case-level documents that are not attached to the lien are excluded. `viewUrl` and
-`downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect through Liens to
-the anonymous Documents access-token route.
+The `documents` array includes uploaded document servicing metadata attached to the offered lien:
+`LegacyCaseDocument`, `LegacyLienDocument`, `LegacyMedicalDocument`, and seller-wizard `SellingDocumentReference` rows.
+Document categories resolve from canonical `documentTypeId` metadata through the tenant's active `DocumentCategory`
+lookup when available, with legacy semicolon metadata and seller-wizard `documentType` metadata still supported.
+Case-level documents that are not attached to the lien are excluded.
+`viewUrl` and `downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect
+through Liens to the anonymous Documents access-token route.
+
+The `messages[].attachments` array contains only files uploaded with that message. These files are not included in the
+general `documents` array, and their view/download URLs preserve the public offer token while redirecting through Liens
+to short-lived Documents access URLs.
 
 ### GET `/api/liens/selling/public/{token}/documents/{documentId}/view`
 
@@ -885,13 +1145,18 @@ logged and do not roll back the saved message or response.
 
 **Request:**
 
+Text-only public messages may be sent as JSON:
+
 ```json
 {
   "message": "Can you confirm the signed LOP is final?"
 }
 ```
 
-Messages must be 400 characters or fewer.
+Messages with attachments are sent as `multipart/form-data` with a `message` field and repeated `files` parts. Message
+text is trimmed and limited to 400 characters. Either text or at least one file is required. Up to 10 files are accepted
+per message; each file uses the service upload limit and must be one of `.pdf`, `.jpg`, `.jpeg`, `.png`, `.docx`,
+`.xlsx`, `.xls`, or `.csv`.
 
 **Response:** `201 Created`
 
@@ -902,9 +1167,38 @@ Messages must be 400 characters or fewer.
   "senderName": "Buyer contact",
   "senderEmail": "buyer@company.test",
   "message": "Can you confirm the signed LOP is final?",
-  "createdAtUtc": "2026-07-23T14:05:00Z"
+  "createdAtUtc": "2026-07-23T14:05:00Z",
+  "attachments": [
+    {
+      "id": "attachment-guid",
+      "fileName": "signed-lop.pdf",
+      "contentType": "application/pdf",
+      "fileSizeBytes": 245760,
+      "createdAtUtc": "2026-07-23T14:05:00Z",
+      "viewUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/view",
+      "downloadUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/download"
+    }
+  ]
 }
 ```
+
+### GET `/api/liens/selling/public/{token}/message-attachments/{attachmentId}/view`
+
+Issues a short-lived Documents view access URL for a token-scoped message attachment, then redirects to that URL. Buyer
+and seller public offer tokens can open attachments from the message thread represented by the token.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
+
+### GET `/api/liens/selling/public/{token}/message-attachments/{attachmentId}/download`
+
+Same validation and ownership checks as the public message-attachment view endpoint, but requests a Documents download
+URL.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/public/{token}/activate-account`
 
@@ -1052,9 +1346,25 @@ requires service JWT auth for producer submissions.
 
 Base path: `/api/liens/cases`
 
+### POST `/api/liens/cases/global-search`
+
+Search cases, liens, and the legacy global-search categories for the authenticated tenant. The request accepts
+`query` or the legacy alias `keyword`, plus optional `page` and `limit` values. The response preserves the paginated
+`cases` and `liens` objects and adds the legacy `plaintiffs`, `lawFirms`, `medicalFacilities`, `medicalProviders`,
+`fundingCompanies`, `Leads`, and `servicing` arrays. Funding-company results include both imported `LienHolder`
+contacts and canonical `FundingCompany` contacts.
+
+**Permission:** `SYNQ_LIENS.case:read`
+
+---
+
 ### GET `/api/liens/cases`
 
 Search and list cases with optional filters.
+
+Case statuses include `PreDemand`, `DemandSent`, `InNegotiation`, `Litigation (Open)`,
+`Litigation (Pending)`, `CaseSettled`, and `Closed`. The two litigation variants are
+stored values and can be filtered independently.
 
 **Permission:** `SYNQ_LIENS.case:read`
 
@@ -1087,7 +1397,15 @@ Get a case by its unique identifier.
 |---|---|---|
 | `id` | `guid` | Case unique identifier |
 
-**Response:** `200 OK` — `CaseResponse`
+**Response:** `200 OK` — `CaseResponse`. The response includes the latest linked lien's UI lifecycle
+label in `lienStatus` and matching LienStatus lookup UUID in `lienStatusId`. It also includes the latest
+settlement payment's display value in `settlementStatus` and its stored lookup ID or code in
+`settlementStatusId` only when the case has at least one lien and every linked lien is `Settled`
+(legacy/UI `Closed`), or when any settlement or payment record on the case declares `No Recovery`. A No
+Recovery declaration remains visible while other liens are open and is normalized to `No Recovery` with
+legacy settlement-status ID `4`. Other settlement statuses remain empty while any linked lien is open or
+rejected; cases without liens also return empty settlement fields. Each field pair also returns empty
+strings when its corresponding record does not exist.
 
 **Error:** `404 Not Found` — if the case does not exist.
 
@@ -1211,7 +1529,7 @@ Update an existing case.
 | `claimNumber` | `string` | No | Yes | Insurance claim number |
 | `description` | `string` | No | Yes | Case description |
 | `notes` | `string` | No | Yes | Additional notes |
-| `status` | `string` | No | Yes | Case status |
+| `status` | `string` | No | Yes | Case status. Accepted values include `Litigation (Open)` and `Litigation (Pending)`. |
 | `demandAmount` | `decimal` | No | Yes | Demand amount |
 | `settlementAmount` | `decimal` | No | Yes | Settlement amount |
 
@@ -1225,13 +1543,36 @@ Update an existing case.
 
 Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
 
-Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update` and description `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, `Case Tracking Note Update` is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
+Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update`. A nonblank input uses description `Case Tracking Note Update: <submitted note>`; clearing the input uses `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, that description is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Status aliases such as `Negotiations`, `InNegotiation`, and `In Negotiation` are compared by their canonical value so resubmitting the displayed status does not create a false status-change entry. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
 
 **Permission:** `SYNQ_LIENS.case:read`
 
 The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is ordered newest first and each item includes the historical `note` value and creator metadata. `created` is the U.S. Pacific display string, while `createdAtUtc` is the corresponding canonical UTC ISO timestamp.
 
 `POST /api/liens/cases/add-note` and `POST /api/liens/cases/get-notes` are the separate Feed-note routes. Feed notes are shown only in the case Feed; they are not returned by this case-notes endpoint or by case-update history.
+
+When `LegacyUpdateHistory:Enabled` is true, `POST /api/liens/cases/case-updates/v3`
+also merges imported Program 1 case-update events and
+`POST /api/liens/cases/liens-updates/v3` merges imported lien-update events.
+The lien-update timeline excludes case-level `Case Details Update` history that has
+no lien association. Those records remain available from `case-updates/v3`; every
+row returned by `liens-updates/v3` represents a specific lien and includes its
+`lienId` and `action`.
+Changing `note` through `POST /api/liens/cases/liens/update-medical` appends one
+lien-scoped `Lien Update` row. Its description is the submitted note, its
+`lienId` is the updated lien, and `updatedBy` resolves from the authenticated
+user. Resubmitting the same trimmed note does not create a duplicate row;
+clearing an existing note is recorded as `Medical note cleared.`.
+Global ordering is timestamp descending, native before imported on an exact
+timestamp tie, then stable source sequence/ID descending. Counts and pagination
+cover all enabled sources. Timeline requests are limited to 200 rows per page
+and the first 25,000 rows; larger windows return `400`. Imported case rows retain the existing wire fields:
+`note` repeats `description`, `category` is `legacy`, `isPinned` and `isEdited`
+are false, `created` equals `timestamp`, `createdBy`/`updatedBy` contain the
+legacy actor or an empty string, and `updated` is empty. The known `ÔåÆ` token
+is rendered as `→`; other source text is unchanged. With the flag disabled,
+both endpoints retain native-only behavior. Case updates return a successful
+empty result; lien updates return `404` when every enabled source is empty.
 
 ---
 
@@ -1247,7 +1588,7 @@ The dashboard Total Lien Report, including its status chart and totals, excludes
 
 Compatibility alias: `GET /api/liens/cases/payoff-qoute/{caseId}`.
 
-Returns the latest payoff statement URL for the case. If no payoff document exists, the service generates a payoff PDF from the case and its open servicing liens, uploads it to the Documents service as a case document, records `LegacyCaseDocument` metadata with legacy type ID `14`, and returns the uploaded document URL.
+Generates a new payoff PDF from the case and its open servicing liens on every request, uploads it to the Documents service as a case document, and records `LegacyCaseDocument` metadata with legacy type ID `14`. Existing payoff documents do not prevent generation. Before returning success, the service waits briefly for the newly generated document's security scan to report `CLEAN`; terminal scan outcomes remain unavailable rather than returning a URL that the frontend cannot open.
 
 **Response:** `200 OK`
 
@@ -1345,6 +1686,10 @@ Uploads the file to the Documents service and records legacy document metadata a
 `GET /api/liens/cases/get-casedocument/{caseId}`, `GET
 /api/liens/cases/liens/get-medicaldocument/{liensId}`, and `GET
 /api/liens/cases/get-allcasedocument/{caseId}` return a legacy `url` field.
+Document responses also return `documentTypeId`, normalized to the UUID used by
+`GET /lookup/document/type`. The existing `typeId` remains available for legacy
+callers. When historical metadata has no usable type, both fields fall back to
+the canonical `Other` document type so the tenant portal always displays a label.
 
 Current uploads return `/documents/{documentId}` and must be opened through the
 Documents-service view-token endpoint. SQL-migrated SL-CORE records instead
@@ -1905,6 +2250,24 @@ Reactivate a previously deactivated contact.
 
 ---
 
+### POST `/api/liens/contacts/export-csv`
+
+Export all matching active, top-level contacts as a Base64-encoded CSV. The default columns match the Contacts table: the selected contact-type name, Email, and Active Cases.
+
+**Permission:** `SYNQ_LIENS.lien:service`
+
+**Request Body:**
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `contactType` | `string` | No | `null` | Contact-type tab to export |
+| `search` | `string` | No | `null` | Matches the Contacts table search |
+| `legacyFormat` | `boolean` | No | `false` | Returns the previous ten-column schema, including inactive and sub-contact records |
+
+**Response:** `200 OK` — `{ "data": "<base64 CSV>" }`
+
+---
+
 ### ContactResponse
 
 | Field | Type | Nullable | Description |
@@ -1931,9 +2294,68 @@ Reactivate a previously deactivated contact.
 
 ---
 
+## Settlement Reduction Endpoints
+
+Base path: `/api/liens/settlement/reductions`
+
+`GET /case/{caseId}` returns only the latest canonical reduction for each lien,
+selected by the most recent persisted update rather than the business reduction
+date. `GET /lien/{lienId}` returns the lien's canonical reduction history.
+For a lien without a canonical reduction, the response also exposes preserved
+SL-CORE settlement metadata containing both a valid `reductionAmount` and an
+explicit `SLS_REDUCTION_DATE`. Historical source rows without a reduction date
+are omitted from this compatibility fallback; the service does not invent a
+date. A canonical reduction takes precedence over the legacy fallback for the
+same lien.
+
+---
+
 ## Settlement Payment Endpoints
 
 Base path: `/api/liens/settlement/payments`
+
+### Canonical case payment ledger
+
+The tenant portal Payments tab uses `GET` and `POST /api/liens/cases/{caseId}/payments` and
+`POST /api/liens/cases/{caseId}/payments/{paymentId}/void`.
+
+- `GET` requires `SYNQ_LIENS.lien:read`. Query parameters are `search`, `paymentMethod`,
+  `postingStatus`, `sortBy` (`paymentDate`, `paymentMethod`, or `amount`), `sortDirection`,
+  `page`, and `pageSize` (maximum 100). The response contains `summary`, `items`, `page`,
+  `pageSize`, and `totalCount`. Summary totals are calculated independently of the page and
+  include posted rows only. Lien selling amount uses `PurchasePrice`, then `AskAmount`, then
+  `OriginalAmount`; lien aging uses the earliest persisted `ReceivableDueDate` and is null when
+  no linked lien has one.
+- `POST /api/liens/cases/{caseId}/payments` requires `SYNQ_LIENS.lien:settle` and an
+  `Idempotency-Key` header. The body requires positive `amount`, `paymentDate`,
+  `paymentMethod`, `referenceNumber`, and one or more unique `allocations` containing `lienId`
+  and positive `amount`. Allocation totals must equal the payment amount and cannot exceed any
+  lien's outstanding selling balance. `detailsContext`, `notes`, `settlementType`,
+  `settlementStatus`, and `lienStatus` are optional. All allocation rows share one `receiptId`
+  and payment number and are written in one transaction with any requested lien-status changes
+  and audit event.
+- `POST /api/liens/cases/{caseId}/payments/{paymentId}/void` requires
+  `SYNQ_LIENS.lien:settle`, `Idempotency-Key`, and `{ "reason": "..." }`. It marks every
+  allocation sharing the selected payment's receipt as `Voided`; the original rows remain in
+  history and no longer contribute to posted totals. Repeating a completed request with the same
+  key and body replays its response; reusing a key with a different body returns `409`.
+
+The older settlement payment routes remain available for compatibility. New case-payment UI
+writes must use the canonical case-scoped route so multi-lien allocation and status changes are
+atomic.
+
+### POST `/service/update-liens-status`
+
+Legacy servicing endpoint for closing one or more selected liens and declaring No Recovery. `caseId`,
+comma-delimited `lienIds`, `lienStatus`, and `closedDate` are required; `closedDate` accepts `yyyy-MM-dd`
+and US `MM/dd/yyyy` formats. Every selected lien must belong to the authenticated tenant and the supplied
+case. The update is atomic on relational databases: each selected lien receives `lienStatus`, and a
+zero-amount payment-detail declaration is recorded for `closedDate` with the optional `note` and canonical
+No Recovery settlement status ID `4`.
+
+The No Recovery declaration is case-level for display compatibility. A subsequent
+`GET /api/liens/cases/{id}` returns `settlementStatus: "No Recovery"` and `settlementStatusId: "4"` even
+when other liens on the case remain open.
 
 ### PUT `/api/liens/settlement/payments/{paymentId}`
 
@@ -1957,6 +2379,7 @@ All fields are required. Unknown JSON fields are rejected with `400 Bad Request`
 | `paymentDate` | `date` | Payment date in `YYYY-MM-DD` format |
 | `paymentMethod` | `string` | Nonblank payment method, such as `Check` |
 | `referenceNumber` | `string` | Nonblank check or external payment reference number; maximum 100 characters |
+| `detailsContext` | `string` | Optional payment context; maximum 300 characters |
 | `notes` | `string` | User-visible payment note; must be present and non-null but may be empty |
 | `settlementType` | `string` | Nonblank settlement source, such as `by_funding_company` |
 | `settlementStatus` | `string` | Nonblank payment outcome, such as `full_payment` |
@@ -1977,7 +2400,7 @@ All fields are required. Unknown JSON fields are rejected with `400 Bad Request`
 
 **Response:** `200 OK` — `SettlementPaymentDetailResponse`
 
-The response returns the immutable payment identity and linkage, the updated amount/date/reference/note, `paymentMethod`, `settlementTypeId`, `settlementStatusId`, and audit fields. Settlement classification remains stored in the existing payment metadata representation; unrelated metadata is preserved. The payment update and linked-lien status change commit atomically.
+The response returns the immutable payment identity and linkage, the updated amount/date/reference/note, `paymentMethod`, `settlementTypeId`, `settlementStatusId`, and audit fields. Current rows use first-class classification columns while preserved legacy metadata remains readable; unrelated legacy metadata is preserved. The payment update and linked-lien status change commit atomically.
 
 Because payment method and settlement classifications use the legacy metadata representation, `paymentMethod`, `settlementType`, and `settlementStatus` reject `;`, `=`, CR/LF, and the `[legacy-meta]` marker. `notes` rejects the exact `[legacy-meta]` marker but otherwise permits normal punctuation, including semicolons and equals signs.
 
@@ -1987,6 +2410,19 @@ Because payment method and settlement classifications use the legacy metadata re
 |---|---|
 | `400 Bad Request` | Missing, malformed, unknown, or invalid request field |
 | `404 Not Found` | Payment is missing, deleted, or belongs to another tenant |
+
+### DELETE `/api/liens/settlement/payments/{paymentId}`
+
+Soft-delete a settlement payment and reopen its settled liens. When the selected row belongs to
+a receipt, every active allocation sharing that `receiptId` is deleted and every distinct settled
+lien in the receipt is returned to the open (`Active`) status. Compatibility rows that predate
+receipts are grouped by case, payment date, and reference number, falling back to the case-level
+payment number when no reference is available. The payment deletion and lien-status changes commit
+atomically on relational databases.
+
+**Permission:** `SYNQ_LIENS.lien:update`
+
+**Response:** `200 OK` with `{ "isSuccess": true, "message": "Successfully Deleted." }`.
 
 ---
 
@@ -2230,6 +2666,119 @@ Exports all rows matching `noteType` and the requested ordering; `page` and `lim
 
 CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Export uses the same tenant-scoped unreconciled-target exclusion and additive completeness fields as preview, so eligible native and reconciled rows are exported without silently including stale legacy classifications.
 
+### GET `/api/liens/reports/weekly-aging`
+
+Returns a paged weekly aging report for liens accepted by a buyer. The report is tenant-safe and restricted to buyer access links whose `SellerOrgId` matches the authenticated organization. It requires authenticated SynqLien product access, sell mode, and `SYNQ_LIENS.lien_sale:view_analytics`. Responses use `Cache-Control: no-store`.
+
+Query parameters:
+
+- `asOfDate`: optional ISO `yyyy-MM-dd`; defaults to the current UTC date.
+- `page`: optional, defaults to `1`, and must be at least `1`.
+- `pageSize`: optional, defaults to `50`, and must be between `1` and `100`.
+
+The earliest accepted `SellingBuyerAccessLink.RespondedAtUtc` anchors each lien's age. Acceptance day is day 1. The weekly columns are inclusive days 1-7, 8-14, 15-21, 22-28, and more than 28. Future and declined responses are excluded. The amount is the accepted buyer response amount, and each row places that amount in exactly one aging column. `summaryTotals` contains totals for the full matching result set, independent of pagination. Rows are ordered oldest acceptance first, then by lien code and lien ID.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Weekly aging report generated.",
+  "asOfDate": "2026-08-25",
+  "currency": "USD",
+  "page": 1,
+  "pageSize": 50,
+  "totalCount": 1,
+  "totalPages": 1,
+  "summaryTotals": {
+    "totalLiens": 1,
+    "days1To7": 7500.00,
+    "days8To14": 0.00,
+    "days15To21": 0.00,
+    "days22To28": 0.00,
+    "moreThan28": 0.00,
+    "totalAmount": 7500.00
+  },
+  "data": [
+    {
+      "lienCode": "LIEN-2026-001",
+      "fundingCompany": "Atlas Funding",
+      "days1To7": 7500.00,
+      "days8To14": 0.00,
+      "days15To21": 0.00,
+      "days22To28": 0.00,
+      "moreThan28": 0.00,
+      "totalAmount": 7500.00
+    }
+  ]
+}
+```
+
+`summaryTotals` always covers the complete matching result set, including when a later page is empty. Invalid dates or pagination return `400`; missing authentication or required access returns `401` or `403`.
+
+### GET `/api/liens/reports/monthly-aging`
+
+Returns the same buyer-accepted lien population, funding-company resolution, ordering, authorization, query parameters, pagination metadata, and `Cache-Control: no-store` behavior as the weekly aging endpoint. The monthly columns are inclusive days 1-30, 31-60, 61-90, 91-120, and more than 120. Each row contains `lienCode`, `fundingCompany`, the five monthly amount columns, and `totalAmount`; `summaryTotals` contains the full-result total for every column.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Monthly aging report generated.",
+  "asOfDate": "2026-08-25",
+  "currency": "USD",
+  "page": 1,
+  "pageSize": 50,
+  "totalCount": 1,
+  "totalPages": 1,
+  "summaryTotals": {
+    "totalLiens": 1,
+    "days1To30": 7500.00,
+    "days31To60": 0.00,
+    "days61To90": 0.00,
+    "days91To120": 0.00,
+    "moreThan120": 0.00,
+    "totalAmount": 7500.00
+  },
+  "data": [
+    {
+      "lienCode": "LIEN-2026-001",
+      "fundingCompany": "Atlas Funding",
+      "days1To30": 7500.00,
+      "days31To60": 0.00,
+      "days61To90": 0.00,
+      "days91To120": 0.00,
+      "moreThan120": 0.00,
+      "totalAmount": 7500.00
+    }
+  ]
+}
+```
+
+### GET `/api/liens/reports/weekly-aging-detail`
+
+Returns the same seller-scoped accepted-lien population, authorization behavior, ordering, and pagination metadata as `GET /api/liens/reports/weekly-aging`. Each item contains only the report's requested detail columns. `fundingCompany` uses the canonical buyer company name when available and otherwise falls back to the legacy buyer contact's organization or display name. `amount` is the accepted buyer response amount. `agingBucket` is the lien's exact age in days, where acceptance day is day 1.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Weekly aging detail report generated.",
+  "asOfDate": "2026-08-25",
+  "currency": "USD",
+  "page": 1,
+  "pageSize": 50,
+  "totalCount": 1,
+  "totalPages": 1,
+  "data": [
+    {
+      "lienCode": "LIEN-2026-001",
+      "fundingCompany": "Atlas Funding",
+      "amount": 7500.00,
+      "agingBucket": 4
+    }
+  ]
+}
+```
+
+The endpoint accepts the same optional `asOfDate`, `page`, and `pageSize` query parameters as the weekly aging report and returns `Cache-Control: no-store`.
+
 ### POST `/api/liens/reports/auto-generated/{reportId}/execute`
 
 Executes the tenant-scoped stored report using its saved report date. The compatibility alias is `POST /report/auto-generated/{reportId}/execute`. No request body is required.
@@ -2239,7 +2788,7 @@ Query parameters:
 - `page`: optional, defaults to `1`, and must be at least `1`.
 - `pageSize`: optional, defaults to `50`, and must be between `1` and `100`.
 
-Eligible Weekly BCC liens are ordered by purchase date, lien number, and record ID before database paging. Only the selected page is enriched. An out-of-range page returns `200` with an empty `data` array while retaining the full-result count and column schema.
+The stored report date ends the inclusive seven-day purchase range (`date - 6 days` through `date`). Eligible Weekly BCC liens are ordered by purchase date, lien number, and record ID before database paging. Only the selected page is enriched. An out-of-range page returns `200` with an empty `data` array while retaining the full-result count and column schema.
 
 ```json
 {
@@ -2287,11 +2836,13 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
 
 `columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. Both direct and saved-report execution responses add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalClosedLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
 
+For the `reduction` field, canonical lien reductions take precedence when any exist for the lien. Preserved SL-CORE settlement metadata containing `reductionAmount` is used only when the lien has no canonical reduction.
+
 ### POST `/api/liens/reports/auto-generated/{reportId}/export`
 
 Exports all eligible rows from the tenant-scoped stored Weekly BCC report. The compatibility alias is `POST /report/auto-generated/{reportId}/export`. No request body or pagination parameters are required.
 
-Rows retain the same deterministic purchase-date, lien-number, and record-ID order as execution. The exporter enriches bounded pages, writes headers in the versioned 57-column order, quotes CSV values, preserves Unicode and multiline content, and neutralizes spreadsheet-formula prefixes. The response uses the established Base64 CSV envelope:
+Rows retain the same deterministic purchase-date, lien-number, and record-ID order as execution. The exporter enriches bounded pages into a delete-on-close temporary file, writes headers in the versioned 57-column order, quotes CSV values, preserves Unicode and multiline content, and neutralizes spreadsheet-formula prefixes. After size validation, the API Base64-encodes that file incrementally into the response without buffering the full CSV or Base64 string in memory. The response uses the established Base64 CSV envelope:
 
 ```json
 {
@@ -2307,11 +2858,15 @@ Rows retain the same deterministic purchase-date, lien-number, and record-ID ord
 }
 ```
 
-The 10 MiB limit is enforced before Base64 encoding. An oversized export returns `400` with `error.code = validation_error`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`.
+The configurable raw CSV limit is enforced before Base64 encoding. `AutoGeneratedReports:ExportSizeLimitMiB` defaults to 50 MiB and accepts values from 1 through 100 MiB. `AutoGeneratedReports:MaximumConcurrentExports` defaults to 2 and accepts values from 1 through 10; the process-wide lease is held through response streaming, and saturated requests return `429` with `Retry-After: 5` and `error.code = too_many_requests`. An oversized export returns `400` with `error.code = validation_error` and identifies the configured ceiling; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`.
 
 ### GET `/report/diy/columns`
 
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.
+
+DIY lien reports use canonical lien reductions before preserved SL-CORE settlement metadata. When a legacy reduction has no explicit source reduction date, `reduction_date` and `days_since_reduction_approval` are null; a settlement date is never substituted for a reduction approval date.
+
+`POST /report/diy/filter-options` returns medical-facility option IDs from the canonical facility records referenced by `Lien.FacilityId`. Supplying those IDs in `medicalFacilityIds` therefore uses the same facility relationship as DIY execution and export.
 
 The optional `notes` column returns the latest active, nonblank Feed note for the row's case. `notes_date` returns that exact note's creation date in `MM/dd/yyyy` format. Both columns are grouped under `procedureInfo`, are not selected by default, and use one tenant-scoped batch lookup for CASES, LIENS, and COMBINED reports. Deleted, blank, non-Feed, and cross-tenant notes are excluded. When no eligible Feed note exists, `notes` is empty and `notes_date` is null in preview responses and blank in CSV exports. Equal creation timestamps are resolved by descending note ID. Saved report preview and export use the same mapping.
 
@@ -2325,3 +2880,5 @@ The existing compatibility keys have these Tracking Notes definitions:
 Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. `POST /report/diy` and its canonical `/api/liens/reports/diy/run` route return the same aggregated value. Both DIY export routes quote the multiline field in the Base64-encoded CSV, so every Tracking Note is retained.
 
 The distinct Case Update fields use the newest active Case Activity row for the tenant. `last_case_tracking_note` is exposed as `Last Activity` and contains its normalized Description; `last_case_tracking_date` is exposed as `Last Activity Date` and contains its Pacific-time Timestamp in `MM/dd/yyyy hh:mm tt` format. Eligible rows match the Case Activity table (`Case Created` and internal Case Details Update entries), equal timestamps use descending activity ID, and preview and CSV export use the same mapping.
+
+Legacy parity values are populated canonical-first. Typed case fields supply plaintiff address components, state of incident, medical status, tracking follow-up date, minor-comp and dropped-case flags, and imported creator. A canonical attorney contact-person link is used when present; migrated legacy attorney IDs are resolved from guarded `SL_CASE_MANAGER` crosswalk metadata. Tenant-scoped canonical company/contact/facility data supplies law-firm, case-manager, attorney, provider, and facility values; preserved legacy note metadata is only a fallback for older rows. `last_activity` and `last_activity_date` are compatibility aliases for `last_case_tracking_note` and `last_case_tracking_date`.

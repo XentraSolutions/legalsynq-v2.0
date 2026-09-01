@@ -3,51 +3,38 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CloudUpload, File, Search } from "lucide-react";
-import { ActionMenu } from "./action-menu";
 import { LiensQuery, liensService } from "@/lib/selling";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MetricCard } from "./dashboard/metric-card";
 import { Tabs } from "./tabs";
-import { PortfolioTable } from "./portfolio-table";
-import { Card } from "../ui/dashboard-card";
+import { LiensTableCard } from "./liens-table-card";
 import {
-  LiensFilter,
   LiensFilterValues,
+  EMPTY_LIENS_FILTERS,
 } from "@/app/(platform)/selling/liens/components/liens-filter";
-import { EMPTY_LIENS_FILTERS } from "@/app/(platform)/selling/liens/components/liens-filter";
 import {
   useBackgroundReady,
   usePrimaryLoad,
 } from "@/hooks/use-background-queue";
 import { useRouter } from "next/navigation";
-import { BulkUploadForm } from "./forms/bulk-upload-form";
 import { PaginationMeta } from "@/lib/liens";
 import { SortingState } from "@tanstack/react-table";
-import { useLienStore } from "@/stores/lien-store";
-import { Button } from "@/components/selling/button";
 import { PageHeader } from "@/components/lien/page-header";
 import { SkeletonCard, SkeletonTable } from "@/components/lien/skeleton-loader";
 
-const PORTFOLIO_STATUSES = [
-  { key: "Pending", label: "Pending" },
-  { key: "Internal", label: "Internal" },
-  { key: "Sold", label: "Sold" },
-  { key: "Archived", label: "Archived" },
-  // { key: "all", label: "all" },
-];
-
+// Keys must match PortfolioTable's column ids (portfolio-table.tsx). Values
+// mirror the sortBy convention SellingDashboardService.Sort already accepts
+// (lienId, fundingCompany, initialServiceDate, billingAmount, askAmount,
+// highestBid, status) — createdAtUtc isn't handled there yet, sent anyway on
+// the assumption the backend will add support for it.
 const SORT_BY_MAP: Record<string, string> = {
-  lienNumber: "lienNumber",
-  plaintiffName: "plaintiff",
-  lawFirm: "lawFirm",
-  facilityName: "medicalFacility",
-  purchaseDate: "purchaseDate",
-  purchaseAmount: "totalPurchase",
-  totalBilling: "totalBilling",
-  status: "status",
+  createdAtUtc: "createdAtUtc",
+  lienId: "lienId",
+  fundingCompany: "fundingCompany",
   initialServiceDate: "initialServiceDate",
-  caseManager: "caseManager",
+  billingAmount: "billingAmount",
+  askAmount: "askAmount",
+  status: "status",
 };
 
 const INITIAL_QUERY: Record<string, unknown> = {
@@ -105,14 +92,10 @@ export default function PortfolioClient() {
   const bgReady = useBackgroundReady() && !loading;
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
 
   const [selectedStatus, setSelectedStatus] = useState<string>("Pending");
   const [filters, setFilters] =
     useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
-  const [showFilter, setShowFilter] = useState(false);
-  const activeFilterCount = countActiveFilters(filters);
-  const [bulkUpload, setbulkUpload] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
@@ -121,17 +104,9 @@ export default function PortfolioClient() {
     totalPages: 0,
   });
 
-  function countActiveFilters(f: LiensFilterValues): number {
-    return (
-      // Each dropdown counts as 1 filter regardless of how many items are
-      // checked within it, same as each date range counting as 1 below.
-      (f.fundingCompanyIds.length ? 1 : 0) +
-      (f.initialServiceDateFrom || f.initialServiceDateTo ? 1 : 0)
-    );
-  }
   const currentQuery = useMemo(
     (): LiensQuery => ({
-      tab: selectedStatus,
+      tab: selectedStatus || undefined,
       search: searchInput || undefined,
       fundingCompanyIds: filters.fundingCompanyIds,
       lienStatusIds: filters.lienStatusIds,
@@ -214,27 +189,17 @@ export default function PortfolioClient() {
           title="Portfolio"
           subtitle="Manage, monitor, and bundle multiple liens into structured portfolios for sale."
           card={false}
-          actions={
-            <ActionMenu
-              trigger={
-                <Button variant="primary" rightIcon="chevronDown">
-                  Add New Lien
-                </Button>
-              }
-              items={[
-                {
-                  label: "Add Single Lien",
-                  icon: File,
-                  onClick: () => router.push("/selling/portfolio/lien/add"),
-                },
-                {
-                  label: "Bulk Upload",
-                  icon: CloudUpload,
-                  onClick: () => setbulkUpload(true),
-                },
-              ]}
-            />
-          }
+        />
+        <Tabs
+          bordered={false}
+          defaultTab="liens"
+          tabs={[
+            { key: "cases", label: "Cases" },
+            { key: "liens", label: "Liens" },
+          ]}
+          onChange={(tab) => {
+            if (tab === "cases") router.push("/selling/portfolio/cases");
+          }}
         />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <MetricCard
@@ -264,74 +229,28 @@ export default function PortfolioClient() {
           />
         </div>
 
-        <div className="basis-2/4">
-          <Tabs
-            bordered={false}
-            defaultTab={selectedStatus}
-            onChange={(e) => setSelectedStatus(e)}
-            tabs={PORTFOLIO_STATUSES}
-          ></Tabs>
-        </div>
-        <Card title={`${selectedStatus} Liens`}>
-          <div className="bg-white rounded-xl py-3 flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[300px] max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-            </div>
-            <Button
-              variant="secondary"
-              className="border-gray-300"
-              leftIcon="settings2"
-              onClick={() => setShowFilter(true)}
-            >
-              Filter
-              {activeFilterCount > 0 && (
-                <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-          </div>
-          <LiensFilter
-            open={showFilter}
-            onClose={() => setShowFilter(false)}
-            value={filters}
-            onApplyFilter={handleApplyFilter}
-            primaryReady={bgReady}
-          />
-
-          <PortfolioTable
-            pagination={paginationData}
-            sorting={sorting}
-            onSortingChange={setSorting}
-            handlePageChange={handlePageChange}
-            onPageSizeChange={handlePageSizeChange}
-            liens={liens?.items ?? []}
-            isLoading={isLiensPending}
-            onActionComplete={() => {
-              refetchLiens();
-              refetch();
-            }}
-          />
-        </Card>
-
-        {bulkUpload && (
-          <BulkUploadForm
-            open={bulkUpload}
-            onClose={() => setbulkUpload(false)}
-            onUploaded={() => {
-              refetchLiens();
-            }}
-          ></BulkUploadForm>
-        )}
+        <LiensTableCard
+          title="All Liens"
+          search={searchInput}
+          onSearchChange={setSearchInput}
+          status={selectedStatus}
+          onStatusChange={setSelectedStatus}
+          filters={filters}
+          onApplyFilter={handleApplyFilter}
+          primaryReady={bgReady}
+          liens={liens?.items ?? []}
+          isLoading={isLiensPending}
+          sorting={sorting}
+          onSortingChange={setSorting}
+          pagination={paginationData}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          onActionComplete={() => {
+            refetchLiens();
+            refetch();
+          }}
+          onBulkUploaded={() => refetchLiens()}
+        />
       </div>
     </>
   );

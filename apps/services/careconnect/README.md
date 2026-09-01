@@ -13,9 +13,8 @@ Healthcare provider directory, referral management, and appointment scheduling.
 - Attachment management for referrals and appointments
 - Referral and appointment notes
 - Notification delivery on key lifecycle events
-- Configurable Referral Attribution (referral-source tracking) and the restricted,
-  read-only Referral Representative Portal (see "Referral Attribution & Referral
-  Representative Portal" below)
+- Configurable Referral Origination (referral-source tracking) and the anonymous
+  Referral Portal (see "Referral Origination & Referral Portal" below)
 
 ## Layer Structure
 
@@ -47,21 +46,35 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/assistant-tools/providers/search` | Bearer | Assistant-only provider lookup |
 | `GET` | `/api/assistant-tools/referrers/search` | Bearer | Assistant-only referrer lookup |
 | `GET` | `/api/careconnect/appointments` | Bearer | List appointments |
-| `GET` | `/api/referral-attributions/options` | Bearer | Active Referral Attribution options for the caller's tenant (Law Firm Portal dropdown) |
-| `GET`/`POST`/`PATCH` | `/api/referral-attributions` | PlatformOrTenantAdmin | Tenant admin CRUD for Referral Attribution options |
-| `POST`/`PATCH`/`DELETE` | `/api/referral-representative-access-codes` | PlatformOrTenantAdmin | Tenant admin: generate/revoke a representative access code (no user selection) |
-| `GET` | `/api/referral-representative-access-codes/by-attribution/{id}` | PlatformOrTenantAdmin | The single active code for one attribution, or 204 if none — exactly one active code per attribution is allowed |
-| `POST` | `/api/public/representative/verify` | Anonymous | Representative Portal — stateless access-code check, returns the named attribution |
-| `GET` | `/api/public/representative/referrals` | Anonymous (`?code=`) | Representative Portal — paginated referral list, code re-verified per request |
-| `GET` | `/api/public/representative/referrals/{id}` | Anonymous (`?code=`) | Representative Portal — restricted referral detail |
-| `GET` | `/api/public/representative/referral-metrics` | Anonymous (`?code=`) | Representative Portal — dashboard metrics |
+| `GET` | `/api/referral-attributions/options` | Bearer | Active Referral Origination options for the caller's tenant (Law Firm Portal dropdown) |
+| `GET`/`POST`/`PATCH` | `/api/referral-attributions` | PlatformOrTenantAdmin | Tenant admin CRUD for Referral Origination options |
+| `POST`/`PATCH`/`DELETE` | `/api/referral-representative-access-codes` | PlatformOrTenantAdmin | Tenant admin: generate/revoke a referral portal access code (no user selection) |
+| `GET` | `/api/referral-representative-access-codes/by-attribution/{id}` | PlatformOrTenantAdmin | The single active code for one origination, or 204 if none — exactly one active code per origination is allowed |
+| `POST` | `/api/public/referral-portal/verify` | Anonymous | Referral Portal — stateless access-code check, returns the named origination |
+| `GET` | `/api/public/referral-portal/referrals` | Anonymous (`?code=`) | Referral Portal — paginated converted referral list, code re-verified per request |
+| `GET` | `/api/public/referral-portal/referrals/{id}` | Anonymous (`?code=`) | Referral Portal — restricted converted referral detail |
+| `GET` | `/api/public/referral-portal/referral-metrics` | Anonymous (`?code=`) | Referral Portal — dashboard metrics |
+| `GET` | `/api/public/referral-portal/law-firms` | Anonymous (`?code=`) | Referral Portal — law firm selector options |
+| `GET` | `/api/public/referral-portal/providers` | Anonymous (`?code=`) | Referral Portal — verified master provider list for recommendations |
+| `GET` | `/api/public/referral-portal/providers/map` | Anonymous (`?code=`) | Referral Portal — verified provider map markers for recommendations |
+| `GET` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — paginated pending request list for that origination |
+| `GET` | `/api/public/referral-portal/pending-referrals/{id}` | Anonymous (`?code=`) | Referral Portal — read one pending request scoped to the access code's origination |
+| `POST` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — submit a pending referral request to a law firm |
+| `POST` | `/api/public/referral-portal/pending-referrals/{id}/attachments/upload` | Anonymous (`?code=`) | Referral Portal — upload a document attachment for a pending request |
+| `GET`/`PUT`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue; update request values, decline requests, and convert accepted requests |
+| `POST` | `/api/pending-referral-requests/{id}/attachments/upload` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue — upload document attachments to a pending request before conversion |
+| `GET` | `/api/pending-referral-requests/{id}/attachments/{attachmentId}/url` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue — get a short-lived pending request attachment URL |
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
 | `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
 | `POST` | `/api/networks/{networkId}/providers/import` | Anonymous, loopback-only | CSV/XLSX provider migration/import into a tenant network |
+| `GET`/`POST`/`DELETE` | `/api/law-firm-users[/invite\|/{userId}/resend-invite\|/{userId}/activate\|/{userId}/deactivate\|/{userId}/roles]` | CARECONNECT_REFERRER_ADMIN | Law Firm Company Admin (LSV3-1083) — list, invite/resend pending invites, activate/deactivate, and assign/revoke roles for a law firm's own users. Pending invitations are listed as `Invited`/`Invite sent` until accepted. No org-id route parameter: a caller always operates on their own organization only (TenantAdmin/PlatformAdmin can act on any org in the tenant). Proxies to Identity's internal `/api/internal/organizations/{organizationId}/users` endpoints, which independently re-verify org ownership. |
 
-### Referral Attribution & Referral Representative Portal
+### Referral Origination & Referral Portal
+
+User-facing screens refer to this feature as Referral Origination. The underlying API and schema
+identifiers remain `ReferralAttribution*` / `cc_ReferralAttributions` for compatibility.
 
 `ReferralAttribution` (`cc_ReferralAttributions`) is a tenant-scoped, configurable label for who or
 what originated a referral (a representative, a campaign, a partner) — set on `referrals.ReferralAttributionId`
@@ -71,34 +84,34 @@ once set, is immutable — set exactly once, at submission time
 admin edit path for it; the admin referral view shows it read-only alongside the rest of the
 referral's details.
 
-`ReferralAttributionAccessCode` (`cc_ReferralAttributionAccessCodes`) grants read-only representative
+`ReferralAttributionAccessCode` (`cc_ReferralAttributionAccessCodes`) grants referral portal
 access via a generated code, not admin-typed user linking and not a login. A tenant admin generates a
-code scoped to one attribution (optionally bounded by `AccessStartAtUtc`/`AccessEndAtUtc`) and shares
+code scoped to one origination (optionally bounded by `AccessStartAtUtc`/`AccessEndAtUtc`) and shares
 it with the intended representative out of band; the code is revealed once, in the generate response,
 and hashed (SHA-256 + `ReferralAttributionAccessCode:Pepper`) at rest — the plaintext is never
-persisted. There is no "redeemer" and nothing is stamped when a code is used: the Representative Portal
-is fully anonymous, and the representative simply presents the raw code on every request. The backend
+persisted. There is no "redeemer" and nothing is stamped when a code is used: the Referral Portal
+is fully anonymous, and the associate simply presents the raw code on every request. The backend
 re-verifies it from scratch each time (`IReferralAttributionAccessCodeService.VerifyAsync`,
-stateless — no mutation), so a revoked code or a deactivated attribution takes effect on the very next
+stateless — no mutation), so a revoked code or a deactivated origination takes effect on the very next
 request, not on next login (there is no login).
 
-**Exactly one active code per attribution.** `GenerateAsync` rejects a new code with
-`ConflictException("ACTIVE_CODE_EXISTS")` (409) when one is already active for that attribution —
+**Exactly one active code per origination.** `GenerateAsync` rejects a new code with
+`ConflictException("ACTIVE_CODE_EXISTS")` (409) when one is already active for that origination —
 `SetActiveAsync(isActive: false)` (revoke) must run first. MySQL has no filtered unique index to
 enforce this at the schema level, so it's an application-layer check (`CountActiveAsync`); there is a
-narrow TOCTOU window if two generate requests for the same attribution land concurrently.
+narrow TOCTOU window if two generate requests for the same origination land concurrently.
 
-**Deactivating an attribution cuts off its code's access immediately**, even if the code is otherwise
-active and within its date window — `IsValidAt(nowUtc, attributionIsActive)` takes the attribution's
+**Deactivating an origination cuts off its code's access immediately**, even if the code is otherwise
+active and within its date window — `IsValidAt(nowUtc, attributionIsActive)` takes the origination's
 current state as an explicit parameter (resolved via `IReferralAttributionRepository` in
 `ReferralAttributionAccessCodeService.VerifyAsync`, never through the entity's own private-set
 `ReferralAttribution` navigation property, which only EF's `Include()` can populate and would otherwise
-make this check silently dependent on query shape). Reactivating the attribution restores access
+make this check silently dependent on query shape). Reactivating the origination restores access
 without a new code.
 
 There is no product role, no login, and no platform session anywhere on this surface — the access
 code is the sole credential, checked on every single request. `PublicRepresentativeEndpoints`
-(`/api/public/representative/*`) is modeled directly on `PublicNetworkEndpoints`' anonymous pattern:
+(`/api/public/referral-portal/*`, with `/api/public/representative/*` retained temporarily as a compatibility alias) is modeled directly on `PublicNetworkEndpoints`' anonymous pattern:
 `.AllowAnonymous()`, rate-limited, and gated by the same two-layer trust boundary (gateway-secret +
 HMAC-signed tenant ID) that the public provider directory uses — see `PublicTrustBoundary`
 (`CareConnect.Api/Helpers/PublicTrustBoundary.cs`), extracted from `PublicNetworkEndpoints` so both
@@ -108,10 +121,16 @@ whether a code was ever verified — referral data is PII (client name, DOB, pho
 representative read re-verifies the caller's code server-side on every single call. Nothing is cached
 and nothing is trusted from a prior request.
 
-The frontend lives at `apps/web/src/app/careconnect/representative/` (`/careconnect/representative/*`
-— a top-level sibling of `apps/web/src/app/careconnect/network/`, not under `app/(platform)/careconnect/`,
+Referral email public links resolve the tenant's persisted platform hostname
+from the Tenant service before falling back to `{subdomain}.{AppBaseDomain}`.
+This preserves legacy QA tenant links while allowing newly-created QA tenants
+to use `.nonprod` hostnames.
+
+The frontend lives at `apps/web/src/app/careconnect/referral/` (`/careconnect/referral/*`;
+`/careconnect/representative/*` redirects to it temporarily) — a top-level sibling of
+`apps/web/src/app/careconnect/network/`, not under `app/(platform)/careconnect/`,
 so it never inherits that route group's login-gated layout; structurally isolated from the admin shell —
-it does not import `AppShell`/`PRODUCT_NAV`). It resolves the tenant from the request subdomain the
+it does not import `AppShell`/`PRODUCT_NAV`. It resolves the tenant from the request subdomain the
 same way `/careconnect/network` does, and gates its pages behind `RepresentativeAccessCodeGate`
 (`apps/web/src/components/careconnect/representative-access-code-gate.tsx`), which persists the raw
 code client-side (not just an "unlocked" flag) and resends it on every data call via
@@ -129,8 +148,8 @@ Representatives" nav item — the list at `/careconnect/referral-attributions` s
 Name / Last Name / Status plus a kebab menu (View, Activate/Deactivate); **View** navigates to
 `/careconnect/referral-attributions/{id}`, which is where the full field set, the Edit action, and
 the access-code widget (generate/revoke) all live. Folding the code-generation UI into the
-attribution's own detail page — rather than a standalone cross-attribution admin page — is what
-lets "one attribution, one active code" be enforced simply, both in the UI (Generate only shows
+origination's own detail page — rather than a standalone cross-origination admin page — is what
+lets "one origination, one active code" be enforced simply, both in the UI (Generate only shows
 when there's no active code) and in the API (the 409 conflict above).
 
 Every representative-facing read is gated by the tenant feature flag before the code is even checked —
@@ -138,6 +157,78 @@ a tenant capability on the platform's existing capability store
 (`careconnect.referral_representative_portal`, read via
 `GET /api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey}` on the Tenant service), disabled
 by default.
+
+Referral Portal submissions create `cc_PendingReferralRequests` rows instead of immediately creating
+`cc_Referrals`. The pending request stores the selected law firm organization, locked access-code
+origination, immutable `Origin = ReferralAssociate`, patient/referral details, lien company name/email,
+zero or more preferred medical provider/location recommendations, and review status (`PendingReview`,
+`Converted`, `Cancelled`). Preferred providers are advisory only: selecting them from the Referral
+Portal's master provider list/map does not create a referral, does not notify any provider, and does
+not bypass law-firm review. The portal persists ordered preferences in
+`cc_PendingReferralProviderPreferences`; the legacy `RecommendedProvider*` columns mirror the first
+preference for backward compatibility/default routing. Authenticated law-firm users with
+`CARECONNECT_REFERRER` or `CARECONNECT_REFERRER_ADMIN` list their own organization's pending requests,
+review all stored preferences, and convert one by selecting the final provider; conversion creates a normal referral, preserves
+origination/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
+selecting a different provider, the first stored preference can be used as the default conversion
+target.
+The law-firm review queue and Referral Portal request list are labeled Referral Requests in the UI and
+expose outcome tabs for All, Pending, Accepted, and Declined requests. These map to an omitted status
+filter, `PendingReview`, `Converted`, and `Cancelled` respectively; `Cancelled` is labeled Declined
+because that is the state produced when a law-firm user declines a pending request.
+The Referral Origination dashboard keeps request outcomes separate from converted referral statuses:
+its Referral Requests breakdown counts `PendingReview`, `Converted`, and `Cancelled` requests, while
+its Converted Referrals breakdown counts the routed referral's provider-facing lifecycle status.
+Law-firm review screens, law-firm tokenized referral status links, and law-firm/referrer notification
+email summaries display Referral Origination when it is present. Provider-facing referral emails and
+provider thread links do not.
+When a law-firm user converts a pending request, the created referral stores the processing user's
+email/name plus the resolved law firm organization name as referrer notification metadata. Those fields
+drive the provider email subject/body and the law-firm submission confirmation email.
+
+Normal referrals now include immutable `Origin` (`LawFirm` for direct law-firm submissions and
+`ReferralAssociate` for converted pending requests) plus optional `LienCompanyName` and
+`LienCompanyEmail`. Provider network memberships include `OwningOrganizationId` and `Visibility`
+(`Private` or `Public`); non-admin-created entries default to private, and only tenant/platform admins
+may make a provider public.
+
+**Single-tenant-network cutover (supersedes the original LSV3-1084 per-network-ownership design
+below).** Each tenant now has exactly one shared `ProviderNetwork` — law firms no longer create their
+own separate network. `POST /api/networks` (create) and `DELETE /api/networks/{id}` (delete) have been
+removed from the API entirely; `GET /api/networks` bootstraps the tenant's one network on first access
+via `NetworkService.GetOrCreateTenantNetworkAsync` if it doesn't exist yet, so callers always get a
+network id back. `PUT /api/networks/{id}` (rename/describe) is now restricted to
+`CARECONNECT_NETWORK_MANAGER` or a tenant/platform admin — a `CARECONNECT_REFERRER_ADMIN`-only caller
+can no longer edit the shared network's own name/description at all (there's no "their own network"
+carve-out anymore). The frontend's separate "Networks" (list of networks) admin tab has been retired.
+Two role-scoped screens share the same `MyNetworkClient` component against this one network: "My Network"
+(`/careconnect/my-network`, tenant portal, `CARECONNECT_NETWORK_MANAGER`/admin — unchanged from before the
+cutover, includes the public Network URL box) and "Network Setup" (`/careconnect/network-setup`,
+`CARECONNECT_REFERRER_ADMIN`/law-firm — labelled "Network Setup", scoped to providers owned by the
+law firm's organization, and no Network URL box, since that's a tenant-level concern, not a per-law-firm
+one). They were deliberately kept as two separate routes/nav entries rather than merged into one, so the
+existing NetworkManager-facing screen's behavior stays untouched for its current users.
+
+Per-provider ownership and visibility (`NetworkProvider.OwningOrganizationId`/`Visibility`) are now the
+*sole* mechanism for "whose provider is this" and "who can see it" — and, critically, `Visibility` is
+now actually enforced on every read path, not just stored/displayed as before. `ProviderVisibility.IsVisibleTo(np,
+viewerOrgId, viewerSeesAll)` gates `NetworkService.GetByIdAsync`/`GetAllAsync`/`GetMarkersAsync` (internal,
+authenticated) and `PublicNetworkEndpoints`'s `/providers`, `/providers/markers`, `/detail` (anonymous,
+scoped by an optional `organizationId` query param): a `Private` provider is visible only to the
+organization that owns it (or a caller who "sees all" — tenant/platform admin or NetworkManager); a
+`Public` provider, or one with no recorded owner (legacy/tenant-created), is visible to everyone.
+
+LSV3-1084 (historical): editing or removing a network provider (`PUT`/`DELETE /api/networks/{id}/providers/{providerId}`)
+is restricted by `OwningOrganizationId` — a caller holding only `CARECONNECT_REFERRER_ADMIN` (not
+`CARECONNECT_NETWORK_MANAGER`, and not a tenant/platform admin) may only edit or remove providers their own
+organization added; any other provider in the network is view-only for them. NetworkManager and system
+admin callers are unrestricted, as before. This part of LSV3-1084 is unchanged by the single-tenant-network
+cutover — only the *network-level* (not provider-level) ownership rules were retired.
+
+`ProviderNetwork.OwningOrganizationId` itself (added via the `EnsureSchemaObjects` runtime schema-repair
+path in `CareConnect.Api/Program.cs`, not a classic EF migration — see that file's comments for why) is
+retained on the schema but no longer written to a non-null value on new networks going forward; it is a
+candidate for removal in a future cleanup migration once nothing reads it.
 
 ### Provider specialties
 
@@ -309,6 +400,38 @@ Clients should open files only through signed URL endpoints:
 |---|---|
 | `CARECONNECT_REFERRER` | Send referrals, find providers, book appointments |
 | `CARECONNECT_RECEIVER` | Receive referrals, manage appointments, manage availability |
+| `CARECONNECT_NETWORK_MANAGER` | Manage a tenant's own provider network (role-based, not orgType-based — assignable to Lien Owner and Law Firm orgs) |
+| `CARECONNECT_REFERRER_ADMIN` | Law-firm-scoped admin role — can send/read/process the firm's referrals, manage network/provider directory data, and administer the firm's CareConnect users. Assignable to Law Firm orgs only. |
+
+Migrated Law Firm sessions whose JWT still contains `CARECONNECT_REFERRER` are accepted for
+referral status-processing actions until the user receives a refreshed token with
+`CARECONNECT_REFERRER_ADMIN`. This compatibility path is limited to `LAW_FIRM` org
+tokens and referral accept/decline/status-update permissions.
+
+Authenticated referral creation is enforced in the handler through `CareConnectAuthHelper`
+after product and organization product filters run. That keeps migrated law-firm users from
+being denied by stale JWT permission claims while still requiring a CareConnect product role
+that grants `referral:create`.
+
+### LSV3-1083: Law Firm Company Admin
+
+A `CARECONNECT_REFERRER_ADMIN` is the designated admin for their own Law
+Firm organization. At `/careconnect/law-firm-users` (web) they can view, invite,
+resend pending invitations, activate/deactivate, and assign/revoke CareConnect roles for the users belonging to
+their own firm — restricted to the `CARECONNECT_REFERRER` and `CARECONNECT_REFERRER_ADMIN`
+role codes only. Visibility and mutation are both scoped to the caller's own
+`OrganizationId`; a TenantAdmin/PlatformAdmin may act on any org in the tenant.
+
+Since CareConnect has no local user domain, `CareConnect.Api`'s `/api/law-firm-users/*`
+endpoints (`LawFirmUserEndpoints.cs`) enforce the org-ownership check and then proxy to
+new **internal, provisioning-token-secured** endpoints on Identity
+(`/api/internal/organizations/{organizationId}/users/*`, in
+`Identity.Api/Endpoints/LawFirmUserManagementEndpoints.cs`), which independently
+re-validates the role allow-list and re-derives org membership rather than trusting the
+caller's check. See `HttpIdentityOrganizationService`'s law-firm-user methods for the
+CareConnect → Identity call shape. Identity increments the affected user's `AccessVersion`
+when these internal role assignments are added or revoked so refreshed sessions and profile
+views stop showing stale CareConnect roles.
 
 ## Database
 

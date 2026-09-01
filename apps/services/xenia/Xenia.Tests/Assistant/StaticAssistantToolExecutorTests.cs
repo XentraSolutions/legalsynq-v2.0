@@ -298,8 +298,9 @@ public sealed class StaticAssistantToolExecutorTests
                     null,
                     "CA",
                     false,
-                    DateTime.UtcNow.AddDays(-3),
-                    DateTime.UtcNow,
+                    new DateTime(2026, 7, 15, 0, 0, 0, DateTimeKind.Utc),
+                    new DateTime(2026, 7, 16, 0, 0, 0, DateTimeKind.Utc),
+                    IncidentDate: new DateOnly(2026, 7, 13),
                     PurchaseDate: new DateOnly(2026, 7, 14))));
 
         var sut = new StaticAssistantToolExecutor(
@@ -317,6 +318,9 @@ public sealed class StaticAssistantToolExecutorTests
         Assert.True(result.Succeeded);
         Assert.Contains("LN-1001", result.OutputJson);
         Assert.Contains("\"purchaseDate\":\"2026-07-14\"", result.OutputJson, StringComparison.Ordinal);
+        Assert.Contains("\"createdAtDisplayDate\":\"07/15/2026\"", result.OutputJson, StringComparison.Ordinal);
+        Assert.Contains("\"incidentDisplayDate\":\"07/13/2026\"", result.OutputJson, StringComparison.Ordinal);
+        Assert.Contains("\"purchaseDisplayDate\":\"07/14/2026\"", result.OutputJson, StringComparison.Ordinal);
         Assert.Single(result.Citations);
         Assert.Equal("synqlien.lien", result.Citations[0].SourceType);
         Assert.Equal($"/lien/liens/{lienId}", result.Citations[0].Url);
@@ -427,9 +431,12 @@ public sealed class StaticAssistantToolExecutorTests
                     "Pat Manager",
                     50000m,
                     null,
-                    DateTime.UtcNow.AddDays(-10),
-                    DateTime.UtcNow,
-                    [])));
+                    new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc),
+                    new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc),
+                    [],
+                    DateOfLoss: new DateOnly(2026, 7, 30),
+                    ClientDateOfBirth: new DateOnly(1990, 1, 15),
+                    OpenedAtUtc: new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc))));
 
         var sut = new StaticAssistantToolExecutor(
             new StaticAssistantToolRegistry(),
@@ -445,6 +452,10 @@ public sealed class StaticAssistantToolExecutorTests
 
         Assert.True(result.Succeeded);
         Assert.Contains("CASE-2001", result.OutputJson);
+        Assert.Contains("\"dateOfLossDisplayDate\":\"07/30/2026\"", result.OutputJson, StringComparison.Ordinal);
+        Assert.Contains("\"clientDateOfBirthDisplayDate\":\"01/15/1990\"", result.OutputJson, StringComparison.Ordinal);
+        Assert.Contains("\"createdAtDisplayDate\":\"08/02/2026\"", result.OutputJson, StringComparison.Ordinal);
+        Assert.Contains("\"openedAtDisplayDate\":\"08/01/2026\"", result.OutputJson, StringComparison.Ordinal);
         Assert.Single(result.Citations);
         Assert.Equal("synqlien.case", result.Citations[0].SourceType);
         Assert.Equal($"/lien/cases/{caseId}", result.Citations[0].Url);

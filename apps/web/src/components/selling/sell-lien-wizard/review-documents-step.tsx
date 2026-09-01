@@ -7,6 +7,7 @@ import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import { useSession } from "@/hooks/use-session";
 import { useSessionContext } from "@/providers/session-provider";
+import { ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import { Button } from "@/components/selling/button";
@@ -20,10 +21,10 @@ import {
   UploadedFileRow,
 } from "@/components/selling/uploaded-file-row";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
-import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
+import { ProviderFundingDetailsPanel } from "@/components/selling/lien-detail/provider-funding-details-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
 import { EditLienInformationModal } from "@/components/selling/lien-detail/edit-lien-information-modal";
-import { EditCaseInformationModal } from "@/components/selling/lien-detail/edit-case-information-modal";
+import { EditProviderFundingModal } from "@/components/selling/lien-detail/edit-provider-funding-modal";
 import { EditMedicalPricingModal } from "@/components/selling/lien-detail/edit-medical-pricing-modal";
 import { sellingLookupsApi } from "@/lib/selling/lookup.api";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
@@ -133,9 +134,18 @@ async function docSlotsFromLien(
   }[] = [];
   for (const doc of documents) {
     const data = parseDocumentReference(doc);
-    if (!data.documentId || !slots[data.documentType]) continue;
+    if (!data.documentId) continue;
+    // Older uploads persisted the human-readable label (e.g. "Police Report")
+    // instead of the raw enum key ("PoliceReport") as documentType, so a
+    // direct slot lookup misses them — fall back to matching by label.
+    const slotType = slots[data.documentType]
+      ? data.documentType
+      : Object.keys(slots).find(
+          (key) => camelCaseToLabel(key) === data.documentType,
+        );
+    if (!slotType) continue;
     refs.push({
-      slotType: data.documentType,
+      slotType,
       documentId: data.documentId,
       displayName: data.displayName,
     });
@@ -189,7 +199,7 @@ export default function ReviewDocumentsStep({
   const [showSuccess, setShowSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editModal, setEditModal] = useState<
-    "lien-information" | "case-information" | "medical-pricing" | null
+    "lien-information" | "provider-funding" | "medical-pricing" | null
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -254,7 +264,10 @@ export default function ReviewDocumentsStep({
     (type) => !docSlots[type]?.documentId,
   );
 
-  const handleFileSelect = async (documentType: string, file: File) => {
+  const handleFileSelect = async (
+    documentType: string,
+    file: File,
+  ): Promise<boolean> => {
     setDocSlots((prev) => ({
       ...prev,
       [documentType]: {
@@ -263,6 +276,7 @@ export default function ReviewDocumentsStep({
         displayName: file.name,
       },
     }));
+    let uploadedToDocumentService = false;
     try {
       const documentTypeId = resolveDocumentCategory(
         documentType,
@@ -282,6 +296,7 @@ export default function ReviewDocumentsStep({
         documentTypeId,
         title: file.name,
       });
+      uploadedToDocumentService = true;
       const nextSlots = {
         ...docSlots,
         [documentType]: {
@@ -291,13 +306,14 @@ export default function ReviewDocumentsStep({
           createdAt: uploaded.createdAt,
         },
       };
-      setDocSlots(nextSlots);
       // Persist the reference immediately so it survives navigating away —
       // this is the only place documents are saved; "Save for Later" and
       // "Authorize & Send" rely on it already being in sync.
       await liensService.saveDocuments(lienId, {
         documents: uploadedDocumentRefs(nextSlots),
       });
+      setDocSlots(nextSlots);
+      return true;
     } catch (err) {
       setDocSlots((prev) => ({
         ...prev,
@@ -309,7 +325,20 @@ export default function ReviewDocumentsStep({
             : null,
         },
       }));
-      toast.error(err instanceof Error ? err.message : "Document upload failed");
+      const cause =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : "The server did not provide an error reason.";
+      const reference =
+        err instanceof ApiError && err.correlationId !== "unknown"
+          ? ` Reference: ${err.correlationId}.`
+          : "";
+      toast.error(
+        uploadedToDocumentService
+          ? `“${file.name}” uploaded but could not be attached to this lien. ${cause}${reference}`
+          : `Unable to upload “${file.name}”. ${cause}${reference}`,
+      );
+      return false;
     }
   };
 
@@ -320,9 +349,7 @@ export default function ReviewDocumentsStep({
       .filter(([, slot]) => slot.documentId)
       .map(([documentType, slot]) => ({
         documentId: slot.documentId!,
-        documentType: sellingDocumentTypes.includes(documentType)
-          ? documentType
-          : "Other",
+        documentType,
         displayName: slot.displayName ?? undefined,
       }));
 
@@ -449,9 +476,10 @@ export default function ReviewDocumentsStep({
           <div className="space-y-4">
             <LienInformationPanel
               lien={lien.lienInformation}
+              caseInformation={lien.caseInformation}
               onEdit={() => setEditModal("lien-information")}
             />
-            <FundingCompanyAndCaseInformationPanel
+            <ProviderFundingDetailsPanel
               fundingCompany={
                 companyId
                   ? {
@@ -466,9 +494,8 @@ export default function ReviewDocumentsStep({
                   : null
               }
               facility={lien.facility}
-              caseInformation={lien.caseInformation}
               medicalProvider={lien.medicalProvider}
-              onEdit={() => setEditModal("case-information")}
+              onEdit={() => setEditModal("provider-funding")}
             />
             <MedicalCodesInformationPanel
               lien={lien.medicalPricing.rows}
@@ -585,8 +612,9 @@ export default function ReviewDocumentsStep({
           types={availableOptionalTypes}
           onClose={() => setShowAddSupportingDoc(false)}
           onUpload={async (type, file) => {
-            await handleFileSelect(type, file);
-            setShowAddSupportingDoc(false);
+            if (await handleFileSelect(type, file)) {
+              setShowAddSupportingDoc(false);
+            }
           }}
         />
       )}
@@ -623,13 +651,12 @@ export default function ReviewDocumentsStep({
           }}
         />
       )}
-      {editModal === "case-information" && (
-        <EditCaseInformationModal
+      {editModal === "provider-funding" && (
+        <EditProviderFundingModal
           lienId={lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
           facility={lien.facility}
-          caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {
             setEditModal(null);

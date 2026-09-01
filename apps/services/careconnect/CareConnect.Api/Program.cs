@@ -236,10 +236,10 @@ app.Logger.LogInformation(
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
 
-// ── Referral Attribution seed (idempotent) ────────────────────────────────
+// ── Referral Origination seed (idempotent) ────────────────────────────────
 // Configured via ReferralAttributionSeed:TenantCode in appsettings/secrets — empty
 // (the default) is a no-op, so this never runs unless an environment explicitly
-// configures the tenant that should receive the initial attribution (e.g. the
+// configures the tenant that should receive the initial origination (e.g. the
 // CareConnect tenant that hired Cam Perry). Resolves the tenant by code via the
 // Tenant service rather than a hardcoded GUID, so the same config works across
 // dev/staging/prod without editing code per environment. Safe to run on every
@@ -390,6 +390,7 @@ app.MapWorkflowEndpoints();
 app.MapAssistantToolEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
+app.MapPendingReferralRequestEndpoints();
 app.MapCategoryEndpoints();
 app.MapSpecialtyEndpoints();
 app.MapFacilityEndpoints();
@@ -403,11 +404,12 @@ app.MapAppointmentNoteEndpoints();
 app.MapAttachmentEndpoints();
 app.MapNotificationEndpoints();
 app.MapNetworkEndpoints();             // CC2-INT-B06: provider network management
+app.MapLawFirmUserEndpoints();         // LSV3-1083: law firm company super admin/manager
 app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (anonymous)
 app.MapEnrollmentEndpoints();          // CC2-ENROLL: provider self-enrollment (anonymous)
 app.MapReferralThreadEndpoints();      // Public referral comment thread (token-authenticated)
 app.MapProviderOnboardingEndpoints();  // CC2-INT-B09: provider tenant self-onboarding
-app.MapReferralAttributionEndpoints();          // Referral Attribution configuration (tenant admin)
+app.MapReferralAttributionEndpoints();          // Referral Origination configuration (tenant admin)
 app.MapReferralAttributionAccessCodeEndpoints(); // Referral Representative access codes (tenant admin)
 app.MapPublicRepresentativeEndpoints();          // Referral Representative Portal (anonymous, code-gated)
 
@@ -1001,6 +1003,63 @@ static async Task EnsureSchemaObjectsAsync(
             logger.LogWarning(ex, "EnsureSchemaObjects: cc_TreatmentTypes seed — failed (non-fatal).");
         }
     }
+
+    // ── 20260821000000_AddPendingReferralProviderRecommendation ────────────
+    // Pending referral provider preferences are optional, so drift here only
+    // surfaces after a referral representative selects a preferred provider.
+    if (await TableExists("cc_PendingReferralRequests"))
+    {
+        if (!await ColumnExists("cc_PendingReferralRequests", "RecommendedProviderId"))
+            if (await Exec("ALTER TABLE `cc_PendingReferralRequests` ADD COLUMN `RecommendedProviderId` char(36) COLLATE ascii_general_ci NULL",
+                "cc_PendingReferralRequests.RecommendedProviderId")) applied++;
+
+        if (!await ColumnExists("cc_PendingReferralRequests", "RecommendedFacilityId"))
+            if (await Exec("ALTER TABLE `cc_PendingReferralRequests` ADD COLUMN `RecommendedFacilityId` char(36) COLLATE ascii_general_ci NULL",
+                "cc_PendingReferralRequests.RecommendedFacilityId")) applied++;
+
+        if (!await ColumnExists("cc_PendingReferralRequests", "RecommendedProviderName"))
+            if (await Exec("ALTER TABLE `cc_PendingReferralRequests` ADD COLUMN `RecommendedProviderName` varchar(250) NULL",
+                "cc_PendingReferralRequests.RecommendedProviderName")) applied++;
+
+        if (!await ColumnExists("cc_PendingReferralRequests", "RecommendedFacilityName"))
+            if (await Exec("ALTER TABLE `cc_PendingReferralRequests` ADD COLUMN `RecommendedFacilityName` varchar(250) NULL",
+                "cc_PendingReferralRequests.RecommendedFacilityName")) applied++;
+
+        if (!await TableExists("cc_PendingReferralProviderPreferences"))
+        {
+            if (await Exec("""
+                CREATE TABLE `cc_PendingReferralProviderPreferences` (
+                    `Id`                       char(36) COLLATE ascii_general_ci NOT NULL,
+                    `PendingReferralRequestId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `ProviderId`               char(36) COLLATE ascii_general_ci NOT NULL,
+                    `FacilityId`               char(36) COLLATE ascii_general_ci NULL,
+                    `ProviderName`             varchar(250) NOT NULL,
+                    `FacilityName`             varchar(250) NULL,
+                    `DisplayOrder`             int NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    KEY `IX_PendingReferralProviderPreferences_Request` (`PendingReferralRequestId`),
+                    KEY `IX_PendingReferralProviderPreferences_Request_Order` (`PendingReferralRequestId`, `DisplayOrder`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """, "cc_PendingReferralProviderPreferences")) applied++;
+        }
+        else
+        {
+            if (!await IndexExists("cc_PendingReferralProviderPreferences", "IX_PendingReferralProviderPreferences_Request"))
+                if (await Exec("CREATE INDEX `IX_PendingReferralProviderPreferences_Request` ON `cc_PendingReferralProviderPreferences` (`PendingReferralRequestId`)",
+                    "cc_PendingReferralProviderPreferences request index")) applied++;
+
+            if (!await IndexExists("cc_PendingReferralProviderPreferences", "IX_PendingReferralProviderPreferences_Request_Order"))
+                if (await Exec("CREATE INDEX `IX_PendingReferralProviderPreferences_Request_Order` ON `cc_PendingReferralProviderPreferences` (`PendingReferralRequestId`, `DisplayOrder`)",
+                    "cc_PendingReferralProviderPreferences request-order index")) applied++;
+        }
+    }
+
+    // ── LSV3-1084: ProviderNetwork.OwningOrganizationId ────────────────────
+    // Networks created before CareConnectReferrerAdmin existed have no owner and are
+    // treated as tenant-admin-owned (view-only for a ReferrerAdmin without NetworkManager).
+    if (!await ColumnExists("cc_ProviderNetworks", "OwningOrganizationId"))
+        if (await Exec("ALTER TABLE `cc_ProviderNetworks` ADD COLUMN `OwningOrganizationId` char(36) COLLATE ascii_general_ci NULL",
+            "cc_ProviderNetworks.OwningOrganizationId")) applied++;
 
     logger.LogInformation("EnsureSchemaObjects: {Count} DDL change(s) applied.", applied);
 

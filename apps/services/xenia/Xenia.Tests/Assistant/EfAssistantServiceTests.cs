@@ -65,7 +65,9 @@ public sealed class EfAssistantServiceTests : IDisposable
         Assert.Equal(AssistantProviderPurpose.ToolSelection, _provider.Requests[1].Purpose);
         Assert.Equal(AssistantProviderPurpose.Chat, _provider.Requests[2].Purpose);
         Assert.Contains("reproduce them verbatim", _provider.Requests[1].SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("use those display values", _provider.Requests[1].SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("never apply a timezone conversion", _provider.Requests[2].SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("quote those display values exactly", _provider.Requests[2].SystemPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
             _provider.Requests[1].Messages,
             message => message.Role == "tool" && message.Content.Contains("careconnect.referral.lookup", StringComparison.Ordinal));

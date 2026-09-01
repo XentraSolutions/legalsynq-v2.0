@@ -86,15 +86,14 @@ export function DetailsTab({
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
-    const initialList =
-      lookup?.CaseStatus.map((s) => ({
-        key: s.id,
-        value: s.code,
-        label: s.name,
-      })) ?? [];
+  const initialList =
+    lookup?.CaseStatus.map((s) => ({
+      key: s.id,
+      value: s.code,
+      label: s.name,
+    })) ?? [];
 
   const [caseStatusList, setCaseStatusList] = useState(() => {
-    
     // Update the label directly upon component load
     if (d.status.includes("Litigation")) {
       return initialList.map((item) =>
@@ -355,7 +354,20 @@ export function DetailsTab({
     />
   );
 
-  useEffect(() => {}, [lookup]);
+  useEffect(() => {
+    // Update the label directly upon component load
+    if (d.status.includes("Litigation")) {
+      setCaseStatusList(
+        initialList.map((item) =>
+          item.label === "Litigation"
+            ? { ...item, label: d.statusLabel, value: d.status }
+            : item,
+        ),
+      );
+    } else {
+      setCaseStatusList(initialList);
+    }
+  }, [lookup, d]);
 
   return (
     <LayoutSplit

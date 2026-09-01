@@ -12,7 +12,8 @@ public sealed record PublicNetworkSummary(
     Guid   Id,
     string Name,
     string Description,
-    int    ProviderCount);
+    int    ProviderCount,
+    Guid?  OwningOrganizationId = null);
 
 /// <summary>
 /// Public-facing provider item within a network.
@@ -152,6 +153,9 @@ public sealed class PublicReferralRequest
     /// <summary>Additional case notes (optional).</summary>
     public string? Notes { get; set; }
 
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
+
     /// <summary>
     /// Urgency level (optional). Must be one of <c>Referral.ValidUrgencies.All</c>
     /// (Low, Normal, Urgent, Emergency). Falls back to "Normal" when omitted or invalid.
@@ -162,7 +166,7 @@ public sealed class PublicReferralRequest
     public Guid? TreatmentTypeId { get; set; }
 
     /// <summary>
-    /// Referral Attribution selected from the tenant's active options (optional). Validated
+    /// Referral Origination selected from the tenant's active options (optional). Validated
     /// server-side (must belong to this tenant and be active) by
     /// ReferralService.CreateAsync — never trusted at face value.
     /// </summary>

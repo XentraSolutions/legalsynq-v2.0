@@ -267,7 +267,7 @@ function DocumentRow({
         <p className="truncate text-[16px] font-semibold leading-5 text-[#0a0a0a]">
           {document.fileName}
         </p>
-        <p className="mt-1 truncate text-[16px] font-normal leading-[1.6] text-[#737373]">
+        <p className="mt-1 whitespace-normal break-words text-[16px] font-normal leading-[1.6] text-[#737373]">
           {detail || "Document"}
         </p>
       </div>
@@ -398,11 +398,13 @@ function formatDateTimeParts(value?: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   const datePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
     month: "2-digit",
     day: "2-digit",
     year: "numeric",
   }).format(date);
   const timePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

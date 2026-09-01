@@ -22,10 +22,12 @@ public class CreateReferralRequest
     public Guid? TreatmentTypeId { get; set; }
     public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
 
     /// <summary>
-    /// Optional Referral Attribution — who or what originated this referral. Blank/null by
-    /// default; never auto-selected. Must resolve to an active attribution in the caller's
+    /// Optional Referral Origination — who or what originated this referral. Blank/null by
+    /// default; never auto-selected. Must resolve to an active origination in the caller's
     /// own tenant, or the request is rejected — see ReferralService.ResolveAttributionAsync.
     /// </summary>
     public Guid? ReferralAttributionId { get; set; }

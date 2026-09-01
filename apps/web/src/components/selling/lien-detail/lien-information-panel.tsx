@@ -1,10 +1,12 @@
-import { LienDetail } from "@/types/lien-selling";
+import Link from "next/link";
+import { LienCaseDetail, LienDetail } from "@/types/lien-selling";
 import { Chip, type ChipProps } from "@/components/ui/chip";
 import { PanelShell } from "./panel-shell";
 import { sellerStatusLabel } from "@/lib/selling/selling-detail.mapper";
 
 interface LienDetailPanelProps {
   lien: LienDetail;
+  caseInformation: LienCaseDetail | null;
   onEdit?: () => void;
 }
 
@@ -42,7 +44,11 @@ function SellerStatusBadge({ status }: { status: string }) {
   );
 }
 
-export function LienInformationPanel({ lien, onEdit }: LienDetailPanelProps) {
+export function LienInformationPanel({
+  lien,
+  caseInformation,
+  onEdit,
+}: LienDetailPanelProps) {
   return (
     <PanelShell title="Lien Information" onEdit={onEdit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-x-6 gap-y-5">
@@ -54,10 +60,30 @@ export function LienInformationPanel({ lien, onEdit }: LienDetailPanelProps) {
             <SellerStatusBadge status={lien.sellerStatus} />
           </dd>
         </div>
-        <Field label="Purchase Date" value={lien.purchaseDate} />
+        <div>
+          <dt className="text-xs font-medium text-gray-500 tracking-wide">
+            Case ID
+          </dt>
+          <dd className="mt-1 text-sm text-gray-900">
+            {caseInformation ? (
+              <Link
+                href={`/selling/portfolio/cases/${caseInformation.id}`}
+                className="underline hover:text-primary"
+              >
+                {caseInformation.caseNumber}
+              </Link>
+            ) : (
+              "—"
+            )}
+          </dd>
+        </div>
         <Field label="Initial Service Date" value={lien.initialServiceDate} />
         <Field label="End Service Date" value={lien.endServiceDate} />
-        <Field label="Lien Notes" value={lien.notes} />
+        <Field label="Handling Law Firm" value={caseInformation?.lawFirm} />
+        <Field label="Case Manager" value={caseInformation?.caseManagerName} />
+        <div className="col-span-2">
+          <Field label="Lien Notes" value={lien.notes} />
+        </div>
       </div>
     </PanelShell>
   );

@@ -5,12 +5,14 @@ public static class CaseStatus
     public const string PreDemand     = "PreDemand";
     public const string DemandSent    = "DemandSent";
     public const string InNegotiation = "InNegotiation";
+    public const string LitigationOpen = "Litigation (Open)";
+    public const string LitigationPending = "Litigation (Pending)";
     public const string CaseSettled   = "CaseSettled";
     public const string Closed        = "Closed";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
-        PreDemand, DemandSent, InNegotiation, CaseSettled, Closed
+        PreDemand, DemandSent, InNegotiation, LitigationOpen, LitigationPending, CaseSettled, Closed
     };
 
     /// <summary>
@@ -38,6 +40,14 @@ public static class CaseStatus
                     expanded.Add(InNegotiation);
                     expanded.Add(normalized);
                     break;
+                case var status when IsLitigationVariant(status, "Pending"):
+                    expanded.Add(LitigationPending);
+                    expanded.Add(normalized);
+                    break;
+                case var status when IsLitigationVariant(status, "Open"):
+                    expanded.Add(LitigationOpen);
+                    expanded.Add(normalized);
+                    break;
                 case var status when string.Equals(status, "Case Settled", StringComparison.OrdinalIgnoreCase):
                     expanded.Add(CaseSettled);
                     break;
@@ -48,5 +58,15 @@ public static class CaseStatus
         }
 
         return expanded;
+    }
+
+    private static bool IsLitigationVariant(string value, string variant)
+    {
+        var compact = value
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("(", string.Empty, StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal);
+
+        return string.Equals(compact, $"Litigation{variant}", StringComparison.OrdinalIgnoreCase);
     }
 }
