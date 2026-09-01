@@ -70,6 +70,15 @@ interface BaseSelectCommonProps<
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  /**
+   * Replaces the entire empty-list block (the `emptyText` line and the
+   * default `createAction` row below it) with a richer custom empty state —
+   * e.g. an icon, a heading, and an inline "+ Add …" affordance of the
+   * caller's own styling. `createAction` is ignored while the list is empty
+   * when this is set, since the custom content is expected to offer its own
+   * way to create one.
+   */
+  emptyState?: React.ReactNode;
 
   disabled?: boolean;
   error?: boolean;
@@ -235,6 +244,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     placeholder = "Select…",
     searchPlaceholder = "Search...",
     emptyText = "No options found.",
+    emptyState,
     disabled,
     error,
     className,
@@ -491,12 +501,15 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
           )}
         </>
       ) : (
-        <div className="p-3 text-sm text-gray-500">{emptyText}</div>
+        emptyState ?? <div className="p-3 text-sm text-gray-500">{emptyText}</div>
       )}
     </div>
   );
 
-  const createButton = createAction && (
+  // The custom emptyState is expected to offer its own "+ Add …" affordance,
+  // so the default createAction row underneath the list would be redundant.
+  const showsEmptyState = !showSkeleton && filteredOptions.length === 0 && Boolean(emptyState);
+  const createButton = createAction && !showsEmptyState && (
     <button
       type="button"
       onClick={() => {

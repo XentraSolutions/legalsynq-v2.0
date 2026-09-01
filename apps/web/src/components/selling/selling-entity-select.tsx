@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Plus, TriangleAlert, Users } from "lucide-react";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
@@ -208,6 +209,38 @@ export function SellingEntitySelect({
     ? contactPersonsQuery.isLoading
     : companiesQuery.isLoading;
 
+  // "Add Case Manager" -> "case manager", used to build the empty-state copy
+  // below without hard-coding it to one entity type.
+  const contactNoun = createLabel.replace(/^Add\s+/i, "").toLowerCase();
+  const contactEmptyState =
+    isContactPerson && allowCreate && !parentMissing ? (
+      <div className="flex flex-col items-center gap-3 px-4 py-6 text-center">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
+          <Users className="h-5 w-5 text-gray-900" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-900">
+            No Available {createLabel.replace(/^Add\s+/i, "")}
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            No {contactNoun}s are available at the moment. Add a{" "}
+            {contactNoun} using the button below.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1 text-sm font-medium text-[#EE7132] hover:text-[#D9672E]"
+          onClick={() => {
+            setCreateName(undefined);
+            setShowCreate(true);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          {createLabel}
+        </button>
+      </div>
+    ) : undefined;
+
   return (
     <>
       <BaseSelect
@@ -225,6 +258,7 @@ export function SellingEntitySelect({
         search={!isContactPerson ? companySearch : undefined}
         onSearchChange={!isContactPerson ? setCompanySearch : undefined}
         filterLocally={isContactPerson}
+        emptyState={contactEmptyState}
         createAction={
           allowCreate && !parentMissing
             ? {
@@ -239,37 +273,43 @@ export function SellingEntitySelect({
       />
 
       {showPendingPrompt && (
-        <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-xs text-amber-800">
-              <span className="font-medium">&ldquo;{pendingName}&rdquo;</span>{" "}
-              was imported but doesn&apos;t have a matching record yet.
-            </p>
+        <div className="mt-1.5 flex flex-col items-start gap-3 self-stretch rounded-[10px] bg-[rgba(254,252,232,0.5)] px-4 py-3">
+          <div>
+            <div className="flex items-start gap-2">
+              <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">&ldquo;{pendingName}&rdquo;</span>{" "}
+                was imported but doesn&apos;t have matching record yet.
+              </p>
+            </div>
             <button
               type="button"
-              className="shrink-0 text-xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+              className="mt-1 flex items-center gap-1 pl-6 text-sm font-medium text-[#EE7132] hover:text-[#D9672E]"
               onClick={() => {
                 setCreateName(pendingName);
                 setShowCreate(true);
               }}
             >
+              <Plus className="h-4 w-4" />
               Create it
             </button>
           </div>
 
           {suggestions.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-amber-200 pt-1.5">
-              <span className="text-xs text-amber-800">Did you mean:</span>
-              {suggestions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-900 hover:bg-amber-100"
-                  onClick={() => onChange(s.id, { value: s.id, label: s.name })}
-                >
-                  {s.name}
-                </button>
-              ))}
+            <div className="flex w-full flex-col items-start gap-3 border-t border-[#E5E5E5] pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-gray-500">Suggested Match:</span>
+                {suggestions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className="rounded-full border border-[#E5E5E5] bg-white px-3 py-1 text-sm text-gray-900 hover:bg-gray-50"
+                    onClick={() => onChange(s.id, { value: s.id, label: s.name })}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

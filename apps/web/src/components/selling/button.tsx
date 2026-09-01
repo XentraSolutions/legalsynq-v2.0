@@ -14,6 +14,7 @@ import {
   SquarePen,
   Trash2,
   Upload,
+  UserPlus,
 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ const BUTTON_ICONS = {
   squarePen: SquarePen,
   trash2: Trash2,
   upload: Upload,
+  userPlus: UserPlus,
 } as const;
 
 export type ButtonIconName = keyof typeof BUTTON_ICONS;

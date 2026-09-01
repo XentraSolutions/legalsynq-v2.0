@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mail, Phone, UserPlus } from "lucide-react";
+import { Mail, Phone, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/selling/button";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import { useCompanyTypes, useContactPersons } from "@/hooks/selling/use-selling-companies";
 import type { ContactPerson } from "@/lib/selling/companies.types";
@@ -93,18 +94,28 @@ export function FundingCompanyContactField({
           </div>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-xs text-amber-700">
-            This funding company has no contact on file. Add one to continue.
-          </p>
-          <button
+        <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[#E5E5E5] bg-white px-4 py-3 shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]">
+          <div className="flex items-start gap-3">
+            <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <div className="flex flex-col gap-0.5">
+              <p className="text-sm font-semibold text-amber-700">
+                No Contact Person
+              </p>
+              <p className="text-sm text-gray-600">
+                This funding company has no contact on file. Add one to
+                continue.
+              </p>
+            </div>
+          </div>
+          <Button
             type="button"
+            variant="secondary"
+            rightIcon="userPlus"
             onClick={() => setShowAdd(true)}
-            className="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 text-gray-700 whitespace-nowrap"
+            className="shrink-0"
           >
-            <UserPlus className="h-3.5 w-3.5" />
             Add Contact
-          </button>
+          </Button>
         </div>
       )}
 
