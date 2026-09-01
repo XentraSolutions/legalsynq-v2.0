@@ -1543,7 +1543,7 @@ Update an existing case.
 
 Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
 
-Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update` and description `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, `Case Tracking Note Update` is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
+Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update`. A nonblank input uses description `Case Tracking Note Update: <submitted note>`; clearing the input uses `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, that description is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Status aliases such as `Negotiations`, `InNegotiation`, and `In Negotiation` are compared by their canonical value so resubmitting the displayed status does not create a false status-change entry. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
 
 **Permission:** `SYNQ_LIENS.case:read`
 
@@ -1554,6 +1554,15 @@ The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is 
 When `LegacyUpdateHistory:Enabled` is true, `POST /api/liens/cases/case-updates/v3`
 also merges imported Program 1 case-update events and
 `POST /api/liens/cases/liens-updates/v3` merges imported lien-update events.
+The lien-update timeline excludes case-level `Case Details Update` history that has
+no lien association. Those records remain available from `case-updates/v3`; every
+row returned by `liens-updates/v3` represents a specific lien and includes its
+`lienId` and `action`.
+Changing `note` through `POST /api/liens/cases/liens/update-medical` appends one
+lien-scoped `Lien Update` row. Its description is the submitted note, its
+`lienId` is the updated lien, and `updatedBy` resolves from the authenticated
+user. Resubmitting the same trimmed note does not create a duplicate row;
+clearing an existing note is recorded as `Medical note cleared.`.
 Global ordering is timestamp descending, native before imported on an exact
 timestamp tie, then stable source sequence/ID descending. Counts and pagination
 cover all enabled sources. Timeline requests are limited to 200 rows per page

@@ -15,6 +15,7 @@ public static class SeedHelper
     // Stable IDs used across all tests.
     public static readonly Guid TenantId  = new("10000000-0000-0000-0000-000000000001");
     public static readonly Guid UserId    = new("20000000-0000-0000-0000-000000000002");
+    public static readonly Guid IdentityOnlyUserId = new("20000000-0000-0000-0000-000000000003");
     public static readonly Guid OrgId     = new("30000000-0000-0000-0000-000000000003");
 
     public static readonly Guid LawFirmId          = new("40000000-0000-0000-0000-000000000010");

@@ -201,6 +201,55 @@ public sealed class LegacyUpdateHistoryEndpointTests
     }
 
     [Fact]
+    public async Task Lien_history_excludes_case_detail_updates_without_a_lien()
+    {
+        await using var factory = new EnabledLegacyUpdateHistoryFactory();
+        var client = await CreateAuthenticatedClientAsync(factory);
+        var (caseId, lienId) = await AddEmptyCaseAndLienAsync(factory);
+        var caseUpdate = LienCaseNote.Create(
+            caseId,
+            SeedHelper.TenantId,
+            "Note updated",
+            CaseNoteCategory.Internal,
+            SeedHelper.UserId,
+            "Stale Actor");
+        var lienUpdate = CreateEvent(
+            caseId,
+            lienId,
+            LegacyUpdateEvent.LienScope,
+            700,
+            description: "Lien-specific update");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.LienCaseNotes.Add(caseUpdate);
+            db.LegacyUpdateEvents.Add(lienUpdate);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/liens/cases/liens-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+        var update = body.RootElement.GetProperty("data").EnumerateArray().Single();
+        update.GetProperty("id").GetString().Should().Be(lienUpdate.Id.ToString());
+        update.GetProperty("caseId").GetString().Should().Be(caseId.ToString());
+        update.GetProperty("lienId").GetString().Should().Be(lienId.ToString());
+        update.GetProperty("action").GetString().Should().Be("Lien Update");
+        update.GetProperty("description").GetString().Should().Be("Lien-specific update");
+        body.RootElement.GetProperty("data").EnumerateArray().Should().NotContain(item =>
+            item.GetProperty("id").GetString() == caseUpdate.Id.ToString());
+    }
+
+    [Fact]
     public async Task Enabled_case_history_pages_a_25000_event_timeline()
     {
         await using var factory = new EnabledLegacyUpdateHistoryFactory();

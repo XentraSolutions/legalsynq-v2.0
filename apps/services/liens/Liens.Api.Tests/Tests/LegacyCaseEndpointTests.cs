@@ -1938,10 +1938,10 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body.RootElement.GetProperty("data").EnumerateArray().Should().Contain(item =>
             item.GetProperty("description").GetString()!.Contains("Case updated:", StringComparison.Ordinal) &&
             item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal) &&
-            item.GetProperty("description").GetString()!.Contains("Case Tracking Note Update", StringComparison.Ordinal) &&
+            item.GetProperty("description").GetString()!.Contains(
+                "Case Tracking Note Update: status change from details update",
+                StringComparison.Ordinal) &&
             item.GetProperty("action").GetString() == "Case Details Update");
-        body.RootElement.GetProperty("data").EnumerateArray().Should().NotContain(item =>
-            item.GetProperty("description").GetString() == "status change from details update");
     }
 
     [Fact]
@@ -1996,8 +1996,10 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         var updates = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
         updates.Should().HaveCount(2);
         updates.Should().OnlyContain(item =>
-            item.GetProperty("action").GetString() == "Case Details Update" &&
-            item.GetProperty("description").GetString() == "Case Tracking Note Update");
+            item.GetProperty("action").GetString() == "Case Details Update");
+        updates.Select(item => item.GetProperty("description").GetString()).Should().BeEquivalentTo(
+            "Case Tracking Note Update: Updated note",
+            "Case Tracking Note Update");
 
         using var verificationScope = _factory.Services.CreateScope();
         var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -2006,6 +2008,55 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             .ToListAsync();
         storedNotes.Count(note => note.Category == CaseNoteCategory.General).Should().Be(1);
         storedNotes.Count(note => note.Category == CaseNoteCategory.Internal).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_with_equivalent_legacy_status_records_only_the_submitted_tracking_note()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LEGACY-STATUS-{Guid.NewGuid():N}"[..28],
+                "Legacy",
+                "Status",
+                SeedHelper.UserId,
+                notes: "Original note");
+            SetProperty(caseEntity, nameof(Case.Status), "Negotiations");
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        const string submittedNote = "Client called with a treatment update";
+        var patchResponse = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus = "In Negotiation",
+            notes = submittedNote,
+        });
+        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await updatesResponse.Content.ReadAsStringAsync());
+        var updates = payload.RootElement.GetProperty("data").EnumerateArray().ToList();
+        updates.Should().ContainSingle();
+        updates[0].GetProperty("action").GetString().Should().Be("Case Details Update");
+        updates[0].GetProperty("description").GetString().Should().Be(
+            $"Case Tracking Note Update: {submittedNote}");
+        updates[0].GetProperty("description").GetString().Should().NotContain("status changed");
     }
 
     [Fact]

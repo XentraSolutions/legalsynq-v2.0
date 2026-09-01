@@ -238,8 +238,25 @@ internal sealed class StubIdentityHandler : HttpMessageHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
-        request.RequestUri?.AbsolutePath.Should().Be("/api/users");
         request.Headers.Authorization.Should().NotBeNull();
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+        if (string.Equals(
+                path,
+                $"/api/users/{SeedHelper.IdentityOnlyUserId:D}",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"id":"{{SeedHelper.IdentityOnlyUserId}}","firstName":"Identity","lastName":"Only","email":"identity.only@legalsynq.test"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            });
+        }
+
+        if (!string.Equals(path, "/api/users", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -263,6 +280,8 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
         var expectedOrganizationPath = $"/api/admin/organizations/{SeedHelper.OrgId:D}";
         var expectedTenantOwnerDisplayPath = "/api/internal/users/tenant-owner/display";
         var expectedUserDisplayPath = $"/api/internal/users/{SeedHelper.UserId:D}/display";
+        var expectedIdentityOnlyUserDisplayPath =
+            $"/api/internal/users/{SeedHelper.IdentityOnlyUserId:D}/display";
         if (string.Equals(path, expectedTenantOwnerDisplayPath, StringComparison.OrdinalIgnoreCase))
         {
             AssertProvisioningToken(request);
@@ -298,6 +317,24 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
                   "firstName": "Seller",
                   "lastName": "Processor",
                   "displayName": "Seller Processor"
+                }
+                """));
+        }
+
+        if (string.Equals(path, expectedIdentityOnlyUserDisplayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            AssertProvisioningToken(request);
+            request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
+            return Task.FromResult(JsonResponse($$"""
+                {
+                  "found": true,
+                  "userId": "{{SeedHelper.IdentityOnlyUserId:D}}",
+                  "tenantId": "{{SeedHelper.TenantId:D}}",
+                  "email": "identity.only@legalsynq.test",
+                  "firstName": "Identity",
+                  "lastName": "Only",
+                  "displayName": "Identity Only"
                 }
                 """));
         }

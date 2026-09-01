@@ -395,6 +395,10 @@ CommerceIntegration__TimeoutSeconds=10
 
 # service clients
 ExternalServices__Identity__BaseUrl=http://localhost:5001
+IdentityService__BaseUrl=http://localhost:5001
+# Must match Identity's TenantService__ProvisioningSecret.
+IdentityService__ProvisioningToken=<secret>
+IdentityService__TimeoutSeconds=10
 ExternalServices__Documents__BaseUrl=http://localhost:5006
 ExternalServices__Audit__BaseUrl=http://localhost:5007
 ExternalServices__Notifications__BaseUrl=http://localhost:5008

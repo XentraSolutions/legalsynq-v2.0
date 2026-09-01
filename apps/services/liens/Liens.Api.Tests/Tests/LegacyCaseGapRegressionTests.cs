@@ -251,6 +251,122 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task Case_and_lien_csv_exports_exclude_deleted_records()
+    {
+        var exportKey = $"CSV-DELETE-{Guid.CreateVersion7():N}";
+        var deletedCaseNumber = $"CASE-{exportKey}-REMOVED";
+        var retainedCaseNumber = $"CASE-{exportKey}-RETAINED";
+        var deletedWithCaseLienNumber = $"LIEN-{exportKey}-CASE-REMOVED";
+        var deletedLienNumber = $"LIEN-{exportKey}-REMOVED";
+        var rejectedLienNumber = $"LIEN-{exportKey}-REJECTED";
+        var retainedLienNumber = $"LIEN-{exportKey}-RETAINED";
+        Guid deletedCaseId;
+        Guid deletedLienId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var deletedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                deletedCaseNumber,
+                "Deleted",
+                "Case",
+                SeedHelper.UserId);
+            var retainedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                retainedCaseNumber,
+                "Retained",
+                "Case",
+                SeedHelper.UserId);
+            var deletedWithCaseLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                deletedWithCaseLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: deletedCase.Id);
+            var deletedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                deletedLienNumber,
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                caseId: retainedCase.Id);
+            var retainedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                retainedLienNumber,
+                LienType.MedicalLien,
+                300m,
+                SeedHelper.UserId,
+                caseId: retainedCase.Id);
+            var rejectedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                rejectedLienNumber,
+                LienType.MedicalLien,
+                400m,
+                SeedHelper.UserId,
+                caseId: retainedCase.Id);
+            rejectedLien.SetLegacyMedicalStatus("Rejected", SeedHelper.UserId);
+
+            deletedCaseId = deletedCase.Id;
+            deletedLienId = deletedLien.Id;
+            db.Cases.AddRange(deletedCase, retainedCase);
+            db.Liens.AddRange(deletedWithCaseLien, deletedLien, retainedLien, rejectedLien);
+            await db.SaveChangesAsync();
+        }
+
+        var deleteCaseResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{deletedCaseId}");
+        deleteCaseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteCaseResponse.Content.ReadAsStringAsync()}");
+
+        var deleteLienResponse = await _client.DeleteAsync($"/api/liens/cases/liens/delete/{deletedLienId}");
+        deleteLienResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteLienResponse.Content.ReadAsStringAsync()}");
+
+        var caseExportResponse = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", new
+        {
+            keyword = exportKey,
+        });
+        caseExportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseExportResponse.Content.ReadAsStringAsync()}");
+        var caseCsv = await DecodeCsvAsync(caseExportResponse);
+        caseCsv.Should().Contain(retainedCaseNumber);
+        caseCsv.Should().NotContain(deletedCaseNumber);
+
+        var lienExportResponse = await _client.PostAsJsonAsync("/api/liens/cases/liens/generate-csv", new
+        {
+            keyword = exportKey,
+        });
+        lienExportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await lienExportResponse.Content.ReadAsStringAsync()}");
+        var lienCsv = await DecodeCsvAsync(lienExportResponse);
+        lienCsv.Should().Contain(retainedLienNumber);
+        lienCsv.Should().NotContain(deletedLienNumber);
+        lienCsv.Should().NotContain(deletedWithCaseLienNumber);
+        lienCsv.Should().NotContain(rejectedLienNumber);
+
+        var rejectedLienExportResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/generate-csv",
+            new
+            {
+                keyword = exportKey,
+                lienStatusId = "Rejected",
+            });
+        rejectedLienExportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await rejectedLienExportResponse.Content.ReadAsStringAsync()}");
+        var rejectedLienCsv = await DecodeCsvAsync(rejectedLienExportResponse);
+        rejectedLienCsv.Should().Contain(rejectedLienNumber);
+        rejectedLienCsv.Should().NotContain(deletedLienNumber);
+        rejectedLienCsv.Should().NotContain(deletedWithCaseLienNumber);
+    }
+
+    [Fact]
     public async Task Case_other_metadata_roundtrips_through_legacy_routes()
     {
         var updateResponse = await _client.PostAsJsonAsync("/api/liens/cases/update-other", new
@@ -482,5 +598,12 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
         var legacyCsv = Encoding.UTF8.GetString(Convert.FromBase64String(legacyEncodedCsv!));
         legacyCsv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)[0]
             .Should().Be("CaseId,CaseNumber,ClientFirstName,ClientLastName,Status,DateOfLoss");
+    }
+
+    private static async Task<string> DecodeCsvAsync(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = body!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        return Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
     }
 }

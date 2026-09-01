@@ -10,6 +10,7 @@ using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Api.Serialization;
+using Liens.Infrastructure.Identity;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Options;
 using ManualMedicalCodeEntity = Liens.Domain.Entities.ManualMedicalCode;
@@ -29,6 +30,7 @@ public static class CaseEndpoints
     private const string LegacyMetadataMarker = "[legacy-meta]";
     private const int LegacyTimelineMaximumPageSize = 200;
     private const int LegacyTimelineMaximumWindow = 25_000;
+    private const string DeletedLienHistoryDescription = "Lien status updated to Delete.";
     private const string MedicareProcedureLookupClientName = "MedicareProcedureLookup";
     private const string MedicareProcedureLookupApiKey = "1iuNYl3IYBHTSjmn34m0XOLLqfm1nrmz";
     private const string MedicareProcedureLookupAmaLicense = "b733fd32-ee85-4174-9ab1-e09ec14048bb";
@@ -41,8 +43,18 @@ public static class CaseEndpoints
     private sealed class IdentityUserResponse
     {
         public Guid Id { get; init; }
+        public string? Email { get; init; }
         public string? FirstName { get; init; }
         public string? LastName { get; init; }
+    }
+
+    private sealed class IdentityUserDisplayResponse
+    {
+        public bool Found { get; init; }
+        public string? Email { get; init; }
+        public string? FirstName { get; init; }
+        public string? LastName { get; init; }
+        public string? DisplayName { get; init; }
     }
 
     private sealed record LegacyCaseTimelineItem(
@@ -1305,10 +1317,12 @@ public static class CaseEndpoints
     private static async Task<IResult> LiensMedicaUpdateLegacy(
         LegacyLiensMedicalRequest request,
         ILienService lienService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
 
         if (!Guid.TryParse(request.id, out var lienId))
@@ -1329,6 +1343,10 @@ public static class CaseEndpoints
                 message = "No record found to update.",
             });
         }
+
+        var submittedNote = request.note?.Trim() ?? string.Empty;
+        var noteChanged = request.note is not null &&
+            !string.Equals(submittedNote, existing.Description?.Trim() ?? string.Empty, StringComparison.Ordinal);
 
         var mappedUpdate = new UpdateLienRequest
         {
@@ -1352,9 +1370,29 @@ public static class CaseEndpoints
 
         try
         {
-            await lienService.UpdateAsync(tenantId, lienId, userId, mappedUpdate, ct);
+            var updated = await lienService.UpdateAsync(tenantId, lienId, userId, mappedUpdate, ct);
             if (!string.IsNullOrWhiteSpace(request.status))
                 await lienService.SetLegacyMedicalStatusAsync(tenantId, lienId, userId, request.status, ct);
+
+            if (noteChanged)
+            {
+                await servicingItemService.CreateAsync(
+                    tenantId,
+                    orgId,
+                    userId,
+                    new CreateServicingItemRequest
+                    {
+                        TaskNumber = $"LMU-{Guid.CreateVersion7():N}",
+                        TaskType = "Lien Update",
+                        Description = string.IsNullOrEmpty(submittedNote)
+                            ? "Medical note cleared."
+                            : submittedNote,
+                        AssignedTo = "system",
+                        CaseId = updated.CaseId,
+                        LienId = lienId,
+                    },
+                    ct);
+            }
 
             return Results.Ok(new
             {
@@ -4570,6 +4608,8 @@ public static class CaseEndpoints
                 tenantId,
                 lienStatusFilter,
                 ct);
+            var excludeRejectedAndCancelled =
+                !expandedLienStatusFilter.Contains(LienStatus.Cancelled);
 
             var allLiens = new List<LienResponse>();
             const int pageSize = 200;
@@ -4588,7 +4628,8 @@ public static class CaseEndpoints
                     facilityId: null,
                     page: page,
                     pageSize: pageSize,
-                    ct);
+                    ct,
+                    excludeRejectedAndCancelled: excludeRejectedAndCancelled);
 
                 if (result.Items.Count == 0)
                     break;
@@ -4600,10 +4641,25 @@ public static class CaseEndpoints
                 page++;
             }
 
+            var candidateLienIds = allLiens.Select(lien => lien.Id).ToList();
+            var deletedLienIds = new HashSet<Guid>();
+            if (candidateLienIds.Count > 0)
+            {
+                deletedLienIds = (await db.LienStatusHistories
+                    .AsNoTracking()
+                    .Where(history =>
+                        history.TenantId == tenantId &&
+                        candidateLienIds.Contains(history.LienId) &&
+                        history.Description == DeletedLienHistoryDescription)
+                    .Select(history => history.LienId)
+                    .Distinct()
+                    .ToListAsync(ct))
+                    .ToHashSet();
+            }
+
             var advancedFilterRowsByLienId = new Dictionary<Guid, LienEndpoints.AdvancedLienFilterRow>();
             if (lawFirmIdFilter.Count > 0 || facilityIdFilter.Count > 0 || caseManagerIdFilter.Count > 0)
             {
-                var candidateLienIds = allLiens.Select(lien => lien.Id).ToList();
                 var candidateLiens = await db.Liens
                     .AsNoTracking()
                     .Where(lien => lien.TenantId == tenantId && candidateLienIds.Contains(lien.Id))
@@ -4617,6 +4673,7 @@ public static class CaseEndpoints
             }
 
             var filteredLiens = allLiens
+                .Where(l => !deletedLienIds.Contains(l.Id))
                 .Where(l => string.IsNullOrWhiteSpace(request.caseId) ||
                             (l.CaseId.HasValue && caseIdFilter.Contains(l.CaseId.Value)))
                 .Where(l => string.IsNullOrWhiteSpace(request.liensId) || lienIdFilter.Contains(l.Id))
@@ -5618,6 +5675,7 @@ public static class CaseEndpoints
         LegacyLiensUpdatesV3Request req,
         LiensDbContext db,
         IOptions<LegacyUpdateHistoryOptions> historyOptions,
+        IOptions<IdentityServiceOptions> identityOptions,
         IHttpClientFactory httpClientFactory,
         HttpContext httpContext,
         ICurrentRequestContext ctx,
@@ -5655,7 +5713,6 @@ public static class CaseEndpoints
             .ThenByDescending(item => item.Id)
             .Take(fetchCount)
             .ToListAsync(ct);
-
         var combined = statusHistory.Select(item => new LegacyLienTimelineItem(
                 item.Id.ToString(),
                 caseId.ToString(),
@@ -5674,7 +5731,7 @@ public static class CaseEndpoints
                 item.TaskType,
                 string.IsNullOrWhiteSpace(item.Resolution) ? item.Description : item.Resolution,
                 string.Empty,
-                item.UpdatedByUserId,
+                item.UpdatedByUserId ?? item.CreatedByUserId,
                 item.UpdatedAtUtc,
                 0,
                 0)))
@@ -5727,8 +5784,11 @@ public static class CaseEndpoints
             .ToList();
         var updatedByNames = await ResolveLienHistoryUserNamesAsync(
             selected.Where(item => item.UpdatedByUserId.HasValue).Select(item => item.UpdatedByUserId!.Value),
+            tenantId,
+            ctx.OrgId,
             httpClientFactory,
             httpContext.Request.Headers.Authorization.ToString(),
+            identityOptions.Value,
             ct);
         var data = selected
             .Select(i => new
@@ -5739,7 +5799,7 @@ public static class CaseEndpoints
                 action = i.Action,
                 description = i.Description,
                 updatedBy = i.UpdatedByUserId.HasValue
-                    ? updatedByNames.GetValueOrDefault(i.UpdatedByUserId.Value, string.Empty)
+                    ? ResolveLienHistoryUserName(i.UpdatedByUserId.Value, updatedByNames, ctx)
                     : i.UpdatedBy,
                 timestamp = FormatLegacyTimestamp(i.SortAt),
             })
@@ -5790,36 +5850,151 @@ public static class CaseEndpoints
 
     private static async Task<IReadOnlyDictionary<Guid, string>> ResolveLienHistoryUserNamesAsync(
         IEnumerable<Guid> userIds,
+        Guid tenantId,
+        Guid? organizationId,
         IHttpClientFactory httpClientFactory,
         string authorizationHeader,
+        IdentityServiceOptions identityOptions,
         CancellationToken ct)
     {
         var ids = userIds.Distinct().ToHashSet();
         if (ids.Count == 0)
             return new Dictionary<Guid, string>();
 
+        var resolved = new Dictionary<Guid, string>();
+        using var publicIdentityClient = httpClientFactory.CreateClient("Identity");
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, "api/users");
             if (AuthenticationHeaderValue.TryParse(authorizationHeader, out var authorization))
                 request.Headers.Authorization = authorization;
 
-            using var response = await httpClientFactory.CreateClient("Identity").SendAsync(request, ct);
-            if (!response.IsSuccessStatusCode)
-                return new Dictionary<Guid, string>();
-
-            var users = await response.Content.ReadFromJsonAsync<List<IdentityUserResponse>>(cancellationToken: ct) ?? [];
-            return users
-                .Where(user => ids.Contains(user.Id))
-                .ToDictionary(
-                    user => user.Id,
-                    user => string.Join(" ", new[] { user.FirstName, user.LastName }
-                        .Where(value => !string.IsNullOrWhiteSpace(value))).Trim());
+            using var response = await publicIdentityClient.SendAsync(request, ct);
+            if (response.IsSuccessStatusCode)
+            {
+                var users = await response.Content.ReadFromJsonAsync<List<IdentityUserResponse>>(cancellationToken: ct)
+                    ?? [];
+                foreach (var user in users.Where(user => ids.Contains(user.Id)))
+                {
+                    var display = FirstNonEmpty(
+                        JoinPersonName(user.FirstName, user.LastName),
+                        user.Email);
+                    if (!string.IsNullOrWhiteSpace(display))
+                        resolved[user.Id] = display;
+                }
+            }
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException ||
+                                   ex is OperationCanceledException && !ct.IsCancellationRequested)
         {
-            return new Dictionary<Guid, string>();
+            // Fall through to the authenticated per-user lookup.
         }
+
+        var unresolvedIds = ids.Where(id => !resolved.ContainsKey(id)).ToList();
+        foreach (var userId in unresolvedIds)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"api/users/{userId:D}");
+                if (AuthenticationHeaderValue.TryParse(authorizationHeader, out var authorization))
+                    request.Headers.Authorization = authorization;
+
+                using var response = await publicIdentityClient.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode)
+                    continue;
+
+                var user = await response.Content.ReadFromJsonAsync<IdentityUserResponse>(cancellationToken: ct);
+                var display = FirstNonEmpty(
+                    JoinPersonName(user?.FirstName, user?.LastName),
+                    user?.Email);
+                if (!string.IsNullOrWhiteSpace(display))
+                    resolved[userId] = display;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException ||
+                                       ex is OperationCanceledException && !ct.IsCancellationRequested)
+            {
+                // Fall through to the trusted per-user display endpoint.
+            }
+        }
+
+        unresolvedIds = ids.Where(id => !resolved.ContainsKey(id)).ToList();
+        if (unresolvedIds.Count == 0 ||
+            !Uri.TryCreate(identityOptions.BaseUrl?.TrimEnd('/') + "/", UriKind.Absolute, out var identityBaseUri))
+        {
+            return resolved;
+        }
+
+        using var identityClient = httpClientFactory.CreateClient("IdentityService");
+        identityClient.BaseAddress = identityBaseUri;
+        identityClient.Timeout = TimeSpan.FromSeconds(
+            identityOptions.TimeoutSeconds > 0 ? identityOptions.TimeoutSeconds : 5);
+        if (!string.IsNullOrWhiteSpace(identityOptions.ProvisioningToken))
+        {
+            identityClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                "X-Provisioning-Token",
+                identityOptions.ProvisioningToken);
+        }
+        else if (!string.IsNullOrWhiteSpace(identityOptions.AuthHeaderName) &&
+                 !string.IsNullOrWhiteSpace(identityOptions.AuthHeaderValue))
+        {
+            identityClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                identityOptions.AuthHeaderName,
+                identityOptions.AuthHeaderValue);
+        }
+
+        foreach (var userId in unresolvedIds)
+        {
+            try
+            {
+                var path = $"api/internal/users/{userId:D}/display?tenantId={tenantId:D}";
+                if (organizationId.HasValue && organizationId.Value != Guid.Empty)
+                    path += $"&organizationId={organizationId.Value:D}";
+
+                using var response = await identityClient.GetAsync(path, ct);
+                if (!response.IsSuccessStatusCode)
+                    continue;
+
+                var user = await response.Content.ReadFromJsonAsync<IdentityUserDisplayResponse>(
+                    cancellationToken: ct);
+                if (user?.Found != true)
+                    continue;
+
+                var display = FirstNonEmpty(
+                    user.DisplayName,
+                    JoinPersonName(user.FirstName, user.LastName),
+                    user.Email);
+                if (!string.IsNullOrWhiteSpace(display))
+                    resolved[userId] = display;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException ||
+                                       ex is OperationCanceledException && !ct.IsCancellationRequested)
+            {
+                // Leave the actor unresolved; the response uses a human-readable placeholder.
+            }
+        }
+
+        return resolved;
+    }
+
+    private static string? JoinPersonName(string? firstName, string? lastName) =>
+        FirstNonEmpty(string.Join(" ", new[] { firstName, lastName }
+            .Where(value => !string.IsNullOrWhiteSpace(value))).Trim());
+
+    private static string ResolveLienHistoryUserName(
+        Guid userId,
+        IReadOnlyDictionary<Guid, string> userNames,
+        ICurrentRequestContext ctx)
+    {
+        if (userNames.TryGetValue(userId, out var resolvedName) &&
+            !string.IsNullOrWhiteSpace(resolvedName))
+        {
+            return resolvedName;
+        }
+
+        if (ctx.UserId == userId)
+            return FirstNonEmpty(ctx.Name, ctx.Email, "Unknown user")!;
+
+        return "Unknown user";
     }
 
     private static async Task<IResult> GetCasesV3Legacy(
@@ -6334,7 +6509,8 @@ public static class CaseEndpoints
             normalizedStatus,
             dateOfLoss,
             trackingFollowUp,
-            detailsNoteChanged);
+            detailsNoteChanged,
+            detailsNote);
 
         var request = new UpdateCaseRequest
         {
@@ -6423,11 +6599,12 @@ public static class CaseEndpoints
         string normalizedStatus,
         DateOnly? dateOfLoss,
         DateOnly? trackingFollowUp,
-        bool detailsNoteChanged)
+        bool detailsNoteChanged,
+        string? detailsNote)
     {
         var changes = new List<string>();
 
-        if (!string.Equals(existing.Status, normalizedStatus, StringComparison.Ordinal))
+        if (!AreLegacyCaseStatusesEquivalent(existing.Status, normalizedStatus))
             changes.Add($"status changed to {ResolveLegacyDisplayStatus(normalizedStatus)}");
 
         if (!string.Equals(existing.CurrentMedicalStatus ?? string.Empty, req.CurrentMedicalStatus ?? string.Empty, StringComparison.Ordinal))
@@ -6466,17 +6643,31 @@ public static class CaseEndpoints
         if (!AreCaseFlagsEquivalent(existing.IsUccFiled, req.IsUccFiled))
             changes.Add($"ucc filed changed to {NormalizeCaseFlagForDisplay(req.IsUccFiled)}");
 
-        if (detailsNoteChanged)
-            changes.Add(LegacyCaseUpdateCompatibility.CaseTrackingNoteUpdateDescription);
+        var caseTrackingNoteChange = detailsNoteChanged
+            ? DescribeCaseTrackingNoteChange(detailsNote)
+            : null;
+        if (caseTrackingNoteChange is not null)
+            changes.Add(caseTrackingNoteChange);
 
         if (changes.Count == 0)
             return null;
 
-        if (changes.Count == 1 && detailsNoteChanged)
-            return LegacyCaseUpdateCompatibility.CaseTrackingNoteUpdateDescription;
+        if (changes.Count == 1 && caseTrackingNoteChange is not null)
+            return caseTrackingNoteChange;
 
         return $"Case updated: {string.Join("; ", changes)}.";
     }
+
+    private static bool AreLegacyCaseStatusesEquivalent(string existingStatus, string normalizedStatus) =>
+        string.Equals(
+            NormalizeLegacyCaseStatus(existingStatus),
+            normalizedStatus,
+            StringComparison.Ordinal);
+
+    private static string DescribeCaseTrackingNoteChange(string? detailsNote) =>
+        string.IsNullOrWhiteSpace(detailsNote)
+            ? LegacyCaseUpdateCompatibility.CaseTrackingNoteUpdateDescription
+            : $"{LegacyCaseUpdateCompatibility.CaseTrackingNoteUpdateDescription}: {detailsNote}";
 
     private static string ResolveLegacyDisplayStatus(string status) => status switch
     {
