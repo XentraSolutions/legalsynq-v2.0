@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, Plus, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronUp, Minimize2, Maximize2, TriangleAlert, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Modal } from "@/components/selling/modal";
 import { Button } from "@/components/selling/button";
 import { BaseSelect } from "@/components/ui/base-select";
@@ -12,7 +13,7 @@ import { CompanyFormModal } from "@/components/selling/forms/company-form-modal"
 import { liensService } from "@/lib/selling";
 import { applyCsvColumnCorrections } from "@/lib/selling/csv-utils";
 import { nameSimilarity } from "@/lib/selling/string-similarity";
-import { useCompanyTypes, useCompanies } from "@/hooks/selling/use-selling-companies";
+import { useCompanyTypes, useInfiniteCompanyOptions } from "@/hooks/selling/use-selling-companies";
 import type { BulkImportRowItem } from "@/lib/selling/liens.types";
 import type { SellingEntityType } from "@/components/selling/selling-entity-select";
 import {
@@ -79,13 +80,29 @@ function formatCurrency(value?: string): string {
 // from the row data returned by GET /bulk-imports/{id}/rows. Operational
 // defaults can remain in that data without appearing in the user-facing table.
 const CURRENCY_FIELD_PATTERN = /cost|amount/i;
+const DATE_FIELD_PATTERN = /date/i;
+const LONG_TEXT_FIELD_PATTERN = /notes|description/i;
 const HIDDEN_PREVIEW_FIELDS = new Set([
   "listing visibility",
   "lien visibility",
 ]);
+// First column (Case Code) is frozen so it stays visible while the rest of
+// the row's many columns scroll horizontally underneath it.
+const STICKY_FIELD = "case code*";
 
 function toHeader(fieldKey: string): string {
   return fieldKey.replace(/\*$/, "");
+}
+
+// Column widths purely by field-name shape (currency/date/long-text/default)
+// since the column set is derived from the CSV template at render time and
+// can't be hand-mapped per header.
+function widthFor(key: string): string {
+  if (CURRENCY_FIELD_PATTERN.test(key)) return "130px";
+  if (DATE_FIELD_PATTERN.test(key)) return "130px";
+  if (LONG_TEXT_FIELD_PATTERN.test(key)) return "240px";
+  if (key.trim().toLowerCase() === STICKY_FIELD) return "160px";
+  return "150px";
 }
 
 function buildColumns(rows: ParsedRow[]): ColumnDef<ParsedRow, any>[] {
@@ -105,14 +122,23 @@ function buildColumns(rows: ParsedRow[]): ColumnDef<ParsedRow, any>[] {
 
   return keys.map((key) => {
     const currency = CURRENCY_FIELD_PATTERN.test(key);
+    const sticky = key.trim().toLowerCase() === STICKY_FIELD;
+    const minWidth = widthFor(key);
     return {
       id: key,
       header: toHeader(key),
-      meta: currency ? { align: "right" } : undefined,
+      meta: {
+        align: currency ? "right" : undefined,
+        minWidth,
+        sticky,
+        // Matches this table's TABLE_HEADER_CLASSNAME override (#F5F5F5)
+        // instead of BaseTable's default header background.
+        stickyHeaderBackground: sticky ? "bg-[#F5F5F5]" : undefined,
+      },
       cell: ({ row }) => {
         const raw = row.original.data[key];
         return (
-          <span className={TABLE_CELL_CLASSNAME}>
+          <span className={cn(TABLE_CELL_CLASSNAME, "line-clamp-2")}>
             {currency ? formatCurrency(raw) : raw || "—"}
           </span>
         );
@@ -185,6 +211,7 @@ export function ReviewBulkUploadModal({
     pageSize: 10,
   });
   const [panelExpanded, setPanelExpanded] = useState(true);
+  const [modalExpanded, setModalExpanded] = useState(false);
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [creatingGroup, setCreatingGroup] = useState<UnmatchedGroup | null>(null);
@@ -227,18 +254,9 @@ export function ReviewBulkUploadModal({
     LawFirm: undefined,
   };
 
-  const fundingCompaniesQuery = useCompanies(
-    { companyTypeId: fundingCompanyType?.id, pageSize: 200 },
-    { enabled: open && Boolean(fundingCompanyType?.id) },
-  );
-  const facilitiesQuery = useCompanies(
-    { companyTypeId: facilityType?.id, pageSize: 200 },
-    { enabled: open && Boolean(facilityType?.id) },
-  );
-  const providersQuery = useCompanies(
-    { companyTypeId: providerType?.id, pageSize: 200 },
-    { enabled: open && Boolean(providerType?.id) },
-  );
+  const fundingCompaniesQuery = useInfiniteCompanyOptions("FundingCompany", { enabled: open });
+  const facilitiesQuery = useInfiniteCompanyOptions("MedicalFacility", { enabled: open });
+  const providersQuery = useInfiniteCompanyOptions("MedicalProvider", { enabled: open });
   const optionsByEntityType: Record<SellingEntityType, { value: string; label: string }[]> = {
     FundingCompany: fundingCompaniesQuery.options,
     MedicalFacility: facilitiesQuery.options,
@@ -311,7 +329,21 @@ export function ReviewBulkUploadModal({
       onClose={onClose}
       title="Review Bulk Upload Details"
       subtitle="Review your data before importing to ensure everything is accurate and ready to proceed."
-      size="xl"
+      size={modalExpanded ? "full" : "xl"}
+      headerActions={
+        <Button
+          variant="ghost"
+          className="w-7 h-7 p-0 rounded-lg text-gray-400 hover:text-gray-600"
+          onClick={() => setModalExpanded((v) => !v)}
+          aria-label={modalExpanded ? "Collapse modal" : "Expand modal"}
+        >
+          {modalExpanded ? (
+            <Minimize2 className="h-4 w-4" />
+          ) : (
+            <Maximize2 className="h-4 w-4" />
+          )}
+        </Button>
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={confirming}>
@@ -348,11 +380,11 @@ export function ReviewBulkUploadModal({
             <button
               type="button"
               onClick={() => setPanelExpanded((v) => !v)}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              className="flex w-full items-start justify-between gap-1 self-stretch px-4 pb-3 pt-6 text-left"
             >
               <div>
                 <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                  <TriangleAlert className="h-4 w-4 text-amber-500" />
+                  <TriangleAlert className="h-4 w-4" style={{ color: "#EAB308" }} />
                   Unmatched Entities Detected ({unmatchedGroups.length} Unique{" "}
                   {unmatchedGroups.length === 1 ? "String" : "Strings"} across{" "}
                   {unmatchedGroups.reduce((sum, g) => sum + g.rowCount, 0)} Rows)
@@ -375,10 +407,10 @@ export function ReviewBulkUploadModal({
                 <table className="w-full text-sm">
                   <thead className={TABLE_HEADER_CLASSNAME}>
                     <tr>
-                      <th className={TABLE_HEADER_CELL_CLASSNAME}>Imported String</th>
-                      <th className={TABLE_HEADER_CELL_CLASSNAME}>Row Count</th>
-                      <th className={TABLE_HEADER_CELL_CLASSNAME}>Suggested Match</th>
-                      <th className={TABLE_HEADER_CELL_CLASSNAME}>Action</th>
+                      <th className={`${TABLE_HEADER_CELL_CLASSNAME} px-2 py-3`}>Imported String</th>
+                      <th className={`${TABLE_HEADER_CELL_CLASSNAME} px-2 py-3`}>Row Count</th>
+                      <th className={`${TABLE_HEADER_CELL_CLASSNAME} px-2 py-3`}>Suggested Match</th>
+                      <th className={`${TABLE_HEADER_CELL_CLASSNAME} px-2 py-3`}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -395,36 +427,67 @@ export function ReviewBulkUploadModal({
                       const isApplying = applyingKey === key;
                       return (
                         <tr key={key} className="border-t border-gray-100">
-                          <td className={TABLE_CELL_CLASSNAME}>&ldquo;{group.value}&rdquo;</td>
-                          <td className={TABLE_CELL_CLASSNAME}>{group.rowCount} Rows</td>
-                          <td className={TABLE_CELL_CLASSNAME}>
-                            <div className="flex items-center gap-1.5">
-                              <BaseSelect
-                                value={selectedValue}
-                                onChange={(v) =>
-                                  setOverrides((prev) => ({ ...prev, [key]: v }))
-                                }
-                                options={optionsByEntityType[group.entityType]}
-                                placeholder="No Suggestion Found"
-                                searchPlaceholder={`Search ${group.noun.toLowerCase()}s...`}
-                                clearable
-                                className="min-w-[180px]"
-                              />
-                              {score !== undefined && (
-                                <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700">
-                                  {Math.round(score * 100)}%
-                                </span>
+                          <td className={`${TABLE_CELL_CLASSNAME} px-2 py-3`}>&ldquo;{group.value}&rdquo;</td>
+                          <td className={`${TABLE_CELL_CLASSNAME} px-2 py-3`}>{group.rowCount} Rows</td>
+                          <td className={`${TABLE_CELL_CLASSNAME} px-2 py-3`}>
+                            <BaseSelect
+                              value={selectedValue}
+                              onChange={(v) =>
+                                setOverrides((prev) => ({ ...prev, [key]: v }))
+                              }
+                              options={optionsByEntityType[group.entityType]}
+                              placeholder={suggestion ? "No Suggestion Found" : "Select existing..."}
+                              searchPlaceholder={`Search ${group.noun.toLowerCase()}s...`}
+                              clearable
+                              className="h-9 w-full min-w-[220px] justify-between border border-gray-200 bg-white px-3 py-1 text-gray-700 focus:border-primary"
+                              createAction={
+                                canApplyCorrections
+                                  ? {
+                                      label: `Add ${group.noun}`,
+                                      onSelect: () => setCreatingGroup(group),
+                                    }
+                                  : undefined
+                              }
+                              triggerContent={({ selectedLabel, clearable: canClear, onClear }) => (
+                                <>
+                                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                    <span
+                                      className={cn(
+                                        "truncate",
+                                        !selectedLabel && "text-gray-400",
+                                      )}
+                                    >
+                                      {selectedLabel ||
+                                        (suggestion ? "No Suggestion Found" : "Select existing...")}
+                                    </span>
+                                    {score !== undefined && (
+                                      <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700">
+                                        {Math.round(score * 100)}%
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="flex items-center gap-1 shrink-0">
+                                    {canClear && selectedLabel && (
+                                      <X
+                                        aria-label="Clear selection"
+                                        className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                                        onClick={onClear}
+                                      />
+                                    )}
+                                    <ChevronDown className="h-4 w-4 opacity-50" />
+                                  </span>
+                                </>
                               )}
-                            </div>
+                            />
                           </td>
-                          <td className={TABLE_CELL_CLASSNAME}>
+                          <td className={`${TABLE_CELL_CLASSNAME} px-2 py-3`}>
                             <div className="flex items-center gap-2">
                               {canApplyCorrections ? (
-                                <>
+                                selectedValue ? (
                                   <Button
                                     type="button"
                                     variant="primary"
-                                    disabled={!selectedValue || isApplying}
+                                    disabled={isApplying}
                                     loading={isApplying}
                                     onClick={() => {
                                       if (selectedOption) {
@@ -434,16 +497,17 @@ export function ReviewBulkUploadModal({
                                   >
                                     Apply to {group.rowCount} Rows
                                   </Button>
-                                  <button
+                                ) : (
+                                  <Button
                                     type="button"
-                                    className="flex shrink-0 items-center gap-1 text-sm font-medium text-[#EE7132] hover:text-[#D9672E]"
+                                    variant="secondary"
+                                    rightIcon="plus"
                                     disabled={isApplying}
                                     onClick={() => setCreatingGroup(group)}
                                   >
-                                    <Plus className="h-4 w-4" />
                                     Create New Entity
-                                  </button>
-                                </>
+                                  </Button>
+                                )
                               ) : (
                                 <span className="text-xs text-gray-400">
                                   Fix after import

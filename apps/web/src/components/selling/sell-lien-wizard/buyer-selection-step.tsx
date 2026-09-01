@@ -164,55 +164,53 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           and potential purchase.
         </p>
 
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <Field
-              type="text"
-              label=""
-              placeholder="Search..."
-              value={companySearch}
-              onChange={setCompanySearch}
-              prefix={<Search className="h-4 w-4" />}
-            />
+        <Field
+          type="text"
+          label=""
+          placeholder="Search..."
+          value={companySearch}
+          onChange={setCompanySearch}
+          prefix={<Search className="h-4 w-4" />}
+        />
+
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="max-h-[250px] overflow-y-auto">
+            {filteredCompanies.length === 0 && (
+              <p className="px-4 py-6 text-sm text-gray-400 text-center">
+                No funding companies found.
+              </p>
+            )}
+            {filteredCompanies.map((company) => (
+              <label
+                key={company.value}
+                ref={
+                  companyId === company.value ? selectedCompanyRef : undefined
+                }
+                className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
+              >
+                <input
+                  type="radio"
+                  name="fundingCompany"
+                  checked={companyId === company.value}
+                  onChange={() => {
+                    setCompanyId(company.value);
+                    setContactId("");
+                    setShowContactRequiredError(false);
+                  }}
+                  className="accent-[#EE7132]"
+                />
+                <span className="text-sm text-gray-700">{company.label}</span>
+              </label>
+            ))}
           </div>
           <button
             type="button"
             onClick={() => setShowAddCompany(true)}
-            className="shrink-0 flex items-center gap-1.5 text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 whitespace-nowrap"
+            className="flex w-full items-center gap-1.5 text-left px-4 py-3 text-sm font-semibold text-primary bg-white border-t border-gray-100 hover:bg-gray-50"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             Add Company
           </button>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg max-h-[250px] overflow-y-auto">
-          {filteredCompanies.length === 0 && (
-            <p className="px-4 py-6 text-sm text-gray-400 text-center">
-              No funding companies found.
-            </p>
-          )}
-          {filteredCompanies.map((company) => (
-            <label
-              key={company.value}
-              ref={
-                companyId === company.value ? selectedCompanyRef : undefined
-              }
-              className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
-            >
-              <input
-                type="radio"
-                name="fundingCompany"
-                checked={companyId === company.value}
-                onChange={() => {
-                  setCompanyId(company.value);
-                  setContactId("");
-                  setShowContactRequiredError(false);
-                }}
-                className="accent-[#EE7132]"
-              />
-              <span className="text-sm text-gray-700">{company.label}</span>
-            </label>
-          ))}
         </div>
 
         {companyId && (

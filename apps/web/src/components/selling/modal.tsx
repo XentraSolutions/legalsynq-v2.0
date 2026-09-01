@@ -18,7 +18,7 @@ interface ModalProps {
   hasHeader?: boolean;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "full";
 }
 
 const SIZE_MAP = {
@@ -26,6 +26,7 @@ const SIZE_MAP = {
   md: "max-w-lg",
   lg: "max-w-2xl",
   xl: "max-w-4xl",
+  full: "max-w-[95vw]",
 };
 
 export function Modal({
@@ -81,7 +82,9 @@ export function Modal({
         aria-hidden="true"
       />
       <div
-        className={`relative bg-white rounded-xl shadow-xl w-full ${SIZE_MAP[size]} max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}
+        className={`relative bg-white rounded-xl shadow-xl w-full ${SIZE_MAP[size]} ${
+          size === "full" ? "h-[90vh]" : "max-h-[90vh]"
+        } flex flex-col animate-in fade-in zoom-in-95 duration-200`}
       >
         {hasHeader && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">

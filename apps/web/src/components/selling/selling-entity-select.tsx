@@ -222,28 +222,30 @@ export function SellingEntitySelect({
   const contactNoun = createLabel.replace(/^Add\s+/i, "").toLowerCase();
   const contactEmptyState =
     isContactPerson && allowCreate && !parentMissing ? (
-      <div className="flex flex-col items-center gap-3 px-4 py-6 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
-          <Users className="h-5 w-5 text-gray-900" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-900">
-            No Available {createLabel.replace(/^Add\s+/i, "")}
-          </p>
-          <p className="mt-1 text-sm text-gray-500">
-            No {contactNoun}s are available at the moment. Add a{" "}
-            {contactNoun} using the button below.
-          </p>
+      <div className="flex flex-col">
+        <div className="flex flex-col items-center gap-3 px-4 py-6 text-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
+            <Users className="h-5 w-5 text-gray-900" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">
+              No Available {createLabel.replace(/^Add\s+/i, "")}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              No {contactNoun}s are available at the moment. Add a{" "}
+              {contactNoun} using the button below.
+            </p>
+          </div>
         </div>
         <button
           type="button"
-          className="flex items-center gap-1 text-sm font-medium text-[#EE7132] hover:text-[#D9672E]"
+          className="flex w-full items-center gap-1.5 text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
           onClick={() => {
             setCreateName(undefined);
             setShowCreate(true);
           }}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           {createLabel}
         </button>
       </div>

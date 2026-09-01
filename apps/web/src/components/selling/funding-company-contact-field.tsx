@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mail, Phone, TriangleAlert } from "lucide-react";
+import { Mail, Phone, TriangleAlert, UserRound } from "lucide-react";
 import { Button } from "@/components/selling/button";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import { useCompanyTypes, useContactPersons } from "@/hooks/selling/use-selling-companies";
@@ -39,6 +39,7 @@ export function FundingCompanyContactField({
   className,
 }: FundingCompanyContactFieldProps) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const companyTypesQuery = useCompanyTypes();
   const fundingCompanyType = companyTypesQuery.data?.find(
     (t) => t.code === "FundingCompany",
@@ -72,33 +73,53 @@ export function FundingCompanyContactField({
       </label>
 
       {contactPersonsQuery.isLoading ? (
-        <p className="text-xs text-gray-400">Loading contact...</p>
-      ) : firstContact ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-gray-800">
-              {firstContact.displayName}
-            </p>
-            <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
-              {firstContact.email && (
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3.5 w-3.5" /> {firstContact.email}
-                </span>
-              )}
-              {firstContact.phone && (
-                <span className="flex items-center gap-1">
-                  <Phone className="h-3.5 w-3.5" /> {firstContact.phone}
-                </span>
-              )}
+        <div className="flex min-h-[76px] items-center justify-between gap-3 rounded-[10px] border border-[#E5E5E5] bg-white px-4 py-3 shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]">
+          <div className="flex items-start gap-3">
+            <div className="h-4 w-4 shrink-0 rounded-full bg-gray-200 animate-pulse mt-0.5" />
+            <div className="flex flex-col gap-0.5">
+              <div className="h-3.5 w-32 rounded bg-gray-200 animate-pulse" />
+              <div className="flex items-center gap-3">
+                <div className="h-3.5 w-28 rounded bg-gray-200 animate-pulse" />
+                <div className="h-3.5 w-20 rounded bg-gray-200 animate-pulse" />
+              </div>
             </div>
           </div>
+          <div className="h-8 w-16 shrink-0 rounded-lg bg-gray-200 animate-pulse" />
+        </div>
+      ) : firstContact ? (
+        <div className="flex min-h-[76px] items-center justify-between gap-3 rounded-[10px] border border-[#E5E5E5] bg-white px-4 py-3 shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]">
+          <div className="flex items-start gap-3">
+            <UserRound className="h-4 w-4 shrink-0 text-gray-500 mt-0.5" />
+            <div className="flex flex-col gap-0.5">
+              <p className="text-sm font-semibold text-gray-800">
+                {firstContact.displayName}
+              </p>
+              <div className="flex items-center gap-3 text-sm text-gray-600">
+                <span className="flex items-center gap-1">
+                  <Mail className="h-3.5 w-3.5" /> {firstContact.email || "-"}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5" /> {firstContact.phone || "-"}
+                </span>
+              </div>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            rightIcon="squarePen"
+            onClick={() => setShowEdit(true)}
+            className="shrink-0"
+          >
+            Edit
+          </Button>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[#E5E5E5] bg-white px-4 py-3 shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]">
+        <div className="flex min-h-[76px] items-center justify-between gap-3 rounded-[10px] border border-[#E5E5E5] bg-white px-4 py-3 shadow-[0_1px_3px_0_rgba(0,0,0,0.10)]">
           <div className="flex items-start gap-3">
-            <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+            <TriangleAlert className="h-4 w-4 shrink-0 text-[#EAB308] mt-0.5" />
             <div className="flex flex-col gap-0.5">
-              <p className="text-sm font-semibold text-amber-700">
+              <p className="text-sm font-semibold text-[#EAB308]">
                 No Contact Person
               </p>
               <p className="text-sm text-gray-600">
@@ -110,7 +131,7 @@ export function FundingCompanyContactField({
           <Button
             type="button"
             variant="secondary"
-            rightIcon="userPlus"
+            rightIcon="userRoundPlus"
             onClick={() => setShowAdd(true)}
             className="shrink-0"
           >
@@ -130,6 +151,22 @@ export function FundingCompanyContactField({
           onSaved={(contact) => {
             onChange(contact.id, contact);
             setShowAdd(false);
+          }}
+        />
+      )}
+
+      {showEdit && firstContact && fundingCompanyType?.id && (
+        <ContactPersonFormModal
+          open
+          title="Edit Contact Person"
+          companyId={companyId}
+          companyName={companyName}
+          companyTypeId={fundingCompanyType.id}
+          editTarget={firstContact}
+          onClose={() => setShowEdit(false)}
+          onSaved={(contact) => {
+            onChange(contact.id, contact);
+            setShowEdit(false);
           }}
         />
       )}
