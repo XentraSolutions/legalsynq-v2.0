@@ -8,7 +8,7 @@ export default function CaseDetailsPage() {
   const { d, caseUpdates, panelMode, setPanelMode, canEdit } =
     useCaseDetailContext();
   const queryClient = useQueryClient();
-
+  console.log(caseUpdates);
   return (
     <DetailsTab
       d={d}
@@ -19,6 +19,9 @@ export default function CaseDetailsPage() {
       onCaseUpdated={() => {
         queryClient.invalidateQueries({
           queryKey: ["caseDetail", d.id],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["case-updates", d.id],
         });
       }}
     />
