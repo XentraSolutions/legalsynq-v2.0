@@ -22,6 +22,13 @@ export function CaseLienDetailPageClient({
     queryClient.invalidateQueries({
       queryKey: ["case-liens", caseId],
     });
+    queryClient.invalidateQueries({
+      queryKey: ["lien-updates", caseId],
+    });
+
+    queryClient.invalidateQueries({
+      queryKey: ["case-updates", caseId],
+    });
     router.push(`/lien/cases/${caseId}/liens`);
   };
   return (
