@@ -209,6 +209,43 @@ catch (Exception ex)
         "Auto-generated report schema recovery could not complete — report metadata APIs may be unavailable.");
 }
 
+// Replay the guarded selling portal message-attachment DDL independently of
+// migration history. This repairs deployments where EF did not reach the latest
+// migration or MySQL only partially applied its non-transactional DDL.
+var sellingPortalMessageAttachmentSchemaRepaired = false;
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+    sellingPortalMessageAttachmentSchemaRepaired =
+        await Liens.Infrastructure.Persistence.Migrations.SellingPortalMessageAttachmentSchemaRepair.EnsureAsync(
+            db,
+            app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(
+        ex,
+        "Selling portal message-attachment schema recovery could not complete — offer-thread attachments may be unavailable.");
+}
+
+if (sellingPortalMessageAttachmentSchemaRepaired)
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        await db.Database.MigrateAsync();
+        app.Logger.LogInformation("Liens database migrations applied successfully after message-attachment schema recovery.");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(
+            ex,
+            "Could not apply Liens database migrations after message-attachment schema recovery — schema may still be out of sync.");
+    }
+}
+
 // ── Migration coverage self-test ─────────────────────────────────────────
 // Compares every EF-mapped column against the live schema and logs an ERROR
 // if any are missing. Catches the class of bug behind Task #58: a migration

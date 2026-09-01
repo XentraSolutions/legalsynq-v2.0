@@ -40,6 +40,7 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260827100000_AddSellingCaseDraftConcurrencyToken", migrationIds);
         Assert.Contains("20260829120000_AddLegacyUpdateEvents", migrationIds);
         Assert.Contains("20260831010000_OptimizeCaseNoteReportQueries", migrationIds);
+        Assert.Contains("20260831130318_AddSellingPortalMessageAttachments", migrationIds);
     }
 
     [Fact]
@@ -67,6 +68,7 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingCaseDraftConcurrencyToken),
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLegacyUpdateEvents),
             typeof(Liens.Infrastructure.Persistence.Migrations.OptimizeCaseNoteReportQueries),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingPortalMessageAttachments),
         };
 
         foreach (var migrationType in migrationTypes)
@@ -156,6 +158,22 @@ public class LiensMigrationDiscoveryTests
     }
 
     [Fact]
+    public void SellingPortalMessageAttachmentsMigration_CanResumeAfterPartialMySqlDdl()
+    {
+        var migration = new Liens.Infrastructure.Persistence.Migrations.AddSellingPortalMessageAttachments();
+        var sql = AssertOnlyGuardedSqlOperations(migration);
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_SellingPortalMessageAttachments`", sql, StringComparison.Ordinal);
+        Assert.Contains("information_schema.STATISTICS", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_liens_SellingPortalMessageAttachments_AccessLinkId", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_liens_SellingPortalMessageAttachments_LienId", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_liens_SellingPortalMessageAttachments_MessageId", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_SellingPortalMessageAttachments_Tenant_Document", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_SellingPortalMessageAttachments_Tenant_Lien_Participants", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_SellingPortalMessageAttachments_Tenant_Message_Created", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LegacyReportParityMigration_CanResumeAfterPartialMySqlDdl()
     {
         var migration = new Liens.Infrastructure.Persistence.Migrations.AddLegacyReportParityFields();
@@ -189,6 +207,17 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("IX_LegacyUpdateEvents_CaseTimeline", sql, StringComparison.Ordinal);
         Assert.Contains("IX_LegacyUpdateEvents_LienTimeline", sql, StringComparison.Ordinal);
         Assert.Contains("UX_LegacyUpdateEvents_Tenant_Source_Table_Key", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SellingPortalMessageAttachmentSchemaRecovery_ReplaysGuardedMigration()
+    {
+        var migration = Liens.Infrastructure.Persistence.Migrations
+            .SellingPortalMessageAttachmentSchemaRepair.CreateRecoveryMigration();
+
+        var sql = AssertOnlyGuardedSqlOperations(migration);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_SellingPortalMessageAttachments`", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_SellingPortalMessageAttachments_Tenant_Message_Created", sql, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,5 +1,4 @@
-﻿using System;
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -11,89 +10,77 @@ namespace Liens.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "liens_SellingPortalMessageAttachments",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    LienId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    SellerOrgId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    BuyerOrgId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    BuyerContactId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    AccessLinkId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    MessageId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    DocumentId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    FileName = table.Column<string>(type: "varchar(255)", maxLength: 255, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ContentType = table.Column<string>(type: "varchar(160)", maxLength: 160, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    FileSizeBytes = table.Column<long>(type: "bigint", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    UpdatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_liens_SellingPortalMessageAttachments", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_liens_SellingPortalMessageAttachments_liens_Liens_LienId",
-                        column: x => x.LienId,
-                        principalTable: "liens_Liens",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_liens_SellingPortalMessageAttachments_liens_SellingBuyerAcce~",
-                        column: x => x.AccessLinkId,
-                        principalTable: "liens_SellingBuyerAccessLinks",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_liens_SellingPortalMessageAttachments_liens_SellingPortalMes~",
-                        column: x => x.MessageId,
-                        principalTable: "liens_SellingPortalMessages",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
+            SellingSchemaMigrationGuards.CreateTableIfMissing(
+                migrationBuilder,
+                """
+                CREATE TABLE IF NOT EXISTS `liens_SellingPortalMessageAttachments` (
+                    `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `LienId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `SellerOrgId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `BuyerOrgId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `BuyerContactId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `AccessLinkId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `MessageId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `DocumentId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `FileName` varchar(255) CHARACTER SET utf8mb4 NOT NULL,
+                    `ContentType` varchar(160) CHARACTER SET utf8mb4 NOT NULL,
+                    `FileSizeBytes` bigint NOT NULL,
+                    `CreatedAtUtc` datetime(6) NOT NULL,
+                    `UpdatedAtUtc` datetime(6) NOT NULL,
+                    `CreatedByUserId` char(36) COLLATE ascii_general_ci NOT NULL,
+                    `UpdatedByUserId` char(36) COLLATE ascii_general_ci NULL,
+                    CONSTRAINT `PK_liens_SellingPortalMessageAttachments` PRIMARY KEY (`Id`),
+                    CONSTRAINT `FK_liens_SellingPortalMessageAttachments_liens_Liens_LienId`
+                        FOREIGN KEY (`LienId`) REFERENCES `liens_Liens` (`Id`) ON DELETE RESTRICT,
+                    CONSTRAINT `FK_liens_SellingPortalMessageAttachments_liens_SellingBuyerAcce~`
+                        FOREIGN KEY (`AccessLinkId`) REFERENCES `liens_SellingBuyerAccessLinks` (`Id`) ON DELETE RESTRICT,
+                    CONSTRAINT `FK_liens_SellingPortalMessageAttachments_liens_SellingPortalMes~`
+                        FOREIGN KEY (`MessageId`) REFERENCES `liens_SellingPortalMessages` (`Id`) ON DELETE CASCADE
+                ) CHARACTER SET=utf8mb4
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_liens_SellingPortalMessageAttachments_AccessLinkId",
-                table: "liens_SellingPortalMessageAttachments",
-                column: "AccessLinkId");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingPortalMessageAttachments",
+                "IX_liens_SellingPortalMessageAttachments_AccessLinkId",
+                "(`AccessLinkId`)");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_liens_SellingPortalMessageAttachments_LienId",
-                table: "liens_SellingPortalMessageAttachments",
-                column: "LienId");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingPortalMessageAttachments",
+                "IX_liens_SellingPortalMessageAttachments_LienId",
+                "(`LienId`)");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_liens_SellingPortalMessageAttachments_MessageId",
-                table: "liens_SellingPortalMessageAttachments",
-                column: "MessageId");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingPortalMessageAttachments",
+                "IX_liens_SellingPortalMessageAttachments_MessageId",
+                "(`MessageId`)");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SellingPortalMessageAttachments_Tenant_Document",
-                table: "liens_SellingPortalMessageAttachments",
-                columns: new[] { "TenantId", "DocumentId" });
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingPortalMessageAttachments",
+                "IX_SellingPortalMessageAttachments_Tenant_Document",
+                "(`TenantId`, `DocumentId`)");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SellingPortalMessageAttachments_Tenant_Lien_Participants",
-                table: "liens_SellingPortalMessageAttachments",
-                columns: new[] { "TenantId", "LienId", "SellerOrgId", "BuyerOrgId", "BuyerContactId" });
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingPortalMessageAttachments",
+                "IX_SellingPortalMessageAttachments_Tenant_Lien_Participants",
+                "(`TenantId`, `LienId`, `SellerOrgId`, `BuyerOrgId`, `BuyerContactId`)");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SellingPortalMessageAttachments_Tenant_Message_Created",
-                table: "liens_SellingPortalMessageAttachments",
-                columns: new[] { "TenantId", "MessageId", "CreatedAtUtc" });
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingPortalMessageAttachments",
+                "IX_SellingPortalMessageAttachments_Tenant_Message_Created",
+                "(`TenantId`, `MessageId`, `CreatedAtUtc`)");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "liens_SellingPortalMessageAttachments");
+            migrationBuilder.DropTable(name: "liens_SellingPortalMessageAttachments");
         }
     }
 }

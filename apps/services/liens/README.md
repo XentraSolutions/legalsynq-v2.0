@@ -146,6 +146,14 @@ validates the complete column, index, check-constraint, and import-run foreign-k
 contract before reconciling the exact EF history entry. It then retries pending EF
 migrations, so an earlier failed or partially applied deployment can recover
 without duplicating schema objects or recording history for an incomplete table.
+The later pending migrations after `20260827100000_AddSellingCaseDraftConcurrencyToken`
+are also safe to resume: `20260829120000_AddLegacyUpdateEvents` repairs/reconciles
+the imported-history table, `20260831010000_OptimizeCaseNoteReportQueries` uses a
+guarded report index, and `20260831130318_AddSellingPortalMessageAttachments`
+creates the seller/buyer message-attachment table and indexes with guarded MySQL
+DDL so a partially applied deployment does not block subsequent migrations. Liens
+startup also replays the message-attachment schema repair independently of EF
+migration ordering, then retries pending migrations so history can be recorded.
 Imported history is excluded from API responses by default. Set
 `LegacyUpdateHistory__Enabled=true` only after import reconciliation to merge it
 into `case-updates/v3` and `liens-updates/v3`. Those endpoints globally paginate
