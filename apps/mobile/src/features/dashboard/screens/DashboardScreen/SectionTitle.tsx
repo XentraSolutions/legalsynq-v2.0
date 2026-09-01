@@ -1,7 +1,7 @@
 import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { MUTED } from './index';
+import { MUTED } from './dashboardShared';
 
 export function SectionTitle({
   icon,

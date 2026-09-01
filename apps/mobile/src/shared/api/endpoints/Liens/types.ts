@@ -210,3 +210,128 @@ export interface LienDocumentType {
   description?: string | null;
   isActive: boolean;
 }
+
+export interface SellingDashboardAnalyticsRequest {
+  startDate?: string;
+  endDate?: string;
+  compare: 'previousPeriod';
+}
+
+export interface SellingDashboardMetric {
+  isAvailable: boolean;
+  value: number | null;
+  comparisonValue?: number | null;
+  changeAmount?: number | null;
+  changePercent?: number | null;
+  unavailableReason?: string;
+  formula?: string;
+}
+
+export interface SellingDashboardPeriod {
+  dateFrom: string;
+  dateTo: string;
+  dateBasis: string;
+}
+
+export interface SellingDashboardStatus {
+  status: string;
+  lienCount: number;
+  originalAmount: number;
+  outstandingAmount: number;
+  percentOfLiens: number;
+}
+
+export interface SellingAgingBucket {
+  bucket: string;
+  amount: number;
+  lienCount: number;
+}
+
+export interface SellingBuyerAgingItem {
+  buyerOrgId: string;
+  buyerCompanyId?: string | null;
+  buyerName: string;
+  total: number;
+  pastDuePercent?: number | null;
+  buckets: SellingAgingBucket[];
+}
+
+export interface MonthlyAgingReportRequest {
+  asOfDate: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface MonthlyAgingReportRow {
+  lienCode: string;
+  fundingCompany: string;
+  days1To30: number;
+  days31To60: number;
+  days61To90: number;
+  days91To120: number;
+  moreThan120: number;
+  totalAmount: number;
+}
+
+export interface MonthlyAgingReportResponse {
+  isSuccess: boolean;
+  message: string;
+  asOfDate: string;
+  currency: string;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  summaryTotals?: {
+    totalLiens: number;
+    days1To30: number;
+    days31To60: number;
+    days61To90: number;
+    days91To120: number;
+    moreThan120: number;
+    totalAmount: number;
+  };
+  data?: MonthlyAgingReportRow[];
+}
+
+export interface SellingDashboardAnalyticsResponse {
+  period: SellingDashboardPeriod;
+  comparisonPeriod: SellingDashboardPeriod | null;
+  currency: string;
+  metrics: {
+    totalLienRevenue: SellingDashboardMetric;
+    totalOutstanding: SellingDashboardMetric;
+    pastAmountDue: SellingDashboardMetric;
+    payments: SellingDashboardMetric;
+  };
+  arAging: {
+    isAvailable: boolean;
+    unavailableReason?: string;
+    total: number | null;
+    buckets: Array<SellingAgingBucket & { label?: string; percent?: number }>;
+  };
+  lienStatuses: SellingDashboardStatus[];
+  sellerStatuses: SellingDashboardStatus[];
+  timeSeries: Array<{
+    bucketStart: string;
+    grain: string;
+    lienCount: number;
+    lienRevenue: number;
+    outstandingAmount: number;
+  }>;
+  topBuyers: Array<{
+    buyerOrgId: string;
+    buyerCompanyId: string;
+    buyerName: string;
+    activeLienCount: number;
+    totalBalance: number;
+    completedPurchaseAmount: number;
+    percentOfTotalBalance: number;
+  }>;
+  buyerAging: {
+    isAvailable: boolean;
+    unavailableReason?: string;
+    items: SellingBuyerAgingItem[];
+  };
+  generatedAtUtc: string;
+}

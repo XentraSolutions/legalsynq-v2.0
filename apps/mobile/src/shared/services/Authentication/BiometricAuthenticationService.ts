@@ -217,7 +217,7 @@ export const BiometricAuthenticationService = {
           refreshToken,
         });
         try {
-          await BiometricCredentialService.save(result.refreshToken);
+          await BiometricCredentialService.rotate(result.refreshToken);
         } catch {
           await clearLocalEnrollment();
           AnalyticsService.track(ANALYTICS_EVENTS.BIOMETRIC_LOGIN_FAILED, {

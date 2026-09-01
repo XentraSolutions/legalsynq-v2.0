@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { StatCardData } from './index';
+import type { StatCardData } from './dashboardShared';
 
 export function StatCard({ isDark, stat }: { isDark: boolean; stat: StatCardData }) {
   return (

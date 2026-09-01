@@ -7,17 +7,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 GENERATOR_STDOUT="$TMP_DIR/generator.out"
 GENERATOR_STDERR="$TMP_DIR/generator.err"
 
-cat > "$TMP_DIR/routes.json" <<'JSON'
-{
-  "routes": [
-    { "pathTemplate": "/dashboard" },
-    { "pathTemplate": "/deals/:dealId" },
-    { "pathTemplate": "/contacts/:contactId" },
-    { "pathTemplate": "/applications/:applicationId" },
-    { "pathTemplate": "/reports/:reportId" }
-  ]
-}
-JSON
+ROUTES="$ROOT/shared/contracts/deep-links/routes.json"
 
 cat > "$TMP_DIR/config.json" <<'JSON'
 {
@@ -37,18 +27,18 @@ JSON
 
 python3 "$ROOT/scripts/deep-links/generate-association-files.py" \
   --config "$TMP_DIR/config.json" \
-  --routes "$TMP_DIR/routes.json" \
+  --routes "$ROUTES" \
   --output "$TMP_DIR/out"
 
 python3 "$ROOT/scripts/deep-links/validate-association-files.py" \
-  --routes "$TMP_DIR/routes.json" \
+  --routes "$ROUTES" \
   --directory "$TMP_DIR/out/qa-preview" \
   --apple-app-id "ABCDE12345.com.legalsynq.qa" \
   --android-package "com.legalsynq.qa"
 
 if python3 "$ROOT/scripts/deep-links/generate-association-files.py" \
   --config "$ROOT/config/deep-links/association-config.example.json" \
-  --routes "$TMP_DIR/routes.json" \
+  --routes "$ROUTES" \
   --output "$TMP_DIR/blocked" >"$GENERATOR_STDOUT" 2>"$GENERATOR_STDERR"; then
   echo "expected example config generation to fail until approved values are supplied" >&2
   exit 1
@@ -74,7 +64,7 @@ JSON
 
 if python3 "$ROOT/scripts/deep-links/generate-association-files.py" \
   --config "$TMP_DIR/unsafe-config.json" \
-  --routes "$TMP_DIR/routes.json" \
+  --routes "$ROUTES" \
   --output "$TMP_DIR/out" >"$GENERATOR_STDOUT" 2>"$GENERATOR_STDERR"; then
   echo "expected unsafe environment name generation to fail" >&2
   exit 1

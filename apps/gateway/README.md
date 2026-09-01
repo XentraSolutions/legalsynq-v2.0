@@ -62,6 +62,10 @@ Gateway.Api/
    - public Android SHA-256 app signing certificate fingerprint
 3. Generate artifacts:
 
+The generator and validator read each route's canonical `pathTemplate` directly from
+`shared/contracts/deep-links/routes.json`. The focused tooling test uses that same file so a
+shared-contract field change cannot be hidden by a duplicate fixture registry.
+
 ```bash
 python3 scripts/deep-links/generate-association-files.py \
   --config <approved-association-config.json> \

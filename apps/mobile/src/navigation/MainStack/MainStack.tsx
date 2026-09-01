@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import { ApplicationDetailScreen } from '@/features/applications';
 import {
   CaseDetailScreen,
   CaseTaskFormScreen,
@@ -8,7 +9,7 @@ import {
   EditCasePersonalScreen,
   PayoffQuoteScreen,
 } from '@/features/cases';
-import { DashboardReportDetailScreen } from '@/features/dashboard';
+import { DashboardReportDetailScreen, SellingAgingReportDetailScreen } from '@/features/dashboard';
 import {
   ContactDetailScreen,
   ContactFormScreen,
@@ -48,6 +49,7 @@ export function MainStack() {
       <Stack.Screen component={ServicingListScreen} name="Servicing" />
       <Stack.Screen component={ContactsScreen} name="Contacts" />
       <Stack.Screen component={ContactDetailScreen} name="ContactDetail" />
+      <Stack.Screen component={ApplicationDetailScreen} name="ApplicationDetail" />
       <Stack.Screen component={ContactFormScreen} name="ContactForm" />
       <Stack.Screen component={ReassignContactCasesScreen} name="ReassignContactCases" />
       <Stack.Screen component={FacilityDetailScreen} name="FacilityDetail" />
@@ -62,6 +64,7 @@ export function MainStack() {
       <Stack.Screen component={SettingsScreen} name="Settings" />
       <Stack.Screen component={XeniaChatScreen} name="XeniaAI" />
       <Stack.Screen component={DashboardReportDetailScreen} name="DashboardReportDetail" />
+      <Stack.Screen component={SellingAgingReportDetailScreen} name="SellingAgingReportDetail" />
       <Stack.Screen component={PlaceholderScreen} name="Placeholder" />
     </Stack.Navigator>
   );

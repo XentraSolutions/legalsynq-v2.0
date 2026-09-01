@@ -1,3 +1,4 @@
+export * from './applications';
 export * from './authentication';
 export * from './cases';
 export * from './contacts';

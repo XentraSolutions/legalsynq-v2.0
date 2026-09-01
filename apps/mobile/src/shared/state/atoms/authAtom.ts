@@ -6,4 +6,6 @@ export const authAtom = atom<AuthState>({
   user: null,
   token: null,
   isAuthenticated: false,
+  status: 'hydrating',
+  sessionVersion: 0,
 });

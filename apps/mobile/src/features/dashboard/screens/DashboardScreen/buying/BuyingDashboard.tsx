@@ -10,7 +10,6 @@ import {
   useDashboardTotalLienReport,
 } from '@/features/dashboard/hooks';
 import {
-  StatCardData,
   BUYING_STATS,
   BUYING_TOTAL_LIENS,
   BUYING_TOTAL_CASES,
@@ -22,11 +21,12 @@ import {
   mapTotalLienReportToDashboard,
   mapTotalCaseReportToDashboard,
   readStatAmount,
-} from './index';
-import { DashboardReportState } from './DashboardReportState';
-import { DashboardStatState } from './DashboardStatState';
-import { StatGrid } from './StatGrid';
-import { DonutCard } from './DonutCard';
+} from './buyingDashboardData';
+import type { StatCardData } from '../dashboardShared';
+import { DashboardReportState } from '../DashboardReportState';
+import { DashboardStatState } from '../DashboardStatState';
+import { StatGrid } from '../StatGrid';
+import { DonutCard } from '../DonutCard';
 
 export function BuyingDashboard({
   dashboardSettingsHydrated,

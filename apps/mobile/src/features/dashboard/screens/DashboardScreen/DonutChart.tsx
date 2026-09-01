@@ -1,7 +1,14 @@
 import { Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { DonutSlice } from './index';
+import type { DonutSlice } from './dashboardShared';
+
+export function getDonutCenterValueTextStyle(value: string) {
+  if (value.length > 13) return { fontSize: 13, lineHeight: 16 };
+  if (value.length > 9) return { fontSize: 16, lineHeight: 20 };
+  if (value.length > 7) return { fontSize: 19, lineHeight: 23 };
+  return undefined;
+}
 
 export function DonutChart({
   centerCaption,
@@ -44,8 +51,12 @@ export function DonutChart({
             );
           })}
         </Svg>
-        <View className="absolute h-[86px] w-[86px] items-center justify-center rounded-full bg-white dark:bg-[#191a1f]">
-          <Text className={cx(TYPE.donutValue, 'text-center text-[#25282e] dark:text-white')}>
+        <View className="absolute h-[96px] w-[96px] items-center justify-center rounded-full bg-white dark:bg-[#191a1f]">
+          <Text
+            className={cx(TYPE.donutValue, 'w-full text-center text-[#25282e] dark:text-white')}
+            numberOfLines={1}
+            style={getDonutCenterValueTextStyle(centerValue)}
+          >
             {centerValue}
           </Text>
           <Text

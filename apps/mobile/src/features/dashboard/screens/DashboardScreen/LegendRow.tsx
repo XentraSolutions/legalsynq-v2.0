@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { DonutSlice } from './index';
+import type { DonutSlice } from './dashboardShared';
 
 export function LegendRow({ isLast, slice }: { isLast: boolean; slice: DonutSlice }) {
   return (

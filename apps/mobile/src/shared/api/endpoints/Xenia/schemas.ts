@@ -23,6 +23,24 @@ export const xeniaMessageSchema = z.object({
   citations: z.array(xeniaCitationSchema).default([]),
 });
 
+// Message creation and streaming responses use the compact shape documented by
+// Xenia. Full conversation responses may additionally include persistence fields.
+export const xeniaMessageResponseSchema = xeniaMessageSchema
+  .partial({ id: true, conversationId: true })
+  .extend({ citations: z.array(xeniaCitationSchema).default([]) });
+
+export function normalizeXeniaMessage(
+  message: z.infer<typeof xeniaMessageResponseSchema>,
+  conversationId: string,
+  fallbackId: string
+): z.infer<typeof xeniaMessageSchema> {
+  return xeniaMessageSchema.parse({
+    ...message,
+    id: message.id ?? fallbackId,
+    conversationId: message.conversationId ?? conversationId,
+  });
+}
+
 export const xeniaConversationSummarySchema = z.object({
   id: z.string(),
   agentKey: z.string(),
@@ -39,10 +57,21 @@ export const xeniaConversationListSchema = z.object({
   conversations: z.array(xeniaConversationSummarySchema),
 });
 
-export const xeniaConversationSchema = xeniaConversationSummarySchema.extend({
-  contextJson: z.string().nullable().optional(),
-  messages: z.array(xeniaMessageSchema).default([]),
-});
+export const xeniaConversationSchema = xeniaConversationSummarySchema
+  .extend({
+    contextJson: z.string().nullable().optional(),
+    messages: z.array(xeniaMessageResponseSchema).default([]),
+  })
+  .transform((conversation) => ({
+    ...conversation,
+    messages: conversation.messages.map((message, index) =>
+      normalizeXeniaMessage(
+        message,
+        conversation.id,
+        `${conversation.id}-${message.role}-${message.createdAtUtc}-${index}`
+      )
+    ),
+  }));
 
 export const xeniaAgentSchema = z.object({
   agentKey: z.string(),
@@ -80,6 +109,6 @@ export const xeniaBootstrapSchema = z.object({
 export const xeniaStreamEventSchema = z.object({
   type: z.string(),
   delta: z.string().nullable().optional(),
-  message: xeniaMessageSchema.nullable().optional(),
+  message: xeniaMessageResponseSchema.nullable().optional(),
   error: z.string().nullable().optional(),
 });

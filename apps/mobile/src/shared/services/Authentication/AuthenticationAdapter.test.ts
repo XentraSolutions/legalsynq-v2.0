@@ -37,6 +37,8 @@ describe('AuthenticationAdapter', () => {
       },
       token: 'token',
       isAuthenticated: true,
+      status: 'authenticated',
+      sessionVersion: 0,
     });
   });
 });

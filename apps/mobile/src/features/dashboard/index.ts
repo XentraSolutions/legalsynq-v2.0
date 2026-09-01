@@ -1,5 +1,6 @@
 export * from './components';
 export * from './hooks';
 export * from './screens/DashboardReportDetailScreen';
+export * from './screens/SellingAgingReportDetailScreen';
 export * from './screens/DashboardScreen';
 export * from './types/types';

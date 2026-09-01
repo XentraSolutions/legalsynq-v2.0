@@ -14,8 +14,16 @@ export type AuthStackParamList = {
   TenantSelection: undefined;
 };
 
+export type MainTabParamList = {
+  Dashboard: undefined;
+  Marketplace: undefined;
+  Offers: undefined;
+  Cases: undefined;
+  Profile: undefined;
+};
+
 export type MainStackParamList = {
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<MainTabParamList>;
   Dashboard: undefined;
   Marketplace: undefined;
   Offers: undefined;
@@ -30,6 +38,7 @@ export type MainStackParamList = {
   Servicing: undefined;
   Contacts: undefined;
   ContactDetail: { contactId: string };
+  ApplicationDetail: { applicationId: string };
   ContactForm: { contactId?: string; contactType?: string };
   ReassignContactCases: { contactId: string };
   FacilityDetail: { facilityId: string };
@@ -44,5 +53,6 @@ export type MainStackParamList = {
   Settings: undefined;
   XeniaAI: undefined;
   DashboardReportDetail: { reportType: DashboardReportType; dateRange: DashboardDateRange };
+  SellingAgingReportDetail: { asOfDate: string };
   Placeholder: { title: string; subtitle?: string };
 };
