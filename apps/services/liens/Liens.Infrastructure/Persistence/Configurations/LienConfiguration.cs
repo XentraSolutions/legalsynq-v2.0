@@ -32,6 +32,8 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
             .HasMaxLength(50);
 
         builder.Property(l => l.CaseId);
+        builder.Property(l => l.SellingCaseId);
+        builder.Property(l => l.MovedToManagementAtUtc);
         builder.Property(l => l.FacilityId);
         builder.Property(l => l.SubjectPartyId);
 
@@ -93,6 +95,9 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.Property(l => l.IsServicing)
             .HasMaxLength(10);
 
+        builder.Property(l => l.ImportedCreatedByName)
+            .HasMaxLength(100);
+
         builder.Property(l => l.OpenedAtUtc);
         builder.Property(l => l.ClosedAtUtc);
 
@@ -148,6 +153,12 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.HasIndex(l => l.CaseId)
             .HasDatabaseName("IX_Liens_CaseId");
 
+        builder.HasIndex(l => l.SellingCaseId)
+            .HasDatabaseName("IX_Liens_SellingCaseId");
+
+        builder.HasIndex(l => new { l.TenantId, l.SellingCaseId })
+            .HasDatabaseName("IX_Liens_TenantId_SellingCaseId");
+
         builder.HasIndex(l => l.FacilityId)
             .HasDatabaseName("IX_Liens_FacilityId");
 
@@ -193,6 +204,11 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.HasOne<Case>()
             .WithMany()
             .HasForeignKey(l => l.CaseId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Case>()
+            .WithMany()
+            .HasForeignKey(l => l.SellingCaseId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne<Facility>()

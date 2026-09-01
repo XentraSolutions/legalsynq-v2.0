@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Exceptions;
 using Liens.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -61,13 +62,21 @@ public sealed class SellingDocumentReferenceValidator : ISellingDocumentReferenc
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Documents validation failed for document {DocumentId}", documentId);
-            return false;
+            _logger.LogWarning(ex, "Documents validation transport failed for document {DocumentId}", documentId);
+            throw new ServiceUnavailableException(
+                "The document was uploaded, but the document service could not verify it for this lien. Please try again.");
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Documents validation timed out for document {DocumentId}", documentId);
+            throw new ServiceUnavailableException(
+                "The document was uploaded, but verification timed out before it could be attached to this lien. Please try again.");
         }
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Documents validation returned invalid metadata for document {DocumentId}", documentId);
-            return false;
+            throw new ServiceUnavailableException(
+                "The document was uploaded, but the document service returned an invalid verification response. Please try again.");
         }
     }
 

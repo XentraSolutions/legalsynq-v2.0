@@ -23,7 +23,7 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<LienCaseNote>> GetTrackingByCaseIdsAsync(
+    public async Task<List<CaseNoteReportRow>> GetTrackingByCaseIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> caseIds,
         CancellationToken ct = default)
@@ -41,10 +41,17 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
             .OrderBy(note => note.CaseId)
             .ThenByDescending(note => note.CreatedAtUtc)
             .ThenByDescending(note => note.Id)
+            .Select(note => new CaseNoteReportRow(
+                note.Id,
+                note.CaseId,
+                note.Content,
+                note.Category,
+                note.CreatedAtUtc,
+                note.UpdatedAtUtc))
             .ToListAsync(ct);
     }
 
-    public async Task<List<LienCaseNote>> GetLatestCaseUpdatesByCaseIdsAsync(
+    public async Task<List<CaseNoteReportRow>> GetLatestCaseUpdatesByCaseIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> caseIds,
         CancellationToken ct = default)
@@ -63,11 +70,18 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
             .Select(group => group
                 .OrderByDescending(note => note.UpdatedAtUtc ?? note.CreatedAtUtc)
                 .ThenByDescending(note => note.Id)
+                .Select(note => new CaseNoteReportRow(
+                    note.Id,
+                    note.CaseId,
+                    note.Content,
+                    note.Category,
+                    note.CreatedAtUtc,
+                    note.UpdatedAtUtc))
                 .First())
             .ToListAsync(ct);
     }
 
-    public async Task<List<LienCaseNote>> GetLatestFeedByCaseIdsAsync(
+    public async Task<List<CaseNoteReportRow>> GetLatestFeedByCaseIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> caseIds,
         CancellationToken ct = default)
@@ -75,19 +89,32 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
         if (caseIds.Count == 0)
             return [];
 
-        return await _db.LienCaseNotes
+        return await BuildLatestFeedReportQuery(tenantId, caseIds).ToListAsync(ct);
+    }
+
+    internal IQueryable<CaseNoteReportRow> BuildLatestFeedReportQuery(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds)
+    {
+        return _db.LienCaseNotes
             .AsNoTracking()
             .Where(note => note.TenantId == tenantId &&
                            caseIds.Contains(note.CaseId) &&
                            !note.IsDeleted &&
-                           note.Category.ToLower() == CaseNoteCategory.Feed &&
+                           note.Category == CaseNoteCategory.Feed &&
                            note.Content.Trim() != string.Empty)
             .GroupBy(note => note.CaseId)
             .Select(group => group
                 .OrderByDescending(note => note.CreatedAtUtc)
                 .ThenByDescending(note => note.Id)
-                .First())
-            .ToListAsync(ct);
+                .Select(note => new CaseNoteReportRow(
+                    note.Id,
+                    note.CaseId,
+                    note.Content,
+                    note.Category,
+                    note.CreatedAtUtc,
+                    note.UpdatedAtUtc))
+                .First());
     }
 
     public async Task<List<LienCaseNote>> GetByCaseIdIncludingDeletedAsync(Guid tenantId, Guid caseId, CancellationToken ct = default)

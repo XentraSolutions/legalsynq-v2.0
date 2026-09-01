@@ -11,6 +11,7 @@ interface PublicPortalMessagesCardProps {
 }
 
 const MAX_MESSAGE_LENGTH = 400;
+const MAX_ATTACHMENT_COUNT = 10;
 
 export function PublicPortalMessagesCard({
   token,
@@ -20,14 +21,16 @@ export function PublicPortalMessagesCard({
   const [messages, setMessages] =
     useState<PublicBuyerPortalMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollAfterSendRef = useRef(false);
   const trimmedDraft = draft.trim();
   const recipientLabel = audience === "seller" ? "buyer" : "seller";
   const emptyMessage = `No messages yet. Send a message to the ${recipientLabel} below.`;
-  const canSend = trimmedDraft.length > 0 && !submitting;
+  const canSend = (trimmedDraft.length > 0 || pendingFiles.length > 0) && !submitting;
 
   useEffect(() => {
     if (!shouldScrollAfterSendRef.current) return;
@@ -50,13 +53,14 @@ export function PublicPortalMessagesCard({
 
     setSubmitting(true);
     setError(null);
-    const result = await postPublicBuyerPortalMessage(token, draft);
+    const result = await postPublicBuyerPortalMessage(token, draft, pendingFiles);
     setSubmitting(false);
 
     if (result.ok && result.message) {
       shouldScrollAfterSendRef.current = true;
       setMessages(current => [...current, result.message!]);
       setDraft("");
+      setPendingFiles([]);
       return;
     }
 
@@ -66,12 +70,12 @@ export function PublicPortalMessagesCard({
   return (
     <details
       open
-      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
+      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-4"
       aria-labelledby="messages-title"
     >
       <summary className="-mx-2 flex min-h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] [&::-webkit-details-marker]:hidden">
         <i className="ri-arrow-down-s-line -rotate-90 text-2xl leading-none text-[#0a0a0a] transition-transform group-open:rotate-0" aria-hidden="true" />
-        <h2 id="messages-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
+        <h2 id="messages-title" className="m-0 text-lg font-bold leading-[1.6] tracking-normal">
           Messages
         </h2>
       </summary>
@@ -88,10 +92,56 @@ export function PublicPortalMessagesCard({
             scrollContainerRef={threadScrollRef}
           />
         )}
+        {pendingFiles.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {pendingFiles.map((file, index) => (
+              <div
+                key={`${file.name}-${file.lastModified}-${index}`}
+                className="flex items-center justify-between gap-3 rounded-xl border border-[#e5e5e5] bg-[#fafafa] px-3 py-2 text-xs text-[#0a0a0a]"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <i className={`${fileIconFor(file.name)} text-base leading-none text-[#737373]`} aria-hidden="true" />
+                  <span className="truncate font-semibold">{file.name}</span>
+                  <span className="shrink-0 text-[#737373]">{formatFileSize(file.size)}</span>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 border-0 bg-transparent text-xs font-semibold text-[#737373] hover:text-red-600"
+                  onClick={() => setPendingFiles(current => current.filter((_, fileIndex) => fileIndex !== index))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <form
           className="flex w-full items-center gap-4 rounded-xl border border-[#e5e5e5] py-3 pl-4 pr-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors focus-within:border-[#ee7132]"
           onSubmit={handleSubmit}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            aria-label="Message attachments"
+            multiple
+            className="hidden"
+            onChange={event => {
+              const files = Array.from(event.target.files ?? []);
+              if (files.length) {
+                setPendingFiles(current => {
+                  const availableSlots = Math.max(0, MAX_ATTACHMENT_COUNT - current.length);
+                  const acceptedFiles = files.slice(0, availableSlots);
+                  if (files.length > availableSlots) {
+                    setError(`Attach up to ${MAX_ATTACHMENT_COUNT} files per message.`);
+                  } else if (error) {
+                    setError(null);
+                  }
+                  return [...current, ...acceptedFiles];
+                });
+              }
+              event.target.value = "";
+            }}
+          />
           <input
             aria-label="Message"
             placeholder="Type a message..."
@@ -104,6 +154,15 @@ export function PublicPortalMessagesCard({
             className="min-w-0 flex-1 border-0 text-sm text-[#737373] outline-none"
           />
           <span className="whitespace-nowrap text-sm text-[#737373]">{draft.length}/{MAX_MESSAGE_LENGTH}</span>
+          <button
+            type="button"
+            aria-label="Attach file"
+            disabled={submitting || pendingFiles.length >= MAX_ATTACHMENT_COUNT}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-[#737373] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <i className="ri-attachment-2 text-base leading-none" aria-hidden="true" />
+          </button>
           <button
             type="submit"
             aria-label="Send message"
@@ -174,7 +233,57 @@ function MessageThread({
                 <span aria-hidden="true">&middot;</span>
                 <time dateTime={message.createdAtUtc}>{formatMessageTime(message.createdAtUtc)}</time>
               </div>
-              <p className="m-0 whitespace-pre-wrap break-words">{message.message}</p>
+              {message.message ? (
+                <p className="m-0 whitespace-pre-wrap break-words">{message.message}</p>
+              ) : null}
+              {message.attachments?.length ? (
+                <div className="mt-3 flex flex-col gap-2">
+                  {message.attachments.map(attachment => (
+                    <div
+                      key={attachment.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-xs ${
+                        isCurrentAudience
+                          ? "bg-white/15 text-white"
+                          : "border border-[#e5e5e5] bg-white text-[#0a0a0a]"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate font-semibold">
+                        {attachment.fileName}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        {attachment.viewUrl ? (
+                          <a
+                            href={attachment.viewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="View attachment"
+                            title="View"
+                            className={`flex h-6 w-6 items-center justify-center rounded-md ${
+                              isCurrentAudience ? "text-white/85 hover:bg-white/20" : "text-[#737373] hover:bg-[#f5f5f5]"
+                            }`}
+                          >
+                            <i className="ri-eye-line text-sm leading-none" aria-hidden="true" />
+                          </a>
+                        ) : null}
+                        {attachment.downloadUrl ? (
+                          <a
+                            href={attachment.downloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="Download attachment"
+                            title="Download"
+                            className={`flex h-6 w-6 items-center justify-center rounded-md ${
+                              isCurrentAudience ? "text-white/85 hover:bg-white/20" : "text-[#737373] hover:bg-[#f5f5f5]"
+                            }`}
+                          >
+                            <i className="ri-download-line text-sm leading-none" aria-hidden="true" />
+                          </a>
+                        ) : null}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </article>
         );
@@ -205,4 +314,20 @@ function formatMessageTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+function fileIconFor(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  if (extension === "pdf") return "ri-file-pdf-2-line";
+  if (["jpg", "jpeg", "png"].includes(extension ?? "")) return "ri-image-line";
+  if (["xlsx", "xls", "csv"].includes(extension ?? "")) return "ri-file-excel-2-line";
+  if (extension === "docx") return "ri-file-word-2-line";
+  return "ri-file-line";
 }

@@ -16,6 +16,8 @@ public class Lien : AuditableEntity
     public string Status         { get; private set; } = LienStatus.Draft;
 
     public Guid? CaseId          { get; private set; }
+    public Guid? SellingCaseId   { get; private set; }
+    public DateTime? MovedToManagementAtUtc { get; private set; }
     public Guid? FacilityId      { get; private set; }
     public Guid? SubjectPartyId  { get; private set; }
 
@@ -41,6 +43,8 @@ public class Lien : AuditableEntity
     public DateOnly? EndServiceDate { get; private set; }
     public string? IsBulk { get; private set; }
     public string? IsServicing { get; private set; }
+    // Preserves a legacy text value that cannot be safely resolved to a V2 user.
+    public string? ImportedCreatedByName { get; private set; }
     public DateTime? OpenedAtUtc  { get; private set; }
     public DateTime? ClosedAtUtc  { get; private set; }
 
@@ -104,6 +108,21 @@ public class Lien : AuditableEntity
         FundingCompanyContactId = legacyFundingCompanyContactId;
         FundingCompanyCompanyId = fundingCompanyCompanyId;
         FundingCompanyContactPersonId = fundingCompanyContactPersonId;
+        if (legacyFundingCompanyId.HasValue || fundingCompanyCompanyId.HasValue)
+            WithdrawnAtUtc = null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ClearSellingFundingReferences(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        FundingCompanyId = null;
+        FundingCompanyContactId = null;
+        FundingCompanyCompanyId = null;
+        FundingCompanyContactPersonId = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
@@ -116,6 +135,31 @@ public class Lien : AuditableEntity
             throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
 
         MedicalProviderCompanyId = medicalProviderCompanyId;
+        Touch(updatedByUserId);
+    }
+
+    public void SetCanonicalMedicalFacility(Guid medicalFacilityCompanyId, Guid updatedByUserId)
+    {
+        if (medicalFacilityCompanyId == Guid.Empty)
+            throw new ArgumentException("Medical facility company id is required.", nameof(medicalFacilityCompanyId));
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        MedicalFacilityCompanyId = medicalFacilityCompanyId;
+        FacilityId = null;
+        Touch(updatedByUserId);
+    }
+
+    public void SetSellingMedicalFacility(
+        Guid? facilityId,
+        Guid? medicalFacilityCompanyId,
+        Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        FacilityId = NormalizeOptionalId(facilityId, nameof(facilityId));
+        MedicalFacilityCompanyId = NormalizeOptionalId(medicalFacilityCompanyId, nameof(medicalFacilityCompanyId));
         Touch(updatedByUserId);
     }
 
@@ -178,6 +222,15 @@ public class Lien : AuditableEntity
             throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
 
         ReceivableDueDate = receivableDueDate;
+        Touch(updatedByUserId);
+    }
+
+    public void SetPurchaseDate(DateOnly purchaseDate, Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        PurchaseDate = purchaseDate;
         Touch(updatedByUserId);
     }
 
@@ -329,6 +382,8 @@ public class Lien : AuditableEntity
 
         if (LienStatus.Terminal.Contains(newStatus))
             ClosedAtUtc = DateTime.UtcNow;
+        else
+            ClosedAtUtc = null;
     }
 
     private static string NormalizeLegacyMedicalStatus(string newStatus)
@@ -357,6 +412,7 @@ public class Lien : AuditableEntity
         Status          = LienStatus.Offered;
         SellerStatus    = SellingLienStatus.SubmittedForSale;
         SubmittedForSaleAtUtc ??= DateTime.UtcNow;
+        WithdrawnAtUtc  = null;
         Notes           = offerNotes?.Trim() ?? Notes;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
@@ -375,7 +431,7 @@ public class Lien : AuditableEntity
         UpdatedAtUtc    = DateTime.UtcNow;
     }
 
-    public void ReturnToSellingPending(Guid updatedByUserId)
+    public void ReturnToSellingPending(Guid updatedByUserId, bool recordWithdrawal = false)
     {
         if (updatedByUserId == Guid.Empty)
             throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
@@ -386,8 +442,36 @@ public class Lien : AuditableEntity
         Status = LienStatus.Draft;
         SellerStatus = SellingLienStatus.Pending;
         OfferPrice = null;
+        HighestBidAmount = null;
         SubmittedForSaleAtUtc = null;
         ClosedAtUtc = null;
+        WithdrawnAtUtc = recordWithdrawal ? DateTime.UtcNow : null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MoveToInternalManagement(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+        if (!CaseId.HasValue)
+            throw new InvalidOperationException("A lien must be linked to a case before it can be moved to management.");
+        if (SellerStatus is SellingLienStatus.Sold or SellingLienStatus.Archived ||
+            Status is LienStatus.Sold or LienStatus.Settled)
+            throw new InvalidOperationException("Sold, settled, or archived liens cannot be moved to management.");
+
+        if (Status != LienStatus.Draft)
+            throw new InvalidOperationException($"Lien status '{Status}' cannot be moved to management.");
+        if (SellerStatus is not null && SellerStatus is not (
+                SellingLienStatus.Pending or
+                SellingLienStatus.Internal or
+                SellingLienStatus.Approval or
+                SellingLienStatus.PreparedForSale))
+            throw new InvalidOperationException($"Seller status '{SellerStatus}' cannot be moved to management.");
+
+        SellingCaseId ??= CaseId;
+        SellerStatus = SellingLienStatus.Internal;
+        MovedToManagementAtUtc ??= DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
@@ -556,11 +640,22 @@ public class Lien : AuditableEntity
         UpdatedAtUtc    = DateTime.UtcNow;
     }
 
+    public void DetachSellingCase(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        SellingCaseId   = null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
     public void AttachFacility(Guid facilityId, Guid updatedByUserId)
     {
         if (facilityId == Guid.Empty) throw new ArgumentException("FacilityId is required.", nameof(facilityId));
 
         FacilityId      = facilityId;
+        MedicalFacilityCompanyId = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }

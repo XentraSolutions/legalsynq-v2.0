@@ -1,3 +1,4 @@
+using Documents.Domain;
 using Documents.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -15,7 +16,7 @@ public sealed class LocalStorageProvider : IStorageProvider
     private readonly ILogger<LocalStorageProvider> _log;
 
     // In-memory redirect tokens for dev (not suitable for multi-replica production)
-    private readonly Dictionary<string, (string Key, DateTime Expires)> _tokens = new();
+    private readonly Dictionary<string, (string Key, string? DownloadFileName, DateTime Expires)> _tokens = new();
 
     public string ProviderName => "local";
 
@@ -38,11 +39,11 @@ public sealed class LocalStorageProvider : IStorageProvider
         return "docs-local";
     }
 
-    public Task<string> GenerateSignedUrlAsync(string key, int ttlSeconds, string disposition, CancellationToken ct = default)
+    public Task<string> GenerateSignedUrlAsync(string key, int ttlSeconds, string disposition, string? downloadFileName = null, CancellationToken ct = default)
     {
         var token   = Guid.CreateVersion7().ToString("N");
         var expires = DateTime.UtcNow.AddSeconds(ttlSeconds);
-        lock (_tokens) { _tokens[token] = (key, expires); }
+        lock (_tokens) { _tokens[token] = (key, StorageFileNames.Sanitize(downloadFileName), expires); }
 
         return Task.FromResult($"/internal/files?token={token}&disposition={disposition}");
     }
@@ -67,14 +68,14 @@ public sealed class LocalStorageProvider : IStorageProvider
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
         => Task.FromResult(File.Exists(GetFilePath(key)));
 
-    public (string? Key, bool Expired) ResolveToken(string token)
+    public (string? Key, string? DownloadFileName, bool Expired) ResolveToken(string token)
     {
         lock (_tokens)
         {
-            if (!_tokens.TryGetValue(token, out var entry)) return (null, false);
-            if (entry.Expires < DateTime.UtcNow) { _tokens.Remove(token); return (null, true); }
+            if (!_tokens.TryGetValue(token, out var entry)) return (null, null, false);
+            if (entry.Expires < DateTime.UtcNow) { _tokens.Remove(token); return (null, null, true); }
             _tokens.Remove(token);
-            return (entry.Key, false);
+            return (entry.Key, entry.DownloadFileName, false);
         }
     }
 

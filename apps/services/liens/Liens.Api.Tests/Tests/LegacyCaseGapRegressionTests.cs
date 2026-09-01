@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
@@ -91,6 +92,35 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task Getcaseinfo_returns_the_typed_state_of_incident_when_legacy_metadata_is_absent()
+    {
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-INCIDENT-STATE-{Guid.CreateVersion7():N}"[..30],
+                "State",
+                "Fallback",
+                SeedHelper.UserId,
+                incidentState: "NV");
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/cases/getcaseinfo/{caseId}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        body["data"]![0]!["accidentState"]!.GetValue<string>().Should().Be("NV");
+    }
+
+    [Fact]
     public async Task Delete_legacy_case_with_only_rejected_liens_detaches_liens_then_deletes_case()
     {
         Guid caseId;
@@ -134,6 +164,206 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
         var storedLien = await verifyDb.Liens.SingleAsync(l => l.Id == lienId);
         storedLien.Status.Should().Be(LienStatus.Cancelled);
         storedLien.CaseId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Delete_legacy_case_deletes_all_active_liens_then_deletes_case()
+    {
+        Guid caseId;
+        Guid retainedCaseId;
+        Guid sellingOnlyLienId;
+        List<Guid> lienIds;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DELETE-ACTIVE-{Guid.CreateVersion7():N}"[..30],
+                "Maria",
+                "Lopez",
+                SeedHelper.UserId);
+            var retainedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DELETE-RETAINED-{Guid.CreateVersion7():N}"[..30],
+                "Maria",
+                "Lopez",
+                SeedHelper.UserId);
+            var draftLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-DRAFT-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            var activeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-ACTIVE-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                2000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            activeLien.SetLegacyMedicalStatus("Open", SeedHelper.UserId);
+            var sellingOnlyLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-SELLING-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                3000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            sellingOnlyLien.MoveToInternalManagement(SeedHelper.UserId);
+            sellingOnlyLien.AttachCase(retainedCase.Id, SeedHelper.UserId);
+
+            caseId = caseEntity.Id;
+            retainedCaseId = retainedCase.Id;
+            sellingOnlyLienId = sellingOnlyLien.Id;
+            lienIds = [draftLien.Id, activeLien.Id, sellingOnlyLien.Id];
+            db.Cases.AddRange(caseEntity, retainedCase);
+            db.Liens.AddRange(draftLien, activeLien, sellingOnlyLien);
+            await db.SaveChangesAsync();
+        }
+
+        var deleteResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{caseId}");
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteResponse.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verifyDb.Cases.FindAsync(caseId)).Should().BeNull();
+        (await verifyDb.Cases.FindAsync(retainedCaseId)).Should().NotBeNull();
+
+        var storedLiens = await verifyDb.Liens
+            .Where(l => lienIds.Contains(l.Id))
+            .ToListAsync();
+        storedLiens.Should().HaveCount(3);
+        storedLiens.Should().OnlyContain(l => l.Status == LienStatus.Cancelled);
+        storedLiens.Where(l => l.Id != sellingOnlyLienId)
+            .Should().OnlyContain(l => l.CaseId == null);
+
+        var storedSellingOnlyLien = storedLiens.Single(l => l.Id == sellingOnlyLienId);
+        storedSellingOnlyLien.CaseId.Should().Be(retainedCaseId);
+        storedSellingOnlyLien.SellingCaseId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Case_and_lien_csv_exports_exclude_deleted_records()
+    {
+        var exportKey = $"CSV-DELETE-{Guid.CreateVersion7():N}";
+        var deletedCaseNumber = $"CASE-{exportKey}-REMOVED";
+        var retainedCaseNumber = $"CASE-{exportKey}-RETAINED";
+        var deletedWithCaseLienNumber = $"LIEN-{exportKey}-CASE-REMOVED";
+        var deletedLienNumber = $"LIEN-{exportKey}-REMOVED";
+        var rejectedLienNumber = $"LIEN-{exportKey}-REJECTED";
+        var retainedLienNumber = $"LIEN-{exportKey}-RETAINED";
+        Guid deletedCaseId;
+        Guid deletedLienId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var deletedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                deletedCaseNumber,
+                "Deleted",
+                "Case",
+                SeedHelper.UserId);
+            var retainedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                retainedCaseNumber,
+                "Retained",
+                "Case",
+                SeedHelper.UserId);
+            var deletedWithCaseLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                deletedWithCaseLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: deletedCase.Id);
+            var deletedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                deletedLienNumber,
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                caseId: retainedCase.Id);
+            var retainedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                retainedLienNumber,
+                LienType.MedicalLien,
+                300m,
+                SeedHelper.UserId,
+                caseId: retainedCase.Id);
+            var rejectedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                rejectedLienNumber,
+                LienType.MedicalLien,
+                400m,
+                SeedHelper.UserId,
+                caseId: retainedCase.Id);
+            rejectedLien.SetLegacyMedicalStatus("Rejected", SeedHelper.UserId);
+
+            deletedCaseId = deletedCase.Id;
+            deletedLienId = deletedLien.Id;
+            db.Cases.AddRange(deletedCase, retainedCase);
+            db.Liens.AddRange(deletedWithCaseLien, deletedLien, retainedLien, rejectedLien);
+            await db.SaveChangesAsync();
+        }
+
+        var deleteCaseResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{deletedCaseId}");
+        deleteCaseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteCaseResponse.Content.ReadAsStringAsync()}");
+
+        var deleteLienResponse = await _client.DeleteAsync($"/api/liens/cases/liens/delete/{deletedLienId}");
+        deleteLienResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteLienResponse.Content.ReadAsStringAsync()}");
+
+        var caseExportResponse = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", new
+        {
+            keyword = exportKey,
+        });
+        caseExportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseExportResponse.Content.ReadAsStringAsync()}");
+        var caseCsv = await DecodeCsvAsync(caseExportResponse);
+        caseCsv.Should().Contain(retainedCaseNumber);
+        caseCsv.Should().NotContain(deletedCaseNumber);
+
+        var lienExportResponse = await _client.PostAsJsonAsync("/api/liens/cases/liens/generate-csv", new
+        {
+            keyword = exportKey,
+        });
+        lienExportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await lienExportResponse.Content.ReadAsStringAsync()}");
+        var lienCsv = await DecodeCsvAsync(lienExportResponse);
+        lienCsv.Should().Contain(retainedLienNumber);
+        lienCsv.Should().NotContain(deletedLienNumber);
+        lienCsv.Should().NotContain(deletedWithCaseLienNumber);
+        lienCsv.Should().NotContain(rejectedLienNumber);
+
+        var rejectedLienExportResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/generate-csv",
+            new
+            {
+                keyword = exportKey,
+                lienStatusId = "Rejected",
+            });
+        rejectedLienExportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await rejectedLienExportResponse.Content.ReadAsStringAsync()}");
+        var rejectedLienCsv = await DecodeCsvAsync(rejectedLienExportResponse);
+        rejectedLienCsv.Should().Contain(rejectedLienNumber);
+        rejectedLienCsv.Should().NotContain(deletedLienNumber);
+        rejectedLienCsv.Should().NotContain(deletedWithCaseLienNumber);
     }
 
     [Fact]
@@ -348,6 +578,32 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
 
         var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
-        body.RootElement.GetProperty("data")[0].GetProperty("base64").GetString().Should().NotBeNullOrWhiteSpace();
+        var encodedCsv = body.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        encodedCsv.Should().NotBeNullOrWhiteSpace();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        lines[0].Should().Be("Case number,Plaintiff Name,Current Law Firm,Current Status,Settlement Status,Billing Amount,Purchase Amount,Amount Settled,Settled Date");
+        lines[1].Should().Contain("CASE-TEST-001,John Plaintiff,Smith & Associates LLP");
+
+        var legacyResponse = await _client.PostAsJsonAsync("/service/generate-csv", new
+        {
+            caseId = SeedHelper.CaseId,
+            legacyFormat = true,
+        });
+        legacyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await legacyResponse.Content.ReadAsStringAsync()}");
+
+        var legacyBody = await legacyResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var legacyEncodedCsv = legacyBody!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var legacyCsv = Encoding.UTF8.GetString(Convert.FromBase64String(legacyEncodedCsv!));
+        legacyCsv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)[0]
+            .Should().Be("CaseId,CaseNumber,ClientFirstName,ClientLastName,Status,DateOfLoss");
+    }
+
+    private static async Task<string> DecodeCsvAsync(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = body!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        return Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
     }
 }

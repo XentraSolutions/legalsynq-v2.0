@@ -210,7 +210,7 @@ public class ReferralService : IReferralService
                     request.ReceivingOrganizationId.Value);
         }
 
-        // Referral Attribution: optional, tenant-scoped, must be active. Invalid, inactive,
+        // Referral Origination: optional, tenant-scoped, must be active. Invalid, inactive,
         // or cross-tenant values are rejected rather than silently dropped — a law firm user
         // must see a validation error, not have their selection quietly discarded.
         var validatedAttributionId = await ResolveAttributionForSubmissionAsync(tenantId, request.ReferralAttributionId, ct);
@@ -243,7 +243,10 @@ public class ReferralService : IReferralService
             treatmentTypeId: request.TreatmentTypeId,
             dateOfAccident: request.DateOfAccident,
             facilityId: request.FacilityId,
-            referralAttributionId: validatedAttributionId);
+            referralAttributionId: validatedAttributionId,
+            origin: ReferralOrigin.LawFirm,
+            lienCompanyName: request.LienCompanyName,
+            lienCompanyEmail: request.LienCompanyEmail);
 
         await _referrals.AddAsync(referral, ct);
 
@@ -347,7 +350,7 @@ public class ReferralService : IReferralService
                 },
                 Entity      = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
                 Action      = "ReferralAttributionSetOnSubmission",
-                Description = $"Referral Attribution set to '{validatedAttributionId}' at law firm submission.",
+                Description = $"Referral Origination set to '{validatedAttributionId}' at law firm submission.",
                 Outcome     = "success",
                 Metadata    = JsonSerializer.Serialize(new { referralId = referral.Id, referralAttributionId = validatedAttributionId }),
                 CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
@@ -627,7 +630,7 @@ public class ReferralService : IReferralService
     }
 
     /// <summary>
-    /// Validates a law-firm-submitted Referral Attribution selection: must belong to the
+    /// Validates a law-firm-submitted Referral Origination selection: must belong to the
     /// caller's tenant and be active. Returns null when no selection was made. Throws
     /// ValidationException (never silently drops the value) for invalid, inactive, or
     /// cross-tenant selections — the caller preserves the submitted form on error, per §4.
@@ -640,7 +643,7 @@ public class ReferralService : IReferralService
         var attribution = await _referralAttributions.GetByIdAsync(tenantId, referralAttributionId.Value, ct);
         if (attribution is null || !attribution.IsActive)
             throw new ValidationException("One or more validation errors occurred.",
-                new() { ["referralAttributionId"] = ["Selected referral source is invalid or no longer available."] });
+                new() { ["referralAttributionId"] = ["Selected referral origination is invalid or no longer available."] });
 
         return attribution.Id;
     }
@@ -1438,6 +1441,10 @@ public class ReferralService : IReferralService
             !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             errors["clientEmail"] = new[] { "ClientEmail format is invalid." };
 
+        if (!string.IsNullOrWhiteSpace(r.LienCompanyEmail) &&
+            !Regex.IsMatch(r.LienCompanyEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            errors["lienCompanyEmail"] = new[] { "LienCompanyEmail format is invalid." };
+
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency))
             errors["urgency"] = new[] { $"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}." };
 
@@ -1485,6 +1492,9 @@ public class ReferralService : IReferralService
             Status = r.Status,
             Notes = r.Notes,
             DeclineNotes = r.DeclineNotes,
+            Origin = r.Origin,
+            LienCompanyName = r.LienCompanyName,
+            LienCompanyEmail = r.LienCompanyEmail,
             DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
             CreatedAtUtc = r.CreatedAtUtc,
             UpdatedAtUtc = r.UpdatedAtUtc,
@@ -1503,7 +1513,7 @@ public class ReferralService : IReferralService
             // Type of Treatment
             TreatmentTypeId   = r.TreatmentTypeId,
             TreatmentTypeName = treatmentTypeName,
-            // Referral Attribution
+            // Referral Origination
             ReferralAttribution = r.ReferralAttribution is null ? null : new ReferralAttributionSummary
             {
                 Id          = r.ReferralAttribution.Id,

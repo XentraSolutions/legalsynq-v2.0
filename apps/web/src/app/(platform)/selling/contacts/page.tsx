@@ -27,7 +27,7 @@ import {
   useCompanyTypes,
   useDeactivateCompany,
   useExportCompanies,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";

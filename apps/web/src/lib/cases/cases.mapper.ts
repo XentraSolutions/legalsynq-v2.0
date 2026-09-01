@@ -39,21 +39,21 @@ export function formatDateField(val: string | null | undefined): string {
 export const dateConverter = (dateData: string) => {
   if (!dateData) return "";
 
-  const date = new Date(dateData);
-
-  // Format the date using the US locale to automatically get MM/DD/YYYY
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  });
-
-  const formattedDate = formatter.format(date);
-  return formattedDate;
+  return formatLegacyDateOnly(dateData);
 };
 
 export const dateConvertertoIso = (dateData: string) => {
   if (!dateData) return "";
+
+  const isoDateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateData.trim());
+  if (isoDateOnlyMatch) return isoDateOnlyMatch[0];
+
+  const usDateOnlyMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dateData.trim());
+  if (usDateOnlyMatch) {
+    const [, month, day, year] = usDateOnlyMatch;
+    return `${year}-${month}-${day}`;
+  }
+
   const d = new Date(dateData);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
@@ -119,6 +119,7 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
       dto.trackingFollowUp ?? dto.trackingFollowUpDate,
     ),
     leadId: safeString(dto.leadId),
+    lienStatus: safeString(dto.lienStatus),
     shareCase: safeString(dto.shareCase),
     minorComp: safeString(dto.minorComp),
     caseDropped: safeString(dto.caseDropped),
@@ -129,6 +130,8 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     claimNumber: safeString(dto.claimNumber),
     demandAmount: dto.demandAmount ?? null,
     settlementAmount: dto.settlementAmount ?? null,
+    settlementStatus: safeString(dto.settlementStatus),
+    settlementStatusId: safeString(dto.settlementStatusId),
     description: safeString(dto.description),
     notes: safeString(dto.notes),
     openedAt: formatDateField(dto.openedAtUtc),
@@ -201,14 +204,16 @@ export function mapMedicalInfo(
     id: result.id,
     caseId: result.caseId,
     status: result.status,
-    purchaseDate: dateConvertertoIso(result.purchaseDate),
-    initialServiceDate: dateConvertertoIso(result.initialServiceDate),
+    purchaseDate: dateConvertertoIso(formatDateField(result.purchaseDate)),
+    initialServiceDate: dateConvertertoIso(
+      formatDateField(result.initialServiceDate),
+    ),
     endServiceDate: result.endServiceDate
-      ? dateConvertertoIso(result.endServiceDate)
+      ? dateConvertertoIso(formatDateField(result.endServiceDate))
       : "",
     note: result.note,
     isBulk: result.isBulk == "Yes" ? "true" : "false",
-    isServicing: result.isBulk == "Yes" ? "true" : "false",
+    isServicing: result.isServicing == "Yes" || result.isServicing == "Y",
     fundingCompany: result.fundingCompany,
     fundingCompanyId: result.fundingCompanyId,
   };
@@ -229,22 +234,28 @@ export function mapMedicalCodes(result: MedicalCodeLiensResponse[]): {
 
 function getDocumentTypeById(id: string, docs: DocumentTypeResponse[]) {
   const doc = docs.find((d) => d.id == id);
-  return doc?.name ?? "";
+  const fallback = docs.find(
+    (d) => d.code === "Other" || d.name.toLowerCase() === "other",
+  );
+  return doc?.name ?? fallback?.name ?? "Other";
 }
 
 export function mapDocuments(
   result: any,
   cat: DocumentTypeResponse[],
 ): CaseDocuments {
+  console.log(cat);
+
   let liens: CaseDocument[] = [];
   let cases: CaseDocument[] = [];
-
   (result.data || []).map((data: CaseDocument) => {
+    data.documentType = getDocumentTypeById(
+      data.documentTypeId || data.typeId || "",
+      cat,
+    );
     if (data.liensId) {
       liens.push(data);
-      data.documentType = getDocumentTypeById(data.typeId, cat);
     } else {
-      data.documentType = getDocumentTypeById(data.typeId, cat);
       cases.push(data);
     }
   });

@@ -82,6 +82,9 @@ test.describe(`Selling portfolio — bulk upload review [${env.name}]`, () => {
         reviewDialog.getByRole('columnheader', { name: header.replace(/\*$/, '') }),
       ).toBeVisible();
     }
+    await expect(
+      reviewDialog.getByRole('columnheader', { name: 'Listing Visibility' }),
+    ).toHaveCount(0);
 
     await expect(reviewDialog.getByText(caseCode)).toBeVisible();
 

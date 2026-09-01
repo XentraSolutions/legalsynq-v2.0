@@ -1,0 +1,747 @@
+{
+  "info": {
+    "_postman_id": "b7d2c6f4-2e29-4f81-b1d1-dc172c0e10aa",
+    "name": "LegalSynq Selling Payments and Aging API",
+    "description": "Postman requests and saved successful response examples for the seller case-payment ledger and buyer-acceptance aging reports. Set sellerToken to a seller JWT with SYNQ_LIENS product access, lien read/settle permissions, sell mode, and lien_sale:view_analytics. Use a new idempotency key for each distinct payment mutation; reuse the same key only when retrying the exact same request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{sellerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5009"
+    },
+    {
+      "key": "sellerToken",
+      "value": ""
+    },
+    {
+      "key": "caseId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "lienId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "paymentId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "createPaymentIdempotencyKey",
+      "value": "selling-payment-create-001"
+    },
+    {
+      "key": "voidPaymentIdempotencyKey",
+      "value": "selling-payment-void-001"
+    },
+    {
+      "key": "paymentDate",
+      "value": "2026-08-25"
+    },
+    {
+      "key": "asOfDate",
+      "value": "2026-08-25"
+    },
+    {
+      "key": "page",
+      "value": "1"
+    },
+    {
+      "key": "pageSize",
+      "value": "50"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Selling Payments",
+      "item": [
+        {
+          "name": "List Case Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/{{caseId}}/payments?search=&paymentMethod=&postingStatus=&sortBy=paymentDate&sortDirection=desc&page={{page}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "{{caseId}}",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "paymentMethod",
+                  "value": ""
+                },
+                {
+                  "key": "postingStatus",
+                  "value": ""
+                },
+                {
+                  "key": "sortBy",
+                  "value": "paymentDate"
+                },
+                {
+                  "key": "sortDirection",
+                  "value": "desc"
+                },
+                {
+                  "key": "page",
+                  "value": "{{page}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Returns the visible case-payment ledger and full-result payment summary. Requires SYNQ_LIENS.lien:read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns payment summary and items', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('summary');",
+                  "  pm.expect(body).to.have.property('items').that.is.an('array');",
+                  "  pm.expect(body).to.have.property('totalCount');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 - Payment ledger",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/cases/{{caseId}}/payments?page=1&pageSize=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "cases",
+                    "{{caseId}}",
+                    "payments"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"summary\": {\n    \"lienSellingAmount\": 5000.00,\n    \"totalPaid\": 1000.00,\n    \"remainingBalance\": 4000.00,\n    \"overpaidAmount\": 0.00,\n    \"lienAgingDays\": 24,\n    \"currency\": \"USD\"\n  },\n  \"items\": [\n    {\n      \"id\": \"01a01f20-1000-7000-8000-000000000001\",\n      \"receiptId\": \"01a01f20-1000-7000-8000-000000000002\",\n      \"lienId\": \"01a01ad7-31e9-784f-a099-d5935b32c83a\",\n      \"lienNumber\": \"SL-01A01AD731E9\",\n      \"paymentNumber\": 1,\n      \"paymentDate\": \"2026-08-25\",\n      \"paymentMethod\": \"Check\",\n      \"referenceNumber\": \"CHK-POSTMAN-001\",\n      \"amount\": 1000.00,\n      \"detailsContext\": \"Selling payment created from Postman\",\n      \"notes\": \"Postman payment\",\n      \"settlementType\": \"by_funding_company\",\n      \"settlementStatus\": \"partial_payment\",\n      \"postingStatus\": \"Posted\",\n      \"createdAtUtc\": \"2026-08-25T09:30:00Z\",\n      \"updatedAtUtc\": \"2026-08-25T09:30:00Z\"\n    }\n  ],\n  \"page\": 1,\n  \"pageSize\": 50,\n  \"totalCount\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Record Case Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createPaymentIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000.00,\n  \"paymentDate\": \"{{paymentDate}}\",\n  \"paymentMethod\": \"Check\",\n  \"referenceNumber\": \"CHK-POSTMAN-001\",\n  \"detailsContext\": \"Selling payment created from Postman\",\n  \"notes\": \"Postman payment\",\n  \"settlementType\": \"by_funding_company\",\n  \"settlementStatus\": \"partial_payment\",\n  \"lienStatus\": null,\n  \"allocations\": [\n    {\n      \"lienId\": \"{{lienId}}\",\n      \"amount\": 1000.00\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/{{caseId}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "{{caseId}}",
+                "payments"
+              ]
+            },
+            "description": "Records one atomic payment receipt. Allocation amounts must equal amount and cannot exceed each lien's outstanding selling balance. Requires SYNQ_LIENS.lien:settle and a fresh Idempotency-Key."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns the recorded allocations', () => {",
+                  "  pm.expect(body).to.have.property('receiptId');",
+                  "  pm.expect(body).to.have.property('allocations').that.is.an('array').and.not.empty;",
+                  "});",
+                  "if (body.allocations && body.allocations.length > 0 && body.allocations[0].id) {",
+                  "  pm.collectionVariables.set('paymentId', body.allocations[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "201 - Payment recorded",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "selling-payment-create-001"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amount\": 1000.00,\n  \"paymentDate\": \"2026-08-25\",\n  \"paymentMethod\": \"Check\",\n  \"referenceNumber\": \"CHK-POSTMAN-001\",\n  \"allocations\": [{ \"lienId\": \"01a01ad7-31e9-784f-a099-d5935b32c83a\", \"amount\": 1000.00 }]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/cases/{{caseId}}/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "cases",
+                    "{{caseId}}",
+                    "payments"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"receiptId\": \"01a01f20-1000-7000-8000-000000000002\",\n  \"paymentNumber\": 1,\n  \"amount\": 1000.00,\n  \"allocations\": [\n    {\n      \"id\": \"01a01f20-1000-7000-8000-000000000001\",\n      \"receiptId\": \"01a01f20-1000-7000-8000-000000000002\",\n      \"lienId\": \"01a01ad7-31e9-784f-a099-d5935b32c83a\",\n      \"lienNumber\": \"SL-01A01AD731E9\",\n      \"paymentNumber\": 1,\n      \"paymentDate\": \"2026-08-25\",\n      \"paymentMethod\": \"Check\",\n      \"referenceNumber\": \"CHK-POSTMAN-001\",\n      \"amount\": 1000.00,\n      \"detailsContext\": \"Selling payment created from Postman\",\n      \"notes\": \"Postman payment\",\n      \"settlementType\": \"by_funding_company\",\n      \"settlementStatus\": \"partial_payment\",\n      \"postingStatus\": \"Posted\",\n      \"createdAtUtc\": \"2026-08-25T09:30:00Z\",\n      \"updatedAtUtc\": \"2026-08-25T09:30:00Z\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Void Case Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{voidPaymentIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Payment voided from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/cases/{{caseId}}/payments/{{paymentId}}/void",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "cases",
+                "{{caseId}}",
+                "payments",
+                "{{paymentId}}",
+                "void"
+              ]
+            },
+            "description": "Voids every allocation sharing the selected payment's receipt. Requires SYNQ_LIENS.lien:settle and a fresh Idempotency-Key."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns Voided status', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.postingStatus).to.eql('Voided');",
+                "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 - Payment voided",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "selling-payment-void-001"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Payment voided from Postman\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/cases/{{caseId}}/payments/{{paymentId}}/void",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "cases",
+                    "{{caseId}}",
+                    "payments",
+                    "{{paymentId}}",
+                    "void"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"receiptId\": \"01a01f20-1000-7000-8000-000000000002\",\n  \"paymentId\": \"01a01f20-1000-7000-8000-000000000001\",\n  \"voidedAllocations\": 1,\n  \"postingStatus\": \"Voided\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Buyer-Acceptance Aging Reports",
+      "item": [
+        {
+          "name": "Weekly Aging",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/weekly-aging?asOfDate={{asOfDate}}&page={{page}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "reports",
+                "weekly-aging"
+              ],
+              "query": [
+                {
+                  "key": "asOfDate",
+                  "value": "{{asOfDate}}"
+                },
+                {
+                  "key": "page",
+                  "value": "{{page}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Returns seller-scoped buyer-accepted liens in 1-7, 8-14, 15-21, 22-28, and more-than-28-day columns, plus full-result totals per column."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns weekly columns and totals', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.summaryTotals).to.include.keys('days1To7', 'days8To14', 'days15To21', 'days22To28', 'moreThan28', 'totalAmount');",
+                  "  if (body.data.length > 0) pm.expect(body.data[0]).to.include.keys('lienCode', 'fundingCompany', 'days1To7', 'days8To14', 'days15To21', 'days22To28', 'moreThan28', 'totalAmount');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 - Weekly aging",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/reports/weekly-aging?asOfDate=2026-08-25&page=1&pageSize=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "reports",
+                    "weekly-aging"
+                  ],
+                  "query": [
+                    {
+                      "key": "asOfDate",
+                      "value": "2026-08-25"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"isSuccess\": true,\n  \"message\": \"Weekly aging report generated.\",\n  \"asOfDate\": \"2026-08-25\",\n  \"currency\": \"USD\",\n  \"page\": 1,\n  \"pageSize\": 50,\n  \"totalCount\": 3,\n  \"totalPages\": 1,\n  \"summaryTotals\": {\n    \"totalLiens\": 3,\n    \"days1To7\": 1000.00,\n    \"days8To14\": 1500.00,\n    \"days15To21\": 0.00,\n    \"days22To28\": 0.00,\n    \"moreThan28\": 2000.00,\n    \"totalAmount\": 4500.00\n  },\n  \"data\": [\n    { \"lienCode\": \"SL-01A01AD731E9\", \"fundingCompany\": \"DaineQAT FC\", \"days1To7\": 1000.00, \"days8To14\": 0.00, \"days15To21\": 0.00, \"days22To28\": 0.00, \"moreThan28\": 0.00, \"totalAmount\": 1000.00 },\n    { \"lienCode\": \"SL-01A01A30CB24\", \"fundingCompany\": \"US Funding Company\", \"days1To7\": 0.00, \"days8To14\": 1500.00, \"days15To21\": 0.00, \"days22To28\": 0.00, \"moreThan28\": 0.00, \"totalAmount\": 1500.00 },\n    { \"lienCode\": \"SL-01A01A4AF025\", \"fundingCompany\": \"Company Test\", \"days1To7\": 0.00, \"days8To14\": 0.00, \"days15To21\": 0.00, \"days22To28\": 0.00, \"moreThan28\": 2000.00, \"totalAmount\": 2000.00 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Monthly Aging",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/monthly-aging?asOfDate={{asOfDate}}&page={{page}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "reports",
+                "monthly-aging"
+              ],
+              "query": [
+                {
+                  "key": "asOfDate",
+                  "value": "{{asOfDate}}"
+                },
+                {
+                  "key": "page",
+                  "value": "{{page}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Returns seller-scoped buyer-accepted liens in 1-30, 31-60, 61-90, 91-120, and more-than-120-day columns, plus full-result totals per column."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns monthly columns and totals', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.summaryTotals).to.include.keys('days1To30', 'days31To60', 'days61To90', 'days91To120', 'moreThan120', 'totalAmount');",
+                  "  if (body.data.length > 0) pm.expect(body.data[0]).to.include.keys('lienCode', 'fundingCompany', 'days1To30', 'days31To60', 'days61To90', 'days91To120', 'moreThan120', 'totalAmount');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 - Monthly aging",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/reports/monthly-aging?asOfDate=2026-08-25&page=1&pageSize=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "reports",
+                    "monthly-aging"
+                  ],
+                  "query": [
+                    {
+                      "key": "asOfDate",
+                      "value": "2026-08-25"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"isSuccess\": true,\n  \"message\": \"Monthly aging report generated.\",\n  \"asOfDate\": \"2026-08-25\",\n  \"currency\": \"USD\",\n  \"page\": 1,\n  \"pageSize\": 50,\n  \"totalCount\": 3,\n  \"totalPages\": 1,\n  \"summaryTotals\": {\n    \"totalLiens\": 3,\n    \"days1To30\": 2500.00,\n    \"days31To60\": 2000.00,\n    \"days61To90\": 0.00,\n    \"days91To120\": 0.00,\n    \"moreThan120\": 0.00,\n    \"totalAmount\": 4500.00\n  },\n  \"data\": [\n    { \"lienCode\": \"SL-01A01AD731E9\", \"fundingCompany\": \"DaineQAT FC\", \"days1To30\": 1000.00, \"days31To60\": 0.00, \"days61To90\": 0.00, \"days91To120\": 0.00, \"moreThan120\": 0.00, \"totalAmount\": 1000.00 },\n    { \"lienCode\": \"SL-01A01A30CB24\", \"fundingCompany\": \"US Funding Company\", \"days1To30\": 1500.00, \"days31To60\": 0.00, \"days61To90\": 0.00, \"days91To120\": 0.00, \"moreThan120\": 0.00, \"totalAmount\": 1500.00 },\n    { \"lienCode\": \"SL-01A01A4AF025\", \"fundingCompany\": \"Company Test\", \"days1To30\": 0.00, \"days31To60\": 2000.00, \"days61To90\": 0.00, \"days91To120\": 0.00, \"moreThan120\": 0.00, \"totalAmount\": 2000.00 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Weekly Aging Exact-Day Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/weekly-aging-detail?asOfDate={{asOfDate}}&page={{page}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "reports",
+                "weekly-aging-detail"
+              ],
+              "query": [
+                {
+                  "key": "asOfDate",
+                  "value": "{{asOfDate}}"
+                },
+                {
+                  "key": "page",
+                  "value": "{{page}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Returns lienCode, fundingCompany, accepted amount, and exact aging days in agingBucket for the same buyer-accepted lien population."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns exact-day detail columns', () => {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data.length > 0) {",
+                  "    pm.expect(body.data[0]).to.include.keys('lienCode', 'fundingCompany', 'amount', 'agingBucket');",
+                  "    pm.expect(body.data[0].agingBucket).to.be.a('number');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 - Weekly aging exact-day detail",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/reports/weekly-aging-detail?asOfDate=2026-08-25&page=1&pageSize=50",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "reports",
+                    "weekly-aging-detail"
+                  ],
+                  "query": [
+                    {
+                      "key": "asOfDate",
+                      "value": "2026-08-25"
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-store"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"isSuccess\": true,\n  \"message\": \"Weekly aging detail report generated.\",\n  \"asOfDate\": \"2026-08-25\",\n  \"currency\": \"USD\",\n  \"page\": 1,\n  \"pageSize\": 50,\n  \"totalCount\": 3,\n  \"totalPages\": 1,\n  \"data\": [\n    { \"lienCode\": \"SL-01A01AD731E9\", \"fundingCompany\": \"DaineQAT FC\", \"amount\": 1000.00, \"agingBucket\": 4 },\n    { \"lienCode\": \"SL-01A01A30CB24\", \"fundingCompany\": \"US Funding Company\", \"amount\": 1500.00, \"agingBucket\": 10 },\n    { \"lienCode\": \"SL-01A01A4AF025\", \"fundingCompany\": \"Company Test\", \"amount\": 2000.00, \"agingBucket\": 35 }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

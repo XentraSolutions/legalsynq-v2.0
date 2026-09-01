@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Field from "@/components/lien/field";
+import { CaseSelect } from "@/components/selling/case-select";
 import {
   DEFAULT_LISTING_VISIBILITY,
   LienScheduleFields,
@@ -16,6 +17,7 @@ export interface LienInfoProps {
 const INITIAL_FORM = {
   status: "Pending",
   listingVisibility: DEFAULT_LISTING_VISIBILITY,
+  caseId: "",
   initialServiceDate: "",
   endServiceDate: "",
   notes: "",
@@ -35,8 +37,10 @@ const STATUSES = [
 ];
 
 export default function LienInfo(props: LienInfoProps) {
-  const { data, onFormValid } = props;
-  const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
+  const { data, caseId, lienId, onFormValid } = props;
+  const [form, setForm] = useState(
+    !data ? { ...INITIAL_FORM, caseId: caseId ?? "" } : data,
+  );
 
   const statusList =
     STATUSES.map((c) => {
@@ -49,7 +53,7 @@ export default function LienInfo(props: LienInfoProps) {
   }, [form]);
 
   function validateForm() {
-    const valid = !!form.status && !!form.initialServiceDate;
+    const valid = !!form.status && !!form.initialServiceDate && !!form.caseId;
     onFormValid?.(valid, form);
   }
 
@@ -62,7 +66,7 @@ export default function LienInfo(props: LienInfoProps) {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mt-4">
+        <div className="grid grid-cols-2 gap-4 mt-4">
           <Field
             required
             label="Lien Status"
@@ -73,6 +77,27 @@ export default function LienInfo(props: LienInfoProps) {
             }}
             type="select"
           />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Case<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <CaseSelect
+              value={form.caseId}
+              onChange={(v) => setForm({ ...form, caseId: v })}
+              disabled={!!lienId || !!caseId}
+            />
+            {lienId && (
+              <p className="mt-1 text-xs text-gray-500">
+                A lien's case can only be set when it's created — it can't be
+                reassigned afterward.
+              </p>
+            )}
+            {!lienId && caseId && (
+              <p className="mt-1 text-xs text-gray-500">
+                This lien is being added to the case you came from.
+              </p>
+            )}
+          </div>
         </div>
         <LienScheduleFields
           value={form}

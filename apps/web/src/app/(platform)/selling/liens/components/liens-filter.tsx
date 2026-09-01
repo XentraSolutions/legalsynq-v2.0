@@ -8,7 +8,7 @@ import {
   FilterSection,
   InfiniteFilterList,
 } from "@/components/lien/filter-section";
-import { useInfiniteCompanyOptions } from "@/hooks/use-selling-companies";
+import { useInfiniteCompanyOptions } from "@/hooks/selling/use-selling-companies";
 import { Button } from "@/components/selling/button";
 
 export interface LiensFilterValues {

@@ -329,8 +329,7 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
-        .RequirePermission(PermissionCodes.ReferralCreate);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -478,7 +477,7 @@ public static class ReferralEndpoints
         .RequireAuthorization(Policies.PlatformOrTenantAdmin)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
 
-        // Referral Attribution is set only once, at law firm submission time (see
+        // Referral Origination is set only once, at law firm submission time (see
         // ReferralService.CreateAsync / ResolveAttributionForSubmissionAsync), and is
         // immutable afterward — there is deliberately no admin edit endpoint for it.
 

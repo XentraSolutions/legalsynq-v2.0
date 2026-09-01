@@ -12,6 +12,7 @@ public sealed class LienEligibilityValidator : ILienEligibilityValidator
     {
         _rules =
         [
+            new NotMovedToManagementRule(),
             new PositiveBalanceRule(),
             new NotClosedRule(),
             new NotWrittenOffRule(),
@@ -60,6 +61,17 @@ public sealed class LienEligibilityValidator : ILienEligibilityValidator
                     ? null
                     : new("BALANCE_NOT_POSITIVE", "Lien balance must be greater than 0."));
         }
+    }
+
+    private sealed class NotMovedToManagementRule : ILienEligibilityRule
+    {
+        public Task<LienEligibilityViolation?> ValidateAsync(
+            Lien lien,
+            SellingPortfolio portfolio,
+            CancellationToken ct) => Task.FromResult<LienEligibilityViolation?>(
+                lien.MovedToManagementAtUtc.HasValue
+                    ? new("LIEN_MOVED_TO_MANAGEMENT", "Liens moved to management cannot be assigned to a selling portfolio.")
+                    : null);
     }
 
     private sealed class NotClosedRule : ILienEligibilityRule
@@ -141,4 +153,3 @@ public sealed class LienEligibilityValidator : ILienEligibilityValidator
     private static string NormalizeStatus(string value) =>
         new(value.Where(char.IsLetterOrDigit).ToArray());
 }
-

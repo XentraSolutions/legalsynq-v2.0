@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -66,6 +67,52 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         data["isBulk"]!.GetValue<string>().Should().Be("Yes");
         data["isServicing"]!.GetValue<string>().Should().Be("Yes");
         data["fundingCompanyId"]!.GetValue<string>().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateMedical_when_only_note_changes_includes_note_in_lien_updates()
+    {
+        var note = $"Medical update note {Guid.CreateVersion7():N}";
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            new
+            {
+                id = SeedHelper.LienId.ToString(),
+                note,
+            });
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var repeatedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            new
+            {
+                id = SeedHelper.LienId.ToString(),
+                note,
+            });
+        repeatedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await repeatedResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new
+            {
+                caseId = SeedHelper.CaseId,
+                page = 1,
+                limit = 50,
+            });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var update = body["data"]!
+            .AsArray()
+            .Single(item => item!["description"]!.GetValue<string>() == note);
+
+        update!["action"]!.GetValue<string>().Should().Be("Lien Update");
+        update["lienId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
+        update["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
     }
 
     [Fact]
@@ -223,6 +270,202 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         item["purchaseAmount"]!.GetValue<string>().Should().Be("100.00");
         item["payee"]!.GetValue<string>().Should().Be("test payee");
         item["outboundCheckNumber"]!.GetValue<string>().Should().Be("chck-1000");
+    }
+
+    [Fact]
+    public async Task MedicalCode_create_attributes_lien_update_to_authenticated_user()
+    {
+        const string code = "99214";
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            new
+            {
+                id = (string?)null,
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "125.00",
+                billingAmount = "150.00",
+                purchaseAmount = "100.00",
+                payee = "test payee",
+                outboundCheckNumber = "check-1001",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new
+            {
+                caseId = SeedHelper.CaseId,
+                page = 1,
+                limit = 50,
+            });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var update = body["data"]!
+            .AsArray()
+            .Single(item =>
+                item!["action"]!.GetValue<string>() == "LegacyMedicalCode" &&
+                item["description"]!.GetValue<string>() == $"Medical code {code}");
+
+        update!["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
+    }
+
+    [Fact]
+    public async Task MedicalCode_create_uses_authenticated_name_when_identity_lookup_omits_user()
+    {
+        var productionUserId = Guid.CreateVersion7();
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(
+                    SeedHelper.TenantId,
+                    productionUserId,
+                    name: "Production User"));
+
+        const string code = "99215";
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            new
+            {
+                id = (string?)null,
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "175.00",
+                billingAmount = "200.00",
+                purchaseAmount = "150.00",
+                payee = "test payee",
+                outboundCheckNumber = "check-1002",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new
+            {
+                caseId = SeedHelper.CaseId,
+                page = 1,
+                limit = 50,
+            });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var update = body["data"]!
+            .AsArray()
+            .Single(item =>
+                item!["action"]!.GetValue<string>() == "LegacyMedicalCode" &&
+                item["description"]!.GetValue<string>() == $"Medical code {code}");
+
+        update!["updatedBy"]!.GetValue<string>().Should().Be("Production User");
+    }
+
+    [Fact]
+    public async Task MedicalCode_history_resolves_historical_actor_through_identity_user_lookup()
+    {
+        var historicalUserId = SeedHelper.IdentityOnlyUserId;
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(
+                    SeedHelper.TenantId,
+                    historicalUserId,
+                    name: "Historical User"));
+
+        const string code = "99216";
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            new
+            {
+                id = (string?)null,
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "225.00",
+                billingAmount = "250.00",
+                purchaseAmount = "200.00",
+                payee = "test payee",
+                outboundCheckNumber = "check-1003",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId));
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new
+            {
+                caseId = SeedHelper.CaseId,
+                page = 1,
+                limit = 50,
+            });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var update = body["data"]!
+            .AsArray()
+            .Single(item =>
+                item!["action"]!.GetValue<string>() == "LegacyMedicalCode" &&
+                item["description"]!.GetValue<string>() == $"Medical code {code}");
+
+        update!["updatedBy"]!.GetValue<string>().Should().Be("Identity Only");
+    }
+
+    [Fact]
+    public async Task MedicalCode_history_does_not_expose_id_when_actor_cannot_be_resolved()
+    {
+        var missingUserId = Guid.CreateVersion7();
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(
+                    SeedHelper.TenantId,
+                    missingUserId,
+                    name: "Missing User"));
+
+        const string code = "99217";
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            new
+            {
+                id = (string?)null,
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "275.00",
+                billingAmount = "300.00",
+                purchaseAmount = "250.00",
+                payee = "test payee",
+                outboundCheckNumber = "check-1004",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId));
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new
+            {
+                caseId = SeedHelper.CaseId,
+                page = 1,
+                limit = 50,
+            });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var update = body["data"]!
+            .AsArray()
+            .Single(item =>
+                item!["action"]!.GetValue<string>() == "LegacyMedicalCode" &&
+                item["description"]!.GetValue<string>() == $"Medical code {code}");
+
+        update!["updatedBy"]!.GetValue<string>().Should().Be("Unknown user");
     }
 
     [Fact]
@@ -403,6 +646,81 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
             item!["filename"]!.GetValue<string>() == "lien-doc");
 
         caseDocument!["liensId"].Should().BeNull();
+        caseDocument["typeId"]!.GetValue<string>().Should().Be("14");
+        caseDocument["documentTypeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000005");
         lienDocument!["liensId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
+        lienDocument["typeId"]!.GetValue<string>().Should().Be("7");
+        lienDocument["documentTypeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000007");
+    }
+
+    [Fact]
+    public async Task GetAllCaseDocument_defaults_missing_document_types_to_other()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-UNTYPED-{Guid.CreateVersion7():N}"[..36],
+                "LegacyCaseDocument",
+                "Imported document without type metadata",
+                "Legacy import",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                notes: "url=/documents/untyped; filename=untyped.pdf"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/liens/cases/get-allcasedocument/{SeedHelper.CaseId}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var document = body["data"]!.AsArray().Single(item =>
+            item!["filename"]!.GetValue<string>() == "untyped.pdf")!;
+
+        document["typeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000005");
+        document["documentTypeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000005");
+    }
+
+    [Theory]
+    [InlineData("LegacyMedicalDocument")]
+    [InlineData("LegacyLienDocument")]
+    public async Task DeleteMedicalDocument_accepts_listed_legacy_document_types(string taskType)
+    {
+        Guid documentId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var document = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-MEDICAL-{Guid.CreateVersion7():N}"[..36],
+                taskType,
+                "Medical document",
+                "Legacy import",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: SeedHelper.LienId,
+                notes: "url=/documents/medical; filename=medical.pdf");
+            documentId = document.Id;
+            db.ServicingItems.Add(document);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.DeleteAsync($"/liens/delete-medicaldocument/{documentId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verifyDb.ServicingItems.FindAsync(documentId)).Should().BeNull();
     }
 }

@@ -126,7 +126,7 @@ public static class LienEndpoints
         public string? SortDirection { get; init; }
     }
 
-    private sealed record AdvancedLienFilterRow(
+    internal sealed record AdvancedLienFilterRow(
         Lien Lien,
         string LawFirmId,
         string CaseManagerId,
@@ -134,6 +134,13 @@ public static class LienEndpoints
 
     public static void MapLienEndpoints(this WebApplication app)
     {
+        // Compatibility for the tenant portal's legacy BFF path. The gateway removes
+        // its /liens prefix before forwarding, leaving this service path.
+        app.MapDelete("/liens/delete-medicaldocument/{id:guid}", DeleteMedicalDocumentLegacy)
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
         var group = app.MapGroup("/api/liens/liens")
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode);
@@ -421,6 +428,7 @@ public static class LienEndpoints
                 Status = lien.Status,
                 StatusLabel = lien.StatusLabel,
                 CaseId = lien.CaseId,
+                SellingCaseId = lien.SellingCaseId,
                 FacilityId = lien.FacilityId,
                 OriginalAmount = lien.OriginalAmount,
                 CurrentBalance = lien.CurrentBalance,
@@ -442,6 +450,7 @@ public static class LienEndpoints
                 SellingOrgId = lien.SellingOrgId,
                 BuyingOrgId = lien.BuyingOrgId,
                 HoldingOrgId = lien.HoldingOrgId,
+                SellerStatus = lien.SellerStatus,
                 IncidentDate = lien.IncidentDate,
                 PurchaseDate = lien.PurchaseDate,
                 InitialServiceDate = lien.InitialServiceDate,
@@ -450,7 +459,9 @@ public static class LienEndpoints
                 TotalBilling = totalBilling,
                 IsBulk = lien.IsBulk,
                 IsServicing = lien.IsServicing,
+                ImportedCreatedByName = lien.ImportedCreatedByName,
                 Description = lien.Description,
+                Notes = lien.Notes,
                 OpenedAtUtc = lien.OpenedAtUtc,
                 ClosedAtUtc = lien.ClosedAtUtc,
                 CreatedAtUtc = lien.CreatedAtUtc,
@@ -641,6 +652,7 @@ public static class LienEndpoints
             Status = buyingStatus,
             StatusLabel = buyingStatus,
             CaseId = lien.CaseId,
+            SellingCaseId = lien.SellingCaseId,
             FacilityId = lien.FacilityId,
             OriginalAmount = lien.OriginalAmount,
             CurrentBalance = lien.CurrentBalance,
@@ -660,6 +672,7 @@ public static class LienEndpoints
             SellingOrgId = lien.SellingOrgId,
             BuyingOrgId = lien.BuyingOrgId,
             HoldingOrgId = lien.HoldingOrgId,
+            SellerStatus = lien.SellerStatus,
             IncidentDate = lien.IncidentDate,
             PurchaseDate = lien.PurchaseDate,
             InitialServiceDate = lien.InitialServiceDate,
@@ -668,7 +681,9 @@ public static class LienEndpoints
             TotalBilling = lien.TotalBilling,
             IsBulk = lien.IsBulk,
             IsServicing = lien.IsServicing,
+            ImportedCreatedByName = lien.ImportedCreatedByName,
             Description = lien.Description,
+            Notes = lien.Notes,
             OpenedAtUtc = lien.OpenedAtUtc,
             ClosedAtUtc = lien.ClosedAtUtc,
             CreatedAtUtc = lien.CreatedAtUtc,
@@ -749,7 +764,7 @@ public static class LienEndpoints
             .ToList();
     }
 
-    private static async Task<List<AdvancedLienFilterRow>> BuildAdvancedLienFilterRowsAsync(
+    internal static async Task<List<AdvancedLienFilterRow>> BuildAdvancedLienFilterRowsAsync(
         LiensDbContext db,
         Guid tenantId,
         IReadOnlyCollection<Lien> liens,
@@ -875,7 +890,7 @@ public static class LienEndpoints
         return string.Empty;
     }
 
-    private static async Task<HashSet<string>> ResolveLienStatusCodesAsync(
+    internal static async Task<HashSet<string>> ResolveLienStatusCodesAsync(
         LiensDbContext db,
         Guid tenantId,
         IReadOnlyCollection<string> filterValues,
@@ -1087,7 +1102,7 @@ public static class LienEndpoints
                     endServiceDate = FormatLegacyDate(lien.EndServiceDate),
                     note = lien.Description ?? string.Empty,
                     created = FormatLegacyTimestamp(lien.CreatedAtUtc),
-                    createdBy = string.Empty,
+                    createdBy = lien.ImportedCreatedByName ?? string.Empty,
                     updated = FormatLegacyTimestamp(lien.UpdatedAtUtc),
                     updatedBy = string.Empty,
                     fundingCompanyId = lien.ExternalReference ?? string.Empty,
@@ -1212,7 +1227,9 @@ public static class LienEndpoints
         var userId = RequireUserId(ctx);
 
         var existing = await servicingItemService.GetByIdAsync(tenantId, id, ct);
-        if (existing is null || !string.Equals(existing.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal))
+        if (existing is null ||
+            (!string.Equals(existing.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal) &&
+             !string.Equals(existing.TaskType, "LegacyLienDocument", StringComparison.Ordinal)))
         {
             return Results.NotFound(new
             {

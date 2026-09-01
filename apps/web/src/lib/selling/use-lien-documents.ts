@@ -30,7 +30,7 @@ function toDocumentRefs(docs: LienDocument[]): SellingDocumentReferenceRequest[]
   }));
 }
 
-async function fetchLienDocuments(lienId: string): Promise<LienDocument[]> {
+export async function fetchLienDocuments(lienId: string): Promise<LienDocument[]> {
   const lien = await liensService.getLienById(lienId);
   const enriched = await Promise.all(
     lien.documents.map(async (doc) => {

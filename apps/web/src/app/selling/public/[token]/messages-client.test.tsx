@@ -55,6 +55,7 @@ describe("PublicPortalMessagesCard", () => {
     expect(postPublicBuyerPortalMessageMock).toHaveBeenCalledWith(
       "token-abc",
       "Can you confirm the signed LOP is final?",
+      [],
     );
     await waitFor(() => {
       expect(screen.getByText("Can you confirm the signed LOP is final?")).toBeInTheDocument();
@@ -117,5 +118,53 @@ describe("PublicPortalMessagesCard", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This secure link has expired.");
+  });
+
+  test("passes selected files when posting a public message", async () => {
+    postPublicBuyerPortalMessageMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      correlationId: "corr-message",
+      message: {
+        id: "message-1",
+        senderType: "buyer",
+        senderName: "Buyer Reviewer",
+        senderEmail: "buyer@example.test",
+        message: "",
+        createdAtUtc: "2026-07-28T12:30:00Z",
+        attachments: [
+          {
+            id: "attachment-1",
+            fileName: "signed-lop.pdf",
+            contentType: "application/pdf",
+            fileSizeBytes: 1234,
+            createdAtUtc: "2026-07-28T12:30:00Z",
+            viewUrl: "/view",
+            downloadUrl: "/download",
+          },
+        ],
+      },
+    });
+    const file = new File(["pdf"], "signed-lop.pdf", { type: "application/pdf" });
+
+    render(
+      <PublicPortalMessagesCard
+        token="token-abc"
+        audience="buyer"
+        initialMessages={[]}
+      />,
+    );
+
+    await userEvent.upload(screen.getByLabelText("Message attachments"), file);
+    expect(screen.getByText("signed-lop.pdf")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    expect(postPublicBuyerPortalMessageMock).toHaveBeenCalledWith("token-abc", "", [file]);
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "View attachment" })).toHaveAttribute("href", "/view");
+    });
+    expect(screen.getByRole("link", { name: "Download attachment" })).toHaveAttribute("href", "/download");
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
   });
 });

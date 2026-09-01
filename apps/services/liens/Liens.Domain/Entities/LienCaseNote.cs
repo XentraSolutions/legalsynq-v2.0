@@ -37,7 +37,7 @@ public class LienCaseNote
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
         ArgumentException.ThrowIfNullOrWhiteSpace(content);
 
-        var resolvedCategory = CaseNoteCategory.All.Contains(category) ? category : CaseNoteCategory.General;
+        var resolvedCategory = CaseNoteCategory.Normalize(category) ?? CaseNoteCategory.General;
 
         return new LienCaseNote
         {
@@ -65,8 +65,9 @@ public class LienCaseNote
         Content  = newContent.Trim();
         IsEdited = true;
 
-        if (newCategory != null && CaseNoteCategory.All.Contains(newCategory))
-            Category = newCategory;
+        var normalizedCategory = CaseNoteCategory.Normalize(newCategory);
+        if (normalizedCategory is not null)
+            Category = normalizedCategory;
 
         UpdatedAtUtc = DateTime.UtcNow;
     }

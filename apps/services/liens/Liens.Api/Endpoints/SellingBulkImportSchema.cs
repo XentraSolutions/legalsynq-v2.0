@@ -21,7 +21,6 @@ internal static class SellingBulkImportSchema
     [
         CaseCode,
         LienStatus,
-        ListingVisibility,
         PurchaseDate,
         InitialServiceDate,
         EndServiceDate,
@@ -39,7 +38,6 @@ internal static class SellingBulkImportSchema
     [
         "CASE-10001",
         "Pending",
-        "Private",
         "01/15/2026",
         "01/10/2026",
         "01/12/2026",

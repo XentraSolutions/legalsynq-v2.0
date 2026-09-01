@@ -38,9 +38,15 @@ public static class PublicNetworkEndpoints
         var group = app.MapGroup("/api/public/network");
 
         // ── GET /api/public/network ─────────────────────────────────────────
-        // Lists all networks for the resolved tenant.
+        // Lists networks for the resolved tenant.
         // Header: X-Tenant-Id (GUID, resolved from subdomain by Next.js BFF)
+        // Query:  organizationId (optional GUID) — when the referral portal has a
+        //         law firm selected, scopes the list to tenant-owned networks plus
+        //         that law firm's own network, so one law firm never sees another
+        //         law firm's private network. Omitted → tenant-owned networks only
+        //         (law-firm-owned networks are excluded, not merely unscoped).
         group.MapGet("/", async (
+            string?             organizationId,
             HttpContext        http,
             IConfiguration     config,
             INetworkRepository repo,
@@ -52,20 +58,27 @@ public static class PublicNetworkEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            // BLK-PERF-02: Cache the network list per tenant. Trust boundary
-            // validation (above) has already verified tenantId is trustworthy.
-            // Cache key is tenant-scoped — different tenants never share an entry.
+            Guid? orgId = Guid.TryParse(organizationId, out var parsedOrgId) ? parsedOrgId : null;
+
+            // BLK-PERF-02: Cache the network list per tenant (and per organization,
+            // when scoped). Trust boundary validation (above) has already verified
+            // tenantId is trustworthy. Cache key is tenant-scoped — different tenants
+            // never share an entry.
+            var cacheKey = orgId.HasValue
+                ? CareConnectCacheKeys.PublicNetworkList(tenantId.Value, orgId.Value)
+                : CareConnectCacheKeys.PublicNetworkList(tenantId.Value);
+
             var summaries = await cache.GetOrCreateAsync(
-                CareConnectCacheKeys.PublicNetworkList(tenantId.Value),
+                cacheKey,
                 async entry =>
                 {
                     entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.PublicNetwork;
                     entry.Size = 1;
                     // BLK-PERF-01: Single query — replaces the N+1 loop of
                     // GetAllByTenantAsync + N×GetWithProvidersAsync.
-                    var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, ct);
+                    var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, orgId, ct);
                     return rows
-                        .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount))
+                        .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount, r.OwningOrganizationId))
                         .ToList();
                 });
 
@@ -73,8 +86,12 @@ public static class PublicNetworkEndpoints
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/providers ─────────────────────────
+        // Query: organizationId (optional GUID) — the referral portal's selected law
+        // firm. A Private provider only appears when it belongs to that organizationId
+        // (or is unowned/legacy); Public providers always appear. See ProviderVisibility.IsVisibleTo.
         group.MapGet("/{id:guid}/providers", async (
             Guid               id,
+            string?            organizationId,
             HttpContext         http,
             IConfiguration      config,
             INetworkRepository  repo,
@@ -85,10 +102,14 @@ public static class PublicNetworkEndpoints
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
+            Guid? orgId = Guid.TryParse(organizationId, out var parsedOrgId) ? parsedOrgId : null;
 
-            // BLK-PERF-02: Cache provider list per tenant+network for 60 s.
-            // Invalidated on network write (PUT/DELETE network, POST/DELETE provider).
-            var items = await cache.GetOrCreateAsync(
+            // BLK-PERF-02: Cache the org-agnostic active membership list per tenant+network
+            // for 60 s (unchanged cache key — no per-org cache entries, no invalidation-key
+            // fan-out needed). Visibility filtering by organizationId happens per-request,
+            // AFTER the cache read, so the cached entity list can be reused across every
+            // organizationId that requests this network.
+            var memberships = await cache.GetOrCreateAsync(
                 CareConnectCacheKeys.PublicNetworkProviders(tenantId.Value, id),
                 async entry =>
                 {
@@ -98,19 +119,23 @@ public static class PublicNetworkEndpoints
                     var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
                     if (network == null) return null;
 
-                    var memberships = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
-                    return memberships
-                        .Where(IsPublicProviderLocationActive)
-                        .Select(ToPublicProviderItem)
-                        .ToList();
+                    var all = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
+                    return all.Where(IsPublicProviderLocationActive).ToList();
                 });
 
-            return items == null ? Results.NotFound() : Results.Ok(items);
+            if (memberships == null) return Results.NotFound();
+
+            var items = memberships
+                .Where(np => ProviderVisibility.IsVisibleTo(np, orgId, viewerSeesAll: false))
+                .Select(ToPublicProviderItem)
+                .ToList();
+            return Results.Ok(items);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/providers/markers ──────────────────
         group.MapGet("/{id:guid}/providers/markers", async (
             Guid               id,
+            string?            organizationId,
             HttpContext         http,
             IConfiguration      config,
             INetworkRepository  repo,
@@ -121,10 +146,11 @@ public static class PublicNetworkEndpoints
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
+            Guid? orgId = Guid.TryParse(organizationId, out var parsedOrgId) ? parsedOrgId : null;
 
-            // BLK-PERF-02: Cache map markers per tenant+network for 60 s.
-            // Invalidated on network write (PUT/DELETE network, POST/DELETE provider).
-            var markers = await cache.GetOrCreateAsync(
+            // BLK-PERF-02: same org-agnostic caching approach as /providers above —
+            // cache the filtered-by-active entity list, apply Visibility filtering per request.
+            var memberships = await cache.GetOrCreateAsync(
                 CareConnectCacheKeys.PublicNetworkMarkers(tenantId.Value, id),
                 async entry =>
                 {
@@ -134,22 +160,25 @@ public static class PublicNetworkEndpoints
                     var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
                     if (network == null) return null;
 
-                    var memberships = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
-                    // Include every provider so the client can geocode those
-                    // whose coordinates have not yet been stored (0.0 signals
-                    // "needs geocoding" to the client-side geocoder).
-                    return memberships
-                        .Where(IsPublicProviderLocationActive)
-                        .Select(ToPublicProviderMarker)
-                        .ToList();
+                    var all = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
+                    return all.Where(IsPublicProviderLocationActive).ToList();
                 });
 
-            return markers == null ? Results.NotFound() : Results.Ok(markers);
+            if (memberships == null) return Results.NotFound();
+
+            // Include every visible provider so the client can geocode those whose
+            // coordinates have not yet been stored (0.0 signals "needs geocoding").
+            var markers = memberships
+                .Where(np => ProviderVisibility.IsVisibleTo(np, orgId, viewerSeesAll: false))
+                .Select(ToPublicProviderMarker)
+                .ToList();
+            return Results.Ok(markers);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/network/{id}/detail ────────────────────────────
         group.MapGet("/{id:guid}/detail", async (
             Guid               id,
+            string?            organizationId,
             HttpContext         http,
             IConfiguration      config,
             INetworkRepository  repo,
@@ -161,11 +190,14 @@ public static class PublicNetworkEndpoints
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
+            Guid? orgId = Guid.TryParse(organizationId, out var parsedOrgId) ? parsedOrgId : null;
 
-            // BLK-PERF-02: Cache the full detail payload (providers + markers) per
-            // tenant+network for 60 s. Single factory covers both data sets to avoid
-            // a split-brain cache state between the /providers and /detail endpoints.
-            var detail = await cache.GetOrCreateAsync(
+            // BLK-PERF-02: Cache the org-agnostic payload (network + active memberships +
+            // specialty options) per tenant+network for 60 s. Single factory still covers
+            // both data sets to avoid a split-brain cache state between /providers and
+            // /detail. Visibility filtering by organizationId happens per-request, after
+            // the cache read.
+            var cached = await cache.GetOrCreateAsync<(Guid Id, string Name, string Description, List<NetworkProvider> Memberships, List<SpecialtyResponse> SpecialtyOptions)?>(
                 CareConnectCacheKeys.PublicNetworkDetail(tenantId.Value, id),
                 async entry =>
                 {
@@ -183,19 +215,23 @@ public static class PublicNetworkEndpoints
                         .ThenBy(np => np.Facility.Name)
                         .ToList();
 
-                    var items = memberships
-                        .Select(ToPublicProviderItem)
-                        .ToList();
-
-                    // Include every provider (0.0 lat/lng = needs client-side geocoding).
-                    var markers = memberships
-                        .Select(ToPublicProviderMarker)
-                        .ToList();
-
-                    return new PublicNetworkDetail(network.Id, network.Name, network.Description, items, markers, specialtyOptions);
+                    return (network.Id, network.Name, network.Description, Memberships: memberships, SpecialtyOptions: specialtyOptions);
                 });
 
-            return detail == null ? Results.NotFound() : Results.Ok(detail);
+            if (cached == null) return Results.NotFound();
+
+            var visibleMemberships = cached.Value.Memberships
+                .Where(np => ProviderVisibility.IsVisibleTo(np, orgId, viewerSeesAll: false))
+                .ToList();
+
+            var items = visibleMemberships.Select(ToPublicProviderItem).ToList();
+            // Include every visible provider (0.0 lat/lng = needs client-side geocoding).
+            var markers = visibleMemberships.Select(ToPublicProviderMarker).ToList();
+
+            var detail = new PublicNetworkDetail(
+                cached.Value.Id, cached.Value.Name, cached.Value.Description,
+                items, markers, cached.Value.SpecialtyOptions);
+            return Results.Ok(detail);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
         // ── GET /api/public/treatment-types ────────────────────────────────
@@ -256,8 +292,8 @@ public static class PublicNetworkEndpoints
         // ── GET /api/public/referral-attributions ───────────────────────────
         // Anonymous mirror of GET /api/referral-attributions/options — the authenticated
         // in-app referral form and this anonymous public one must offer the same active
-        // Referral Attribution options for a given tenant. Trust-boundary validated (same
-        // as other public endpoints), never exposes inactive attributions.
+        // Referral Origination options for a given tenant. Trust-boundary validated (same
+        // as other public endpoints), never exposes inactive originations.
         app.MapGet("/api/public/referral-attributions", async (
             HttpContext                    http,
             IConfiguration                 config,
@@ -607,6 +643,8 @@ public static class PublicNetworkEndpoints
                 ReferralAttributionId   = req.ReferralAttributionId,
                 DateOfAccident          = req.PatientDateOfAccident,
                 Notes                   = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+                LienCompanyName         = req.LienCompanyName?.Trim(),
+                LienCompanyEmail        = req.LienCompanyEmail?.Trim(),
                 ReferrerFirstName       = req.SenderFirstName.Trim(),
                 ReferrerLastName        = req.SenderLastName?.Trim(),
                 ReferrerFirmName        = req.SenderFirmName?.Trim(),

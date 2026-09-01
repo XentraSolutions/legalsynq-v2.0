@@ -48,9 +48,7 @@ function toDateInputValue(value: string): string {
   if (isoDate) return isoDate[1];
 
   const legacyDate = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
-  return legacyDate
-    ? `${legacyDate[3]}-${legacyDate[1]}-${legacyDate[2]}`
-    : "";
+  return legacyDate ? `${legacyDate[3]}-${legacyDate[1]}-${legacyDate[2]}` : "";
 }
 
 export function ServicingTab({
@@ -117,11 +115,15 @@ export function ServicingTab({
     historyQueryClient.invalidateQueries({
       queryKey: ["case-liens-all", caseDetail.id],
     });
+
     historyQueryClient.invalidateQueries({
       queryKey: CASE_PAYMENTS_QUERY_KEY(caseDetail.id),
     });
     historyQueryClient.invalidateQueries({
       queryKey: SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY(caseDetail.id),
+    });
+    historyQueryClient.invalidateQueries({
+      queryKey: ["caseDetail", caseDetail.id],
     });
   };
 
@@ -154,46 +156,55 @@ export function ServicingTab({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
 
-  let openLiens = liens.filter((i) => i.closedAtUtc === null);
-  let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
+  let openLiens = liens.filter((i) => i.status === "Open");
+  let closedLiens = liens.filter((i) => i.status === "Closed");
 
-  const openLiensTotalBilling = openLiens.reduce(
-    (s, l) => s + l.originalAmount,
-    0,
-  );
-  const openLiensTotalPurchase = openLiens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
-    0,
-  );
-  const openLiensTotalBalance = openLiens.reduce((s, l) => s + l.balance, 0);
-  const openLiensTotalReduction = openLiens.reduce(
-    (s, l) => s + (l.reductionAmount ?? 0),
-    0,
-  );
-  const openLiensTotalPayment = openLiens.reduce(
-    (s, l) => s + (l.paymentAmount ?? 0),
-    0,
-  );
-  const closedLiensTotalBilling = closedLiens.reduce(
-    (s, l) => s + l.originalAmount,
-    0,
-  );
-  const closedLiensTotalPurchase = closedLiens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
-    0,
-  );
-  const closedLiensTotalReduction = closedLiens.reduce(
-    (s, l) => s + (l.reductionAmount ?? 0),
-    0,
-  );
-  const closedLiensTotalBalance = closedLiens.reduce(
-    (s, l) => s + l.balance,
-    0,
-  );
-  const closedLiensTotalPayment = closedLiens.reduce(
-    (s, l) => s + (l.paymentAmount ?? 0),
-    0,
-  );
+  const openLiensTotalBilling =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const openLiensTotalPurchase =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const openLiensTotalBalance =
+    openLiens.reduce((s, l) => s + Math.round((l.balance ?? 0) * 100), 0) / 100;
+  const openLiensTotalReduction =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.reductionAmount ?? 0) * 100),
+      0,
+    ) / 100;
+
+  const openLiensTotalPayment =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.paymentAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalBilling =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalPurchase =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalReduction =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.reductionAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalBalance =
+    closedLiens.reduce((s, l) => s + Math.round((l.balance ?? 0) * 100), 0) /
+    100;
+  const closedLiensTotalPayment =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.paymentAmount ?? 0) * 100),
+      0,
+    ) / 100;
 
   const { lookup } = useSessionContext();
 
@@ -268,6 +279,8 @@ export function ServicingTab({
       });
       setDeletingId(null);
       onRefreshPayments();
+      refreshAllLienData();
+      refetchHistory();
     } catch {
       addToast({
         type: "error",
@@ -281,7 +294,7 @@ export function ServicingTab({
 
   useEffect(() => {
     // getCase();
-  }, []);
+  }, [liens]);
 
   const historyColumns: ColumnDef<SettlementHistoryItemV3, any>[] = [
     {
@@ -392,6 +405,8 @@ export function ServicingTab({
             liens={liens}
             paymentsLoadedAt={paymentsLoadedAt}
             onRefreshPayments={() => {
+              onRefreshLiens();
+              refreshAllLienData();
               onRefreshPayments();
               refetchHistory();
             }}

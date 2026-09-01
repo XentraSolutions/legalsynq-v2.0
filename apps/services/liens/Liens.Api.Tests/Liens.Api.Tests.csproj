@@ -26,6 +26,7 @@
     <ProjectReference Include="..\Liens.Api\Liens.Api.csproj" />
     <ProjectReference Include="..\Liens.Infrastructure\Liens.Infrastructure.csproj" />
     <ProjectReference Include="..\Liens.Domain\Liens.Domain.csproj" />
+    <ProjectReference Include="..\..\..\..\scripts\LegacyLiensImport\LegacyLiensImport.csproj" />
   </ItemGroup>
 
   <ItemGroup>

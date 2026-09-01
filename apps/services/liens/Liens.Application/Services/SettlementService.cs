@@ -34,15 +34,34 @@ public class SettlementService : ISettlementService
     public async Task<List<LienReductionResponse>> GetReductionsByCaseAsync(
         Guid tenantId, Guid caseId, CancellationToken ct = default)
     {
-        var items = await _reductionRepo.GetByCaseIdAsync(tenantId, caseId, ct);
-        return items.Select(MapReduction).ToList();
+        var reductions = await _reductionRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        var settlements = await _settlementRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        return MapReductionsWithLegacyFallback(reductions, settlements);
+    }
+
+    public async Task<List<LienReductionResponse>> GetLatestReductionsByCaseAsync(
+        Guid tenantId, Guid caseId, CancellationToken ct = default)
+    {
+        var reductions = await GetReductionsByCaseAsync(tenantId, caseId, ct);
+        return reductions
+            .GroupBy(reduction => reduction.LienId)
+            .Select(group => group
+                .OrderByDescending(reduction => reduction.UpdatedAtUtc)
+                .ThenByDescending(reduction => reduction.CreatedAtUtc)
+                .ThenByDescending(reduction => reduction.Id)
+                .First())
+            .OrderByDescending(reduction => reduction.UpdatedAtUtc)
+            .ThenByDescending(reduction => reduction.CreatedAtUtc)
+            .ThenByDescending(reduction => reduction.Id)
+            .ToList();
     }
 
     public async Task<List<LienReductionResponse>> GetReductionsByLienAsync(
         Guid tenantId, Guid lienId, CancellationToken ct = default)
     {
-        var items = await _reductionRepo.GetByLienIdAsync(tenantId, lienId, ct);
-        return items.Select(MapReduction).ToList();
+        var reductions = await _reductionRepo.GetByLienIdAsync(tenantId, lienId, ct);
+        var settlements = await _settlementRepo.GetByLienIdAsync(tenantId, lienId, ct);
+        return MapReductionsWithLegacyFallback(reductions, settlements);
     }
 
     public async Task<LienReductionResponse> CreateReductionAsync(
@@ -79,6 +98,115 @@ public class SettlementService : ISettlementService
         CreatedByUserId = r.CreatedByUserId,
         UpdatedByUserId = r.UpdatedByUserId,
     };
+
+    private static List<LienReductionResponse> MapReductionsWithLegacyFallback(
+        IReadOnlyCollection<LienReduction> reductions,
+        IReadOnlyCollection<LienSettlement> settlements)
+    {
+        var result = reductions.Select(MapReduction).ToList();
+        var liensWithCanonicalReduction = reductions
+            .Select(reduction => reduction.LienId)
+            .ToHashSet();
+
+        foreach (var settlement in settlements)
+        {
+            if (liensWithCanonicalReduction.Contains(settlement.LienId) ||
+                !TryParseLegacyReduction(settlement.Note, out var amount, out var reductionDate) ||
+                !reductionDate.HasValue)
+            {
+                continue;
+            }
+
+            result.Add(new LienReductionResponse
+            {
+                Id = settlement.Id,
+                TenantId = settlement.TenantId,
+                CaseId = settlement.CaseId,
+                LienId = settlement.LienId,
+                ReductionDate = reductionDate.Value,
+                Amount = amount,
+                Note = settlement.Note,
+                CreatedAtUtc = settlement.CreatedAtUtc,
+                UpdatedAtUtc = settlement.UpdatedAtUtc,
+                CreatedByUserId = settlement.CreatedByUserId,
+                UpdatedByUserId = settlement.UpdatedByUserId,
+            });
+        }
+
+        return result;
+    }
+
+    private static bool TryParseLegacyReduction(
+        string? note,
+        out decimal amount,
+        out DateOnly? reductionDate)
+    {
+        amount = 0m;
+        reductionDate = null;
+        var fields = ParseLegacyFields(note);
+        if (!fields.ContainsKey("legacySettlementId") ||
+            !fields.TryGetValue("reductionAmount", out var rawAmount))
+        {
+            return false;
+        }
+
+        var normalizedAmount = rawAmount.Replace(",", string.Empty, StringComparison.Ordinal)
+            .Replace("$", string.Empty, StringComparison.Ordinal)
+            .Trim();
+        if (!decimal.TryParse(
+                normalizedAmount,
+                NumberStyles.Number | NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out amount))
+        {
+            return false;
+        }
+
+        if (fields.TryGetValue("reductionDate", out var rawDate) &&
+            !string.IsNullOrWhiteSpace(rawDate))
+        {
+            if (rawDate.Length >= 10 &&
+                DateOnly.TryParseExact(
+                    rawDate[..10],
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var isoDate))
+            {
+                reductionDate = isoDate;
+            }
+            else if (DateOnly.TryParse(
+                         rawDate,
+                         CultureInfo.InvariantCulture,
+                         DateTimeStyles.AllowWhiteSpaces,
+                         out var parsedDate))
+            {
+                reductionDate = parsedDate;
+            }
+        }
+
+        return true;
+    }
+
+    private static Dictionary<string, string> ParseLegacyFields(string? note)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(note))
+            return fields;
+
+        foreach (var segment in note.Split(
+                     ';',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            fields[segment[..separator].Trim()] = segment[(separator + 1)..].Trim();
+        }
+
+        return fields;
+    }
 
     // ── Settlements ───────────────────────────────────────────────────────────
 
@@ -198,7 +326,10 @@ public class SettlementService : ISettlementService
             request.PaymentDate,
             request.Payee,
             FirstNonEmpty(request.CheckNumber, request.ReferenceNumber),
-            BuildPaymentNote(request, settlementType, settlementStatus));
+            BuildPaymentNote(request, settlementType, settlementStatus),
+            paymentMethod: request.PaymentMethod,
+            settlementType: settlementType,
+            settlementStatus: settlementStatus);
         await _paymentRepo.AddAsync(entity, ct);
         return MapPayment(entity);
     }
@@ -224,6 +355,8 @@ public class SettlementService : ISettlementService
             errors["referenceNumber"] = ["referenceNumber is required."];
         else if (request.ReferenceNumber.Trim().Length > 100)
             errors["referenceNumber"] = ["referenceNumber cannot exceed 100 characters."];
+        if (request.DetailsContext?.Trim().Length > 300)
+            errors["detailsContext"] = ["detailsContext cannot exceed 300 characters."];
         if (request.Notes is null)
             errors["notes"] = ["notes is required but may be empty."];
         else if (request.Notes.Contains(LegacyMetadataMarker, StringComparison.Ordinal))
@@ -260,6 +393,12 @@ public class SettlementService : ISettlementService
             request.PaymentDate,
             request.ReferenceNumber,
             updatedNote,
+            userId);
+        entity.UpdateClassification(
+            request.PaymentMethod,
+            request.SettlementType,
+            request.SettlementStatus,
+            request.DetailsContext,
             userId);
         await _paymentRepo.UpdateAsync(entity, ct);
 
@@ -302,10 +441,53 @@ public class SettlementService : ISettlementService
     public async Task DeletePaymentAsync(
         Guid tenantId, Guid id, Guid userId, CancellationToken ct = default)
     {
-        var entity = await _paymentRepo.GetByIdAsync(tenantId, id, ct)
+        var selectedPayment = await _paymentRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new KeyNotFoundException($"Payment {id} not found.");
-        entity.SoftDelete(userId);
-        await _paymentRepo.SoftDeleteAsync(entity, ct);
+
+        var casePayments = await _paymentRepo.GetByCaseIdAsync(tenantId, selectedPayment.CaseId, ct);
+        var paymentAllocations = casePayments
+            .Where(payment => BelongsToSamePayment(selectedPayment, payment))
+            .ToList();
+
+        if (paymentAllocations.Count == 0)
+            paymentAllocations.Add(selectedPayment);
+
+        foreach (var payment in paymentAllocations)
+            payment.SoftDelete(userId);
+        await _paymentRepo.SoftDeleteRangeAsync(paymentAllocations, ct);
+
+        foreach (var lienId in paymentAllocations.Select(payment => payment.LienId).Distinct())
+        {
+            var lien = await _lienService.GetByIdAsync(tenantId, lienId, ct);
+            if (lien?.Status == LienStatus.Settled)
+            {
+                await _lienService.SetLegacyMedicalStatusAsync(
+                    tenantId, lienId, userId, "Open", ct);
+            }
+        }
+    }
+
+    private static bool BelongsToSamePayment(
+        SettlementPaymentDetail selectedPayment,
+        SettlementPaymentDetail candidate)
+    {
+        if (selectedPayment.ReceiptId.HasValue)
+            return candidate.ReceiptId == selectedPayment.ReceiptId;
+
+        if (candidate.ReceiptId.HasValue)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(selectedPayment.CheckNumber))
+        {
+            return selectedPayment.PaymentDate == candidate.PaymentDate &&
+                   string.Equals(
+                       selectedPayment.CheckNumber,
+                       candidate.CheckNumber,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        return selectedPayment.PaymentNumber > 0 &&
+               candidate.PaymentNumber == selectedPayment.PaymentNumber;
     }
 
     private static SettlementPaymentDetailResponse MapPayment(SettlementPaymentDetail p)
@@ -323,9 +505,12 @@ public class SettlementService : ISettlementService
             Payee         = p.Payee,
             CheckNumber   = p.CheckNumber,
             Note          = ExtractPaymentNote(p.Note),
-            PaymentMethod = metadata.GetValueOrDefault("paymentMethod"),
-            SettlementTypeId = FirstNonEmpty(metadata.GetValueOrDefault("type")) ?? "other",
-            SettlementStatusId = metadata.GetValueOrDefault("status"),
+            PaymentMethod = FirstNonEmpty(p.PaymentMethod, metadata.GetValueOrDefault("paymentMethod")),
+            ReceiptId     = p.ReceiptId,
+            PostingStatus = p.PostingStatus,
+            DetailsContext = p.DetailsContext,
+            SettlementTypeId = FirstNonEmpty(p.SettlementType, metadata.GetValueOrDefault("type")) ?? "other",
+            SettlementStatusId = FirstNonEmpty(p.SettlementStatus, metadata.GetValueOrDefault("status")),
             NetProfit     = ParseLegacyDecimal(metadata.GetValueOrDefault("netProfit")),
             CreatedAtUtc  = p.CreatedAtUtc,
             UpdatedAtUtc  = p.UpdatedAtUtc,

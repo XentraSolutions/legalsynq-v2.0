@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 interface ModalProps {
@@ -11,9 +11,19 @@ interface ModalProps {
   subtitle?: string;
   /** Extra controls rendered in the header, left of the close button (e.g. a "Clear Filter" action). */
   headerActions?: ReactNode;
+  /** Extra content rendered inline next to the title (e.g. a status chip), left of headerActions. */
+  titleExtra?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl";
+  /** Overrides the card's default `rounded-xl shadow-xl` chrome (e.g. to match a design spec's exact radius/border). */
+  cardClassName?: string;
+  /** Overrides the header row's default `flex items-center justify-between px-6 py-4 border-b border-gray-100`. */
+  headerClassName?: string;
+  /** Overrides the body's default `flex-1 overflow-y-auto px-6 py-4`. */
+  bodyClassName?: string;
+  /** Overrides the title's default `text-base` size (font-weight stays semibold). */
+  titleSizeClassName?: string;
 }
 
 const SIZE_MAP = {
@@ -21,6 +31,7 @@ const SIZE_MAP = {
   md: "max-w-lg",
   lg: "max-w-2xl",
   xl: "max-w-4xl",
+  "2xl": "max-w-[1376px]",
 };
 
 export function Modal({
@@ -30,11 +41,20 @@ export function Modal({
   titleClassName,
   subtitle,
   headerActions,
+  titleExtra,
   children,
   footer,
   size = "md",
+  cardClassName,
+  headerClassName,
+  bodyClassName,
+  titleSizeClassName,
 }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  // Unique per instance so nested/stacked Modals (e.g. a ConfirmDialog opened on top
+  // of another Modal, both portaled to <body>) don't collide on a shared "modal-title"
+  // id — a duplicate id would make aria-labelledby resolve to the wrong title.
+  const titleId = useId();
   // Portaled to <body> below, so it always lands after (and therefore
   // paints above) any Radix-portaled popover/dropdown content, regardless
   // of where this Modal sits in the React tree. Deferred to a mounted
@@ -64,7 +84,7 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
@@ -74,32 +94,35 @@ export function Modal({
         aria-hidden="true"
       />
       <div
-        className={`relative bg-white rounded-xl shadow-xl w-full ${SIZE_MAP[size]} max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}
+        className={`relative bg-white w-full ${SIZE_MAP[size]} max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 ${cardClassName ?? "rounded-xl shadow-xl"}`}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div>
-            <h2
-              id="modal-title"
-              className={`text-base font-semibold ${titleClassName ?? "text-gray-900"}`}
-            >
-              {title}
-            </h2>
-            {subtitle && (
-              <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
-            )}
+        <div className={headerClassName ?? "flex items-center justify-between px-6 py-4 border-b border-gray-100"}>
+          <div className={titleExtra ? "flex items-center gap-2" : undefined}>
+            <div>
+              <h2
+                id={titleId}
+                className={`${titleSizeClassName ?? "text-base"} font-semibold ${titleClassName ?? "text-gray-900"}`}
+              >
+                {title}
+              </h2>
+              {subtitle && (
+                <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+              )}
+            </div>
+            {titleExtra}
           </div>
           <div className="flex items-center gap-3 shrink-0">
             {headerActions}
             <button
               onClick={onClose}
               aria-label="Close dialog"
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              className="cursor-pointer p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
             >
               <i className="ri-close-line text-xl" />
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
+        <div className={bodyClassName ?? "flex-1 overflow-y-auto px-6 py-4"}>{children}</div>
         {footer && (
           <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
             {footer}
@@ -156,14 +179,14 @@ export function ConfirmDialog({
           <button
             onClick={onClose}
             disabled={loading}
-            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className={`text-sm px-4 py-2 rounded-lg ${btnClass} disabled:opacity-50`}
+            className={`text-sm px-4 py-2 rounded-lg cursor-pointer ${btnClass} disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {loading ? "Processing..." : confirmLabel}
           </button>
@@ -233,14 +256,14 @@ export function FormModal({
         <>
           <button
             onClick={onClose}
-            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 cursor-pointer"
           >
             Cancel
           </button>
           <button
             onClick={onSubmit}
             disabled={submitDisabled || loading}
-            className={`text-sm px-4 py-2 rounded-lg text-white disabled:opacity-50 ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
+            className={`text-sm px-4 py-2 rounded-lg text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
           >
             {loading ? "Saving..." : submitLabel}
           </button>

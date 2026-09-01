@@ -45,9 +45,16 @@ export function LiensOverTimeChart({ data }: { data: LiensOverTimePoint[] }) {
   // (duplicate ids would make `fill="url(#...)"` resolve to whichever gradient the
   // browser finds first in the DOM, per the SVG spec).
   const gradientId = `liensOverTimeFill-${useId().replace(/:/g, "")}`;
+  if (data.length === 0) {
+    return (
+      <div className="flex h-64 w-full items-center justify-center text-sm text-gray-400">
+        No data available.
+      </div>
+    );
+  }
   return (
     <ChartContainer config={chartConfig} className="aspect-auto h-64 w-full">
-      <AreaChart data={data} margin={{ left: 0, right: 8, top: 10, bottom: 0 }}>
+      <AreaChart data={data} margin={{ left: 16, right: 16, top: 10, bottom: 0 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
@@ -61,6 +68,7 @@ export function LiensOverTimeChart({ data }: { data: LiensOverTimePoint[] }) {
           axisLine={false}
           tickMargin={10}
           fontSize={11}
+          interval={0}
         />
         <YAxis hide domain={["dataMin - 500000", "dataMax + 500000"]} />
         <Tooltip cursor={{ stroke: "#e5e7eb", strokeWidth: 1 }} content={<LiensOverTimeTooltip />} />

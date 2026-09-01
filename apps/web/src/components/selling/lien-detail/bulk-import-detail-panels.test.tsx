@@ -1,8 +1,21 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
-import { FundingCompanyAndCaseInformationPanel } from "./funding-company-information-panel";
+import type React from "react";
+import { describe, expect, test, vi } from "vitest";
+import { ProviderFundingDetailsPanel } from "./provider-funding-details-panel";
 import { LienInformationPanel } from "./lien-information-panel";
 import { MedicalCodesInformationPanel } from "./medical-codes-information-panel";
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
 
 describe("bulk-imported lien details", () => {
   test("renders the canonical CSV values under their matching UI labels", () => {
@@ -20,11 +33,6 @@ describe("bulk-imported lien details", () => {
             notes: "Imported detail notes",
             buyerMessage: null,
           }}
-        />
-        <FundingCompanyAndCaseInformationPanel
-          fundingCompany={null}
-          facility={{ id: null, name: "Sunrise Clinic", emailAddress: null }}
-          medicalProvider={{ id: null, name: "City Medical Center" }}
           caseInformation={{
             id: "case-id",
             caseNumber: "CASE-MAPPED-001",
@@ -34,6 +42,11 @@ describe("bulk-imported lien details", () => {
             lawFirmId: null,
             lawFirm: null,
           }}
+        />
+        <ProviderFundingDetailsPanel
+          fundingCompany={null}
+          facility={{ id: null, name: "Sunrise Clinic", emailAddress: null }}
+          medicalProvider={{ id: null, name: "City Medical Center" }}
         />
         <MedicalCodesInformationPanel
           lien={[
@@ -54,12 +67,24 @@ describe("bulk-imported lien details", () => {
       </>,
     );
 
-    expect(screen.getByText("Purchase Date")).toBeInTheDocument();
-    expect(screen.getByText("2026-07-15")).toBeInTheDocument();
+    expect(screen.getByText("Case ID")).toBeInTheDocument();
+    expect(screen.getByText("CASE-MAPPED-001")).toBeInTheDocument();
     expect(screen.getByText("Sunrise Clinic")).toBeInTheDocument();
     expect(screen.getByText("City Medical Center")).toBeInTheDocument();
     expect(screen.getByText("Medicare Cost")).toBeInTheDocument();
     expect(screen.getByText("$879.00")).toBeInTheDocument();
     expect(screen.getByText("$175.00")).toBeInTheDocument();
+  });
+
+  test("shows a fallback for the medical facility field when no facility is assigned", () => {
+    render(
+      <ProviderFundingDetailsPanel
+        fundingCompany={null}
+        facility={null}
+        medicalProvider={{ id: "provider-id", name: "City Medical Center" }}
+      />,
+    );
+
+    expect(screen.getByText("Medical Facility")).toBeInTheDocument();
   });
 });

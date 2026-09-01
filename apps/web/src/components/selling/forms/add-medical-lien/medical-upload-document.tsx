@@ -123,17 +123,18 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         documentTypeId,
         title: file.name,
       });
-      const documentTypeLabel = camelCaseToLabel(documentType);
       // Persist immediately so the attachment survives navigating away — the
       // wizard's final step doesn't re-save documents, it just confirms.
       // Appends onto the latest server-side list (fetched inside
       // saveLienDocuments), not the possibly-stale `docs` in local state.
+      // Stores the raw enum key (not a display label) so downstream readers
+      // like the sell wizard's step-2 can match it against known slot types.
       await saveLienDocuments((current) =>
         sortByNewestFirst([
           ...current,
           {
             documentId: uploaded.id,
-            documentType: documentTypeLabel,
+            documentType,
             displayName: file.name,
             createdAt: uploaded.createdAt,
             fileSize: uploaded.fileSize,
@@ -231,7 +232,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                 key={doc.documentId}
                 icon={fileIconFor(doc.displayName)}
                 title={doc.displayName}
-                subtitle={`${doc.documentType} · ${fileExtLabel(doc.displayName)}`}
+                subtitle={`${camelCaseToLabel(doc.documentType)} · ${fileExtLabel(doc.displayName)}`}
                 timestamp={doc.createdAt}
                 actions={
                   <Button

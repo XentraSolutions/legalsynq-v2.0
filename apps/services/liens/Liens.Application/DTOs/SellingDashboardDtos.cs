@@ -4,6 +4,7 @@ public sealed class SellingDashboardQuery
 {
     public string Tab { get; init; } = "pending";
     public string? Search { get; init; }
+    public Guid? CaseId { get; init; }
     public Guid? FundingCompanyId { get; init; }
     public Guid? LawFirmId { get; init; }
     public Guid? CaseManagerId { get; init; }
@@ -48,6 +49,8 @@ public sealed class SellingDashboardLienItem
 {
     public Guid LienId { get; init; }
     public string LienNumber { get; init; } = string.Empty;
+    public DateTime CreatedAtUtc { get; init; }
+    public DateTime CreateDate { get; init; }
     public Guid? CaseId { get; init; }
     public string? CaseNumber { get; init; }
     public Guid? FundingCompanyId { get; init; }

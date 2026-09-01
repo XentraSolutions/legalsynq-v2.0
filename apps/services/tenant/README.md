@@ -55,6 +55,14 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 
 `TenantDb` (MySQL).
 
+Tenant platform hostnames are stored in `tenant_Domains` as active primary
+`Subdomain` records. `Tenant.Subdomain` remains the slug only (for example,
+`acme`); URL builders should use the persisted domain host when available
+(for example, `acme.legalsynq.net` or `acme.nonprod.legalsynq.net`). For QA
+tenants created before `.nonprod` labelling, use
+`scripts/backfill-qa-tenant-platform-domains.sql` to backfill legacy hosts
+without changing newly-created tenant behavior.
+
 ## External Integrations
 
 - **Identity service** — `HttpIdentityProvisioningAdapter` checks `GET /api/internal/users/account-exists` before accepting a registration, calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create, and reads/proxies DNS provisioning status and retry metadata for Control Center

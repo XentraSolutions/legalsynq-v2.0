@@ -100,6 +100,17 @@ export interface PublicBuyerPortalMessage {
   senderEmail: string | null;
   message: string;
   createdAtUtc: string;
+  attachments?: PublicBuyerPortalMessageAttachment[];
+}
+
+export interface PublicBuyerPortalMessageAttachment {
+  id: string;
+  fileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  createdAtUtc: string;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
 }
 
 export interface PublicBuyerPortalError {

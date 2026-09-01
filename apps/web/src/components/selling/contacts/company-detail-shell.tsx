@@ -15,7 +15,7 @@ import {
   useCompanyTypes,
   useDeactivateCompany,
   useReactivateCompany,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 import { ArrowLeft, CircleAlert, Mail, Repeat, SquarePen, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,6 +27,7 @@ import { CompanyStatsCards } from "./company-stats-cards";
 const RECENT_CASES_PAGE_SIZE = 4;
 
 const BASE_PATH = "/selling/contacts";
+const LIST_PATH = "/selling/contacts/companies";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -74,7 +75,7 @@ export function CompanyDetailShell({
       <div className="p-10 text-center space-y-3">
         <CircleAlert className="h-6 w-6 text-gray-300" />
         <p className="text-sm text-gray-500">Company not found.</p>
-        <Link href={BASE_PATH} className="text-sm text-primary hover:underline">
+        <Link href={LIST_PATH} className="text-sm text-primary hover:underline">
           Back to Contacts
         </Link>
       </div>
@@ -111,7 +112,7 @@ export function CompanyDetailShell({
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link
-            href={BASE_PATH}
+            href={LIST_PATH}
             aria-label="Back to Contacts"
             className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >
@@ -181,6 +182,9 @@ export function CompanyDetailShell({
         />
       </div>
 
+      {/* TODO: extract this pill-tab nav into a shared component — the same
+          markup/classes are duplicated in cases/[id]/page.tsx and
+          contacts-tabs.tsx. */}
       <nav className="flex items-center h-[38px] gap-1 bg-[#FAFAFA] rounded-md p-1">
         {TABS.map((tab) => {
           const href = `${BASE_PATH}/${id}/${tab.key}`;
@@ -192,7 +196,7 @@ export function CompanyDetailShell({
               className={[
                 "flex-1 h-[30px] flex items-center justify-center text-sm font-medium rounded-md transition-colors whitespace-nowrap border",
                 isActive
-                  ? "bg-white border-[#E5E5E5] shadow-sm text-gray-900"
+                  ? "bg-[#EE7132] border-[#F4A076] shadow-sm text-white"
                   : "border-transparent text-gray-500 hover:text-gray-700",
               ].join(" ")}
             >

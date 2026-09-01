@@ -24,6 +24,8 @@ public sealed class SellingDashboardService : ISellingDashboardService
     private static readonly HashSet<string> SortFields = new(StringComparer.OrdinalIgnoreCase)
     {
         "lienid",
+        "createdate",
+        "createdatutc",
         "fundingcompany",
         "initialservicedate",
         "billingamount",
@@ -58,6 +60,8 @@ public sealed class SellingDashboardService : ISellingDashboardService
             ? lienQuery.Where(l => l.ArchivedAtUtc != null || l.SellerStatus == SellingLienStatus.Archived)
             : lienQuery.Where(l => l.ArchivedAtUtc == null && l.SellerStatus != SellingLienStatus.Archived);
 
+        if (normalizedQuery.CaseId.HasValue)
+            lienQuery = lienQuery.Where(l => l.CaseId == normalizedQuery.CaseId);
         if (normalizedQuery.FundingCompanyId.HasValue)
             lienQuery = lienQuery.Where(l =>
                 l.FundingCompanyCompanyId == normalizedQuery.FundingCompanyId
@@ -80,6 +84,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             .Select(l => new DashboardLien(
                 l.Id,
                 l.LienNumber,
+                l.CreatedAtUtc,
                 l.ExternalReference,
                 l.SubjectFirstName,
                 l.SubjectLastName,
@@ -176,7 +181,6 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 .ToListAsync(ct);
 
         var caseById = cases.ToDictionary(c => c.Id);
-        var lawFirmOrgIds = cases.Select(c => c.OrgId).Distinct().ToHashSet();
         var referencedContactIds = liens
             .Where(l => !l.FundingCompanyCompanyId.HasValue && l.FundingCompanyId.HasValue)
             .Select(l => l.FundingCompanyId!.Value)
@@ -202,11 +206,11 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 AddGuid(fields, "caseManagerId", referencedContactIds);
         }
 
-        var contacts = (referencedContactIds.Count == 0 && lawFirmOrgIds.Count == 0)
+        var contacts = referencedContactIds.Count == 0
             ? []
             : await _db.Contacts.AsNoTracking()
                 .Where(c => c.TenantId == tenantId &&
-                    (referencedContactIds.Contains(c.Id) || referencedContactIds.Contains(c.OrgId) || lawFirmOrgIds.Contains(c.OrgId)))
+                    (referencedContactIds.Contains(c.Id) || referencedContactIds.Contains(c.OrgId)))
                 .ToListAsync(ct);
         var companies = referencedCompanyIds.Count == 0
             ? []
@@ -277,8 +281,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : ParseLegacyNoteFields(caseEntity.Notes);
         var lawFirmId = caseEntity?.HandlingLawFirmCompanyId
-            ?? TryGetGuid(caseFields, "lawFirmId")
-            ?? caseEntity?.OrgId;
+            ?? TryGetGuid(caseFields, "lawFirmId");
         var caseManagerId = caseEntity?.CaseManagerContactPersonId
             ?? TryGetGuid(caseFields, "caseManagerId");
         var fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId;
@@ -397,6 +400,9 @@ public sealed class SellingDashboardService : ISellingDashboardService
             "lienid" => descending
                 ? rows.OrderByDescending(row => row.Lien.LienNumber, StringComparer.OrdinalIgnoreCase)
                 : rows.OrderBy(row => row.Lien.LienNumber, StringComparer.OrdinalIgnoreCase),
+            "createdate" or "createdatutc" => descending
+                ? rows.OrderByDescending(row => row.Lien.CreatedAtUtc)
+                : rows.OrderBy(row => row.Lien.CreatedAtUtc),
             "fundingcompany" => descending
                 ? rows.OrderByDescending(row => row.FundingCompany ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : rows.OrderBy(row => row.FundingCompany ?? string.Empty, StringComparer.OrdinalIgnoreCase),
@@ -428,6 +434,8 @@ public sealed class SellingDashboardService : ISellingDashboardService
     {
         LienId = row.Lien.Id,
         LienNumber = row.Lien.LienNumber,
+        CreatedAtUtc = row.Lien.CreatedAtUtc,
+        CreateDate = row.Lien.CreatedAtUtc,
         CaseId = row.Lien.CaseId,
         CaseNumber = row.CaseNumber,
         FundingCompanyId = row.FundingCompanyId,
@@ -475,7 +483,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         if (!Tabs.Contains(tab))
             errors["tab"] = ["Tab must be pending, internal, sold, archived, or all."];
         if (!SortFields.Contains(sortBy))
-            errors["sortBy"] = ["SortBy must be lienId, fundingCompany, initialServiceDate, billingAmount, askAmount, highestBid, or status."];
+            errors["sortBy"] = ["SortBy must be lienId, createDate, createdAtUtc, fundingCompany, initialServiceDate, billingAmount, askAmount, highestBid, or status."];
         if (sortDirection is not "asc" and not "desc")
             errors["sortDirection"] = ["SortDirection must be asc or desc."];
         if (query.Page < 1)
@@ -495,6 +503,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         {
             Tab = tab,
             Search = query.Search?.Trim(),
+            CaseId = query.CaseId,
             FundingCompanyId = query.FundingCompanyId,
             LawFirmId = query.LawFirmId,
             CaseManagerId = query.CaseManagerId,
@@ -597,6 +606,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
     private sealed record DashboardLien(
         Guid Id,
         string LienNumber,
+        DateTime CreatedAtUtc,
         string? ExternalReference,
         string? SubjectFirstName,
         string? SubjectLastName,

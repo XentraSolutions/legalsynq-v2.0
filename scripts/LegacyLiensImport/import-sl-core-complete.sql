@@ -11,7 +11,10 @@
 --   liens_Liens.PurchaseDate     = SL_LEINS_MEDICAL.LM_PURCHASE_DATE
 --   liens_Cases.DemandAmount     = SUM(OriginalAmount) across all liens per case
 --   liens_Cases.SettlementAmount = SL_SETTLEMENT_HEADER.SH_TOTAL_AMOUNT per case
---   liens_LienSettlements        = nonblank SL_LIENS_SETTLEMENT settle rows
+--   liens_LienSettlements        = rows with a nonblank settle amount or
+--                                  reduction / total-settled metadata
+--     Metadata-only rows use Amount=0 and Status='Pending'; invalid nonblank
+--     settle amounts fail validation. Reduction dates are never inferred.
 --   liens_SettlementPaymentDetails = non-deleted SL_LIENS_SETTLEMENT_PAYMENT_DETAILS
 --   Only active medical-code rows (LMC_STATUS='A') contribute amounts/items.
 --
@@ -32,6 +35,11 @@
 --   CALL liens_migrate_sl_core_complete('<tenant-guid>', '1');  -- apply
 --
 -- Error prefix: LSLTE-
+
+-- Pin the routine creation context to the target schemas' MySQL 8 collation.
+-- Legacy SL-CORE text is collated explicitly where it is compared with target
+-- or routine values below.
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 DROP PROCEDURE IF EXISTS liens_migrate_sl_core_complete;
 
@@ -117,6 +125,7 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_cases;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_settlements;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_amounts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_attorneys;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
@@ -168,7 +177,7 @@ BEGIN
     END IF;
 
     -- -------------------------------------------------------------------------
-    -- 2. Schema contract: target tables (13) + source tables (14) = 27
+    -- 2. Schema contract: target tables (13) + source tables (16) = 29
     -- -------------------------------------------------------------------------
     SELECT COUNT(*) INTO v_table_count
     FROM information_schema.tables
@@ -183,25 +192,29 @@ BEGIN
        OR (table_schema = 'SL-CORE' AND table_type = 'BASE TABLE'
            AND table_name IN (
                'SL_CASE','SL_LEINS_MEDICAL','SL_LEINS_MEDICAL_CODE',
-               'SL_CASE_NOTES','SL_CONTACT','SL_CONTACT_TYPE',
+               'SL_CASE_NOTES','SL_CONTACT','SL_CONTACT_TYPE','SL_CASE_MANAGER',
                'SL_FACILITY','SL_FACILITY_CONTACT_PERSON',
                'SL_ACCIDENT_TYPE','SL_SETTLEMENT_HEADER',
                'SL_LIENS_SETTLEMENT','SL_LIENS_SETTLEMENT_PAYMENT_DETAILS',
-               'SL_LEINS_MEDICAL_INFORMATION_FACILITY',
+               'SL_LEINS_MEDICAL_INFORMATION_FACILITY','SL_MEDICAL_STATUS',
                'SL_MIGRATION_SOURCE_PROVENANCE'));
-    IF v_table_count <> 27 THEN
+    IF v_table_count <> 29 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLTE-005 required source or target tables are unavailable (expected 27)';
+            SET MESSAGE_TEXT = 'LSLTE-005 required source or target tables are unavailable (expected 29)';
     END IF;
 
     SELECT COUNT(*) INTO v_column_count
     FROM information_schema.columns
     WHERE table_schema = DATABASE()
-      AND ((table_name = 'liens_Liens' AND column_name = 'PurchaseDate')
-        OR (table_name = 'liens_LienSettlements' AND column_name = 'SettlementDate'));
-    IF v_column_count <> 2 THEN
+      AND ((table_name = 'liens_Liens' AND column_name IN ('PurchaseDate', 'ImportedCreatedByName'))
+        OR (table_name = 'liens_LienSettlements' AND column_name = 'SettlementDate')
+        OR (table_name = 'liens_Cases' AND column_name IN (
+            'ClientAddressLine1','ClientCity','ClientState','ClientPostalCode',
+            'IncidentState','CurrentMedicalStatus','TrackingFollowUpDate',
+            'MinorComp','CaseDropped','ImportedCreatedByName')));
+    IF v_column_count <> 13 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLTE-034 target purchase/settlement date migration is not applied';
+            SET MESSAGE_TEXT = 'LSLTE-034 required target parity migrations are not applied';
     END IF;
 
     SELECT COUNT(*) INTO v_column_count
@@ -250,7 +263,8 @@ BEGIN
     SELECT COUNT(*) INTO v_provenance_count
     FROM `SL-CORE`.`SL_MIGRATION_SOURCE_PROVENANCE`
     WHERE PROVENANCE_KEY = 'sl-core-current'
-      AND LOWER(SOURCE_FINGERPRINT) = LOWER(v_fingerprint)
+      AND LOWER(SOURCE_FINGERPRINT) COLLATE utf8mb4_0900_ai_ci
+          = LOWER(v_fingerprint) COLLATE utf8mb4_0900_ai_ci
       AND IMPORT_SCOPE = 'sl-core-core-liens-v1';
     IF v_provenance_count <> 1 THEN
         SIGNAL SQLSTATE '45000'
@@ -280,7 +294,10 @@ BEGIN
     ) c
     WHERE NOT EXISTS (
         SELECT 1 FROM liens_LookupValues lv
-        WHERE lv.TenantId IS NULL AND lv.Category = 'AccidentType' AND lv.Code = c.Code
+        WHERE lv.TenantId IS NULL
+          AND lv.Category = 'AccidentType'
+          AND lv.Code COLLATE utf8mb4_0900_ai_ci
+              = c.Code COLLATE utf8mb4_0900_ai_ci
     );
     SET v_lookups_seeded = ROW_COUNT();
 
@@ -302,14 +319,16 @@ BEGIN
         WHERE TenantId IS NULL AND Category = 'AccidentType'
           AND IsActive = 1 AND IsSystem = 1
         GROUP BY LOWER(TRIM(Name))
-    ) lv  ON lv.Norm = LOWER(TRIM(at.AT_DESCRIPTION))
+    ) lv  ON lv.Norm COLLATE utf8mb4_0900_ai_ci
+             = LOWER(TRIM(at.AT_DESCRIPTION)) COLLATE utf8mb4_0900_ai_ci
     LEFT JOIN (
         SELECT LOWER(TRIM(Name)) AS Norm, COUNT(*) AS MatchCount
         FROM liens_LookupValues
         WHERE TenantId IS NULL AND Category = 'AccidentType'
           AND IsActive = 1 AND IsSystem = 1
         GROUP BY LOWER(TRIM(Name))
-    ) cnt ON cnt.Norm = LOWER(TRIM(at.AT_DESCRIPTION));
+    ) cnt ON cnt.Norm COLLATE utf8mb4_0900_ai_ci
+             = LOWER(TRIM(at.AT_DESCRIPTION)) COLLATE utf8mb4_0900_ai_ci;
 
     ALTER TABLE tmp_sle_at_lookups
         ADD PRIMARY KEY (LegacyAtId);
@@ -344,6 +363,7 @@ BEGIN
     DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
     CREATE TEMPORARY TABLE tmp_sle_contacts AS
     SELECT
+        'SL_CONTACT' AS LegacySourceTable,
         c.CONTACT_ID AS LegacyContactId,
         CASE c.CONTACT_TYPE
           WHEN 1 THEN 'LawFirm'       WHEN 2 THEN 'Provider'
@@ -409,12 +429,71 @@ BEGIN
          END
     WHERE c.CONTACT_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
       AND COALESCE(c.CONTACT_STATUS,'A') = 'A'
-      AND c.CONTACT_TYPE IN (1, 2, 3, 4, 5, 6, 7, 8);
+      AND c.CONTACT_TYPE IN (1, 2, 3, 4, 5, 6, 7, 8)
+    UNION ALL
+    SELECT
+        'SL_CASE_MANAGER' AS LegacySourceTable,
+        cm.CM_ID AS LegacyContactId,
+        'LawFirm' AS TargetContactType,
+        CASE
+          WHEN EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` attorney_case
+              WHERE attorney_case.CASE_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+                AND UPPER(TRIM(COALESCE(attorney_case.CASE_IS_DELETED, 'N'))) <> 'Y'
+                AND attorney_case.CASE_ATTORNEY REGEXP '^[0-9]+$'
+                AND CAST(NULLIF(TRIM(attorney_case.CASE_ATTORNEY), '') AS UNSIGNED) = cm.CM_ID
+          ) AND NOT EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` manager_case
+              WHERE manager_case.CASE_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+                AND UPPER(TRIM(COALESCE(manager_case.CASE_IS_DELETED, 'N'))) <> 'Y'
+                AND manager_case.CASE_MANAGER = cm.CM_ID
+          ) THEN 'Attorney'
+          ELSE 'CaseManager'
+        END AS TargetContactSubtype,
+        CAST(UUID() AS CHAR(36)) AS TargetContactId,
+        CAST(lfp.TargetContactId AS CHAR(36)) AS TargetLawFirmId,
+        LEFT(COALESCE(
+            NULLIF(TRIM(cm.CM_NAME), ''),
+            NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(cm.CM_FIRSTNAME), ''), NULLIF(TRIM(cm.CM_LASTNAME), ''))), ''),
+            CONCAT('Legacy Case Person ', cm.CM_ID)), 250) AS DisplayName,
+        LEFT(COALESCE(NULLIF(TRIM(cm.CM_FIRSTNAME), ''), 'Legacy'), 100) AS FirstName,
+        LEFT(COALESCE(NULLIF(TRIM(cm.CM_LASTNAME), ''), 'Contact'), 100) AS LastName,
+        NULL AS Organization,
+        NULLIF(TRIM(cm.CM_EMAIL), '') AS Email,
+        LEFT(NULLIF(TRIM(cm.CM_PHONE), ''), 30) AS Phone,
+        NULL AS AddressLine1,
+        NULL AS City,
+        NULL AS State,
+        NULL AS PostalCode,
+        COALESCE(cm.CM_CREATED, UTC_TIMESTAMP(6)) AS CreatedAtUtc,
+        COALESCE(cm.CM_UPDATED, cm.CM_CREATED, UTC_TIMESTAMP(6)) AS UpdatedAtUtc,
+        SHA2(CONCAT_WS('|', cm.CM_ID, cm.CM_NAME, cm.CM_EMAIL, cm.CM_PHONE,
+                       cm.CM_STATUS, cm.CM_PROGRAM, cm.CM_LAWFIRM,
+                       cm.CM_FIRSTNAME, cm.CM_LASTNAME, cm.CM_TYPE,
+                       cm.CM_CREATED, cm.CM_UPDATED), 256) AS SourceHash
+    FROM `SL-CORE`.`SL_CASE_MANAGER` cm
+    LEFT JOIN tmp_sle_lf_parents lfp ON lfp.LegacyContactId = cm.CM_LAWFIRM
+    WHERE cm.CM_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+      AND COALESCE(cm.CM_STATUS, 'A') = 'A'
+      AND (
+          EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` manager_case
+              WHERE manager_case.CASE_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+                AND UPPER(TRIM(COALESCE(manager_case.CASE_IS_DELETED, 'N'))) <> 'Y'
+                AND manager_case.CASE_MANAGER = cm.CM_ID
+          ) OR EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` attorney_case
+              WHERE attorney_case.CASE_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+                AND UPPER(TRIM(COALESCE(attorney_case.CASE_IS_DELETED, 'N'))) <> 'Y'
+                AND attorney_case.CASE_ATTORNEY REGEXP '^[0-9]+$'
+                AND CAST(attorney_case.CASE_ATTORNEY AS UNSIGNED) = cm.CM_ID
+          )
+      );
 
     ALTER TABLE tmp_sle_contacts
-        ADD PRIMARY KEY (LegacyContactId),
+        ADD PRIMARY KEY (LegacySourceTable, LegacyContactId),
         ADD INDEX IX_tmp_sle_contacts_type (
-            TargetContactType, TargetContactSubtype, LegacyContactId);
+            TargetContactType, TargetContactSubtype, LegacySourceTable, LegacyContactId);
 
     DROP TEMPORARY TABLE IF EXISTS tmp_sle_lf_parents;
 
@@ -440,7 +519,8 @@ BEGIN
     CREATE TEMPORARY TABLE tmp_sle_law_firms AS
     SELECT LegacyContactId, TargetContactId
     FROM tmp_sle_contacts
-    WHERE TargetContactType = 'LawFirm'
+    WHERE LegacySourceTable = 'SL_CONTACT'
+      AND TargetContactType = 'LawFirm'
       AND TargetContactSubtype IS NULL;
 
     ALTER TABLE tmp_sle_law_firms
@@ -450,10 +530,29 @@ BEGIN
     CREATE TEMPORARY TABLE tmp_sle_case_managers AS
     SELECT LegacyContactId, TargetContactId
     FROM tmp_sle_contacts
-    WHERE TargetContactType = 'LawFirm'
+    WHERE LegacySourceTable = 'SL_CASE_MANAGER'
+      AND TargetContactType = 'LawFirm'
       AND TargetContactSubtype = 'CaseManager';
 
     ALTER TABLE tmp_sle_case_managers
+        ADD PRIMARY KEY (LegacyContactId);
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sle_attorneys;
+    CREATE TEMPORARY TABLE tmp_sle_attorneys AS
+    SELECT person.LegacyContactId, person.TargetContactId
+    FROM tmp_sle_contacts person
+    WHERE person.LegacySourceTable = 'SL_CASE_MANAGER'
+      AND person.TargetContactType = 'LawFirm'
+      AND EXISTS (
+          SELECT 1
+          FROM `SL-CORE`.`SL_CASE` attorney_case
+          WHERE attorney_case.CASE_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+            AND UPPER(TRIM(COALESCE(attorney_case.CASE_IS_DELETED, 'N'))) <> 'Y'
+            AND attorney_case.CASE_ATTORNEY REGEXP '^[0-9]+$'
+            AND CAST(attorney_case.CASE_ATTORNEY AS UNSIGNED) = person.LegacyContactId
+      );
+
+    ALTER TABLE tmp_sle_attorneys
         ADD PRIMARY KEY (LegacyContactId);
 
     -- -------------------------------------------------------------------------
@@ -544,6 +643,37 @@ BEGIN
         NULLIF(CONCAT_WS(', ',
             NULLIF(TRIM(c.CASE_ADDRESS),''), NULLIF(TRIM(c.CASE_CITY),''),
             NULLIF(TRIM(c.CASE_STATE),''),   NULLIF(TRIM(c.CASE_ZIPCODE),'')), '') AS Address,
+        LEFT(NULLIF(TRIM(c.CASE_ADDRESS), ''), 300) AS AddressLine1,
+        LEFT(NULLIF(TRIM(c.CASE_CITY), ''), 100) AS City,
+        LEFT(NULLIF(TRIM(c.CASE_STATE), ''), 100) AS State,
+        LEFT(NULLIF(TRIM(c.CASE_ZIPCODE), ''), 20) AS PostalCode,
+        LEFT(NULLIF(TRIM(c.CASE_PHONE), ''), 30) AS ClientPhone,
+        LEFT(NULLIF(TRIM(c.CASE_EMAIL), ''), 200) AS ClientEmail,
+        LEFT(NULLIF(TRIM(c.CASE_ACCIDENT_STATE), ''), 100) AS IncidentState,
+        LEFT(NULLIF(TRIM(ms.MS_CODE), ''), 50) AS CurrentMedicalStatus,
+        NULLIF(TRIM(c.CASE_CURRENT_MEDICAL_STATUS), '') AS MedicalStatusText,
+        CASE
+          WHEN NULLIF(TRIM(c.CASE_TRACKING), '') IS NULL THEN NULL
+          WHEN TRIM(c.CASE_TRACKING) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            THEN STR_TO_DATE(TRIM(c.CASE_TRACKING), '%Y-%m-%d')
+          WHEN TRIM(c.CASE_TRACKING) REGEXP '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$'
+            THEN STR_TO_DATE(TRIM(c.CASE_TRACKING), '%c/%e/%Y')
+          ELSE NULL
+        END AS TrackingFollowUpDate,
+        NULLIF(TRIM(c.CASE_TRACKING), '') AS TrackingFollowUpDateText,
+        CASE UPPER(TRIM(COALESCE(c.CASE_MINOR_COMP, '')))
+          WHEN 'YES' THEN 1 WHEN 'Y' THEN 1 WHEN 'TRUE' THEN 1 WHEN '1' THEN 1
+          WHEN 'NO' THEN 0 WHEN 'N' THEN 0 WHEN 'FALSE' THEN 0 WHEN '0' THEN 0
+          ELSE NULL
+        END AS MinorComp,
+        NULLIF(TRIM(c.CASE_MINOR_COMP), '') AS MinorCompText,
+        CASE UPPER(TRIM(COALESCE(c.CASE_DROPPED, '')))
+          WHEN 'YES' THEN 1 WHEN 'Y' THEN 1 WHEN 'TRUE' THEN 1 WHEN '1' THEN 1
+          WHEN 'NO' THEN 0 WHEN 'N' THEN 0 WHEN 'FALSE' THEN 0 WHEN '0' THEN 0
+          ELSE NULL
+        END AS CaseDropped,
+        NULLIF(TRIM(c.CASE_DROPPED), '') AS CaseDroppedText,
+        LEFT(NULLIF(TRIM(c.CASE_CREATE_BY), ''), 100) AS ImportedCreatedByName,
         CASE COALESCE(UPPER(TRIM(c.CASE_STATUS)),'')
           WHEN ''            THEN 'PreDemand'
           WHEN 'N'           THEN 'PreDemand'
@@ -598,6 +728,7 @@ BEGIN
         -- Pre-resolved contact UUIDs for [legacy-meta] block.
         lf.TargetContactId  AS LawFirmContactId,
         mgr.TargetContactId AS CaseManagerContactId,
+        attorney.TargetContactId AS AttorneyContactId,
         at_lv.LookupId      AS AccidentTypeLookupId,
         at_lv.LookupName    AS AccidentTypeLookupName,
         s.SettlementAmount,
@@ -606,6 +737,9 @@ BEGIN
         SHA2(CONCAT_WS('|', c.CASE_ID, c.CASE_CODE, c.CASE_FNAME, c.CASE_LNAME,
                        c.CASE_DOB, c.CASE_ADDRESS, c.CASE_CITY, c.CASE_STATE,
                        c.CASE_ZIPCODE, c.CASE_STATUS, c.CASE_DATE_OF_LOSS,
+                       c.CASE_ACCIDENT_STATE, c.CASE_CURRENT_MEDICAL_STATUS,
+                       c.CASE_MINOR_COMP, c.CASE_DROPPED, c.CASE_TRACKING,
+                       c.CASE_CREATE_BY, c.CASE_ATTORNEY,
                        c.CASE_NOTE, c.CASE_CREATED, c.CASE_UPDATED, v_fingerprint), 256) AS SourceHash
     FROM `SL-CORE`.`SL_CASE` c
     -- Resolve law-firm contact UUID (CASE_LAW_FIRM → type-1 LawFirm contact)
@@ -614,11 +748,19 @@ BEGIN
     -- Resolve case-manager contact UUID (CASE_MANAGER → type-6 CaseManager)
     LEFT JOIN tmp_sle_case_managers mgr
       ON mgr.LegacyContactId = NULLIF(c.CASE_MANAGER, 0)
+    LEFT JOIN tmp_sle_attorneys attorney
+      ON c.CASE_ATTORNEY REGEXP '^[0-9]+$'
+     AND attorney.LegacyContactId = CAST(c.CASE_ATTORNEY AS UNSIGNED)
     -- Resolve accident-type lookup (MatchCount=1 guard applied when building Notes)
     LEFT JOIN tmp_sle_at_lookups at_lv
       ON at_lv.LegacyAtId = NULLIF(c.CASE_ACCIDENT_TYPE, 0)
     -- Case-level settlement
     LEFT JOIN tmp_sle_settlements s ON s.LegacyCaseId = c.CASE_ID
+    LEFT JOIN `SL-CORE`.`SL_MEDICAL_STATUS` ms
+      ON c.CASE_CURRENT_MEDICAL_STATUS REGEXP '^[0-9]+$'
+     AND ms.MS_ID = CAST(c.CASE_CURRENT_MEDICAL_STATUS AS UNSIGNED)
+     AND ms.MS_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
+     AND COALESCE(ms.MS_STATUS, 'A') = 'A'
     WHERE c.CASE_PROGRAM = CAST(v_legacy_program AS UNSIGNED)
       AND UPPER(TRIM(COALESCE(c.CASE_IS_DELETED, 'N'))) <> 'Y';
 
@@ -636,6 +778,8 @@ BEGIN
              THEN CONCAT('lawFirmId=', LawFirmContactId)           ELSE NULL END,
         CASE WHEN CaseManagerContactId IS NOT NULL
              THEN CONCAT('caseManagerId=', CaseManagerContactId)   ELSE NULL END,
+        CASE WHEN AttorneyContactId IS NOT NULL
+             THEN CONCAT('attorneyId=', AttorneyContactId)         ELSE NULL END,
         CASE WHEN AccidentTypeLookupId IS NOT NULL
              THEN CONCAT('accidentTypeId=', AccidentTypeLookupId)  ELSE NULL END,
         CASE WHEN AccidentTypeLookupName IS NOT NULL
@@ -671,9 +815,13 @@ BEGIN
            OR (IncidentDateText IS NOT NULL
                AND TRIM(IncidentDateText) <> ''
                AND IncidentDate IS NULL)
+           OR (TrackingFollowUpDateText IS NOT NULL AND TrackingFollowUpDate IS NULL)
+           OR (MinorCompText IS NOT NULL AND MinorComp IS NULL)
+           OR (CaseDroppedText IS NOT NULL AND CaseDropped IS NULL)
+           OR (MedicalStatusText IS NOT NULL AND CurrentMedicalStatus IS NULL)
     ) THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLTE-016 invalid case mapping (status, name, address, notes, or date)';
+            SET MESSAGE_TEXT = 'LSLTE-016 invalid case mapping (status, name, address, notes, date, flag, or medical status)';
     END IF;
     IF EXISTS (SELECT CaseNumber FROM tmp_sle_cases GROUP BY CaseNumber HAVING COUNT(*) > 1) THEN
         SIGNAL SQLSTATE '45000'
@@ -681,7 +829,10 @@ BEGIN
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sle_cases s
-        INNER JOIN liens_Cases t ON t.TenantId = v_tenant_id AND t.CaseNumber = s.CaseNumber
+        INNER JOIN liens_Cases t
+          ON t.TenantId = v_tenant_id
+         AND t.CaseNumber COLLATE utf8mb4_0900_ai_ci
+             = s.CaseNumber COLLATE utf8mb4_0900_ai_ci
     ) THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'LSLTE-018 target case number collision with existing data';
@@ -712,6 +863,7 @@ BEGIN
           ELSE NULL
         END AS Status,
         NULLIF(TRIM(lm.LM_NOTE),'') AS Notes,
+        LEFT(NULLIF(TRIM(lm.LM_CREATE_BY), ''), 100) AS ImportedCreatedByName,
         lm.LM_CREATED           AS CreatedAtUtc,
         lm.LM_UPDATED           AS UpdatedAtUtc,
         lm.LM_PURCHASE_DATE     AS PurchaseDate,
@@ -731,7 +883,7 @@ BEGIN
         COALESCE(a.BillingAmount,  0) AS BillingAmount,
         COALESCE(a.PurchaseAmount, 0) AS PurchaseAmount,
         SHA2(CONCAT_WS('|', lm.LM_ID, lm.LM_CASE_ID, lm.LM_STATUS, lm.LM_CODE,
-                       lm.LM_NOTE, lm.LM_CREATED, lm.LM_UPDATED,
+                       lm.LM_NOTE, lm.LM_CREATE_BY, lm.LM_CREATED, lm.LM_UPDATED,
                        lm.LM_PURCHASE_DATE, lm.LM_INITIAL_SERVICE_DATE, lm.LM_END_SERVICE_DATE,
                        lm.LM_IS_BULK, lm.LM_IS_SERVICING,
                        COALESCE(a.BillingAmount,0), COALESCE(a.PurchaseAmount,0),
@@ -770,7 +922,10 @@ BEGIN
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sle_liens s
-        INNER JOIN liens_Liens t ON t.TenantId = v_tenant_id AND t.LienNumber = s.LienNumber
+        INNER JOIN liens_Liens t
+          ON t.TenantId = v_tenant_id
+         AND t.LienNumber COLLATE utf8mb4_0900_ai_ci
+             = s.LienNumber COLLATE utf8mb4_0900_ai_ci
     ) THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'LSLTE-021 target lien number collision with existing data';
@@ -1032,6 +1187,7 @@ BEGIN
     INNER JOIN tmp_sle_liens lien ON lien.LegacyLienId = src.LegacyLienId
     LEFT JOIN tmp_sle_contacts prov
       ON prov.LegacyContactId    = CAST(src.LegacyProviderId AS UNSIGNED)
+     AND prov.LegacySourceTable  = 'SL_CONTACT'
      AND prov.TargetContactType  = 'Provider';
 
     ALTER TABLE tmp_sle_providers
@@ -1064,6 +1220,7 @@ BEGIN
               ORDER BY src.SLS_ID)
         END AS PaymentNumber,
         CASE
+          WHEN src.RawAmountText IS NULL THEN CAST(0 AS DECIMAL(18,4))
           WHEN src.RawAmount REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
                AND CAST(src.RawAmount AS DECIMAL(30,8))
                    BETWEEN -99999999999999.9999 AND 99999999999999.9999
@@ -1085,7 +1242,10 @@ BEGIN
           ELSE NULL
         END AS SettlementDate,
         NULLIF(TRIM(CAST(src.SLS_SETTLE_DATE AS CHAR)), '') AS SettlementDateText,
-        'Settled' AS Status,
+        CASE
+          WHEN src.RawAmountText IS NULL THEN 'Pending'
+          ELSE 'Settled'
+        END AS Status,
         LEFT(CONCAT(
             'legacySettlementId=', src.SLS_ID,
             '; reductionAmount=', COALESCE(src.SLS_REDUCTION_AMOUNT, ''),
@@ -1103,12 +1263,16 @@ BEGIN
     FROM (
         SELECT
             s.*,
+            NULLIF(TRIM(CAST(s.SLS_SETTLE_AMOUNT AS CHAR)), '')
+                AS RawAmountText,
             TRIM(REPLACE(REPLACE(CAST(s.SLS_SETTLE_AMOUNT AS CHAR), ',', ''), '$', ''))
                 AS RawAmount
         FROM `SL-CORE`.`SL_LIENS_SETTLEMENT` s
     ) src
     INNER JOIN tmp_sle_liens lien ON lien.LegacyLienId = src.SLS_LIENS_ID
-    WHERE NULLIF(src.RawAmount, '') IS NOT NULL;
+    WHERE src.RawAmountText IS NOT NULL
+       OR NULLIF(TRIM(CAST(src.SLS_REDUCTION_AMOUNT AS CHAR)), '') IS NOT NULL
+       OR NULLIF(TRIM(CAST(src.SLS_TOTAL_SETTLED_AMOUNT AS CHAR)), '') IS NOT NULL;
 
     IF EXISTS (
         SELECT 1
@@ -1246,6 +1410,7 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_cases;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_settlements;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_amounts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_attorneys;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
@@ -1306,7 +1471,10 @@ BEGIN
         INSERT INTO liens_Cases (
             Id, TenantId, OrgId, CaseNumber, ExternalReference, Title,
             ClientFirstName, ClientLastName, ClientDob, ClientPhone, ClientEmail,
-            ClientAddress, Status, DateOfIncident, OpenedAtUtc, ClosedAtUtc,
+            ClientAddress, ClientAddressLine1, ClientCity, ClientState, ClientPostalCode,
+            Status, DateOfIncident, IncidentState, CurrentMedicalStatus,
+            TrackingFollowUpDate, MinorComp, CaseDropped, ImportedCreatedByName,
+            OpenedAtUtc, ClosedAtUtc,
             InsuranceCarrier, PolicyNumber, ClaimNumber,
             DemandAmount, SettlementAmount,
             Description, Notes,
@@ -1314,8 +1482,10 @@ BEGIN
         SELECT
             TargetCaseId, v_tenant_id, v_org_id,
             CaseNumber, CONCAT('SL-CORE:SL_CASE:', LegacyCaseId), NULL,
-            FirstName, LastName, DateOfBirth, NULL, NULL, Address,
-            Status, IncidentDate,
+            FirstName, LastName, DateOfBirth, ClientPhone, ClientEmail, Address,
+            AddressLine1, City, State, PostalCode,
+            Status, IncidentDate, IncidentState, CurrentMedicalStatus,
+            TrackingFollowUpDate, MinorComp, CaseDropped, ImportedCreatedByName,
             COALESCE(CreatedAtUtc, UTC_TIMESTAMP(6)),
             CASE WHEN Status IN ('Closed','CaseSettled')
                  THEN UpdatedAtUtc ELSE NULL END,
@@ -1338,7 +1508,7 @@ BEGIN
             CaseId, FacilityId, SubjectPartyId, SubjectFirstName, SubjectLastName,
             IsConfidential, OriginalAmount, CurrentBalance, OfferPrice, PurchasePrice,
             PayoffAmount, Jurisdiction, Description, Notes, IncidentDate,
-            PurchaseDate, InitialServiceDate, EndServiceDate, IsBulk, IsServicing,
+            PurchaseDate, InitialServiceDate, EndServiceDate, IsBulk, IsServicing, ImportedCreatedByName,
             OpenedAtUtc, ClosedAtUtc, SellingOrgId, BuyingOrgId, HoldingOrgId,
             SellerStatus, ListingVisibility,
             CreatedByUserId, UpdatedByUserId, CreatedAtUtc, UpdatedAtUtc)
@@ -1352,7 +1522,7 @@ BEGIN
             NULL,                                                               -- OfferPrice
             PurchaseAmount,                                                     -- PurchasePrice
             NULL, NULL, NULL, Notes, IncidentDate,
-            PurchaseDate, InitialServiceDate, EndServiceDate, IsBulk, IsServicing,
+            PurchaseDate, InitialServiceDate, EndServiceDate, IsBulk, IsServicing, ImportedCreatedByName,
             COALESCE(CreatedAtUtc, UTC_TIMESTAMP(6)),
             CASE WHEN Status = 'Settled'
                  THEN COALESCE(UpdatedAtUtc, CreatedAtUtc, UTC_TIMESTAMP(6))
@@ -1508,8 +1678,8 @@ BEGIN
         VALUES (
             v_contact_run_id, NULL, v_tenant_id, v_org_id,
             'SL-CORE', LOWER(v_fingerprint), v_legacy_program,
-            'sl-core-contact-facility-v1',
-            '94fe9f0822713a646e7c54b07242eaaf10945e5c88e5105a4d754e29af949fe2',
+            'sl-core-contact-facility-v2',
+            LOWER(v_mapping_hash),
             CONCAT('Core import ', v_core_run_id),
             'Running', UTC_TIMESTAMP(6), v_user_id);
 
@@ -1617,7 +1787,7 @@ BEGIN
         INSERT INTO liens_LegacyIdCrosswalks (
             Id, TenantId, SourceSystem, SourceTable, LegacyId, TargetEntity,
             TargetId, SourceHash, ImportRunId, CreatedAtUtc)
-        SELECT UUID(), v_tenant_id, 'SL-CORE', 'SL_CONTACT',
+        SELECT UUID(), v_tenant_id, 'SL-CORE', LegacySourceTable,
                CAST(LegacyContactId AS CHAR), 'Contact', TargetContactId,
                SourceHash, v_contact_run_id, UTC_TIMESTAMP(6)
         FROM tmp_sle_contacts;
@@ -1717,6 +1887,7 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_cases;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_settlements;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_amounts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_attorneys;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
@@ -1762,6 +1933,6 @@ DELIMITER ;
 -- The procedure creates two liens_LegacyImportRuns rows with the same mapping
 -- versions used by the individual wave procedures:
 --   Core:     MappingVersion = <from approval record>,  e.g. 'sl-core-core-liens-v1'
---   Contacts: MappingVersion = 'sl-core-contact-facility-v1'
+--   Contacts: MappingVersion = 'sl-core-contact-facility-v2'
 -- This ensures all existing backfill procedures that check for those completed
 -- runs continue to function (they will simply find everything AlreadyCorrect).

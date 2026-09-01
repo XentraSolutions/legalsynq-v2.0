@@ -26,7 +26,7 @@ const PAGE_SIZE = 10;
 
 /**
  * Deliberately minimal list: First Name / Last Name / Status only. Every other
- * field, plus Edit and the access-code widget, live on the attribution's own
+ * field, plus Edit and the access-code widget, live on the origination's own
  * detail page (/careconnect/referral-attributions/{id}) — reached via the row's
  * kebab menu "View" action. Keeps this list scannable and avoids duplicating
  * the edit/access-code surfaces in two places.
@@ -44,7 +44,7 @@ export function ReferralAttributionsAdmin() {
   const [portalUrlCopied, setPortalUrlCopied] = useState(false);
 
   useEffect(() => {
-    setPortalUrl(window.location.origin + '/careconnect/representative/dashboard');
+    setPortalUrl(window.location.origin + '/careconnect/referral/dashboard');
   }, []);
 
   async function copyPortalUrl() {
@@ -66,7 +66,7 @@ export function ReferralAttributionsAdmin() {
       setError(null);
       setPage(1);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load Referral Attributions.');
+      setError(err instanceof ApiError ? err.message : 'Failed to load Referral Originations.');
     }
   }
 
@@ -98,7 +98,7 @@ export function ReferralAttributionsAdmin() {
       setForm(null);
       await load();
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Failed to save Referral Attribution.');
+      setFormError(err instanceof ApiError ? err.message : 'Failed to save Referral Origination.');
     } finally {
       setSaving(false);
     }
@@ -121,7 +121,7 @@ export function ReferralAttributionsAdmin() {
 
       {portalUrl && (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-400 shrink-0">Representative Portal URL</span>
+          <span className="text-xs font-medium text-gray-400 shrink-0">Referral Portal URL</span>
           <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 min-w-0">
             <i className="ri-link text-gray-400 text-xs shrink-0" />
             <span className="text-xs text-gray-600 font-mono truncate">{portalUrl}</span>
@@ -153,14 +153,14 @@ export function ReferralAttributionsAdmin() {
             onClick={startCreate}
             className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity cursor-pointer"
           >
-            + Add Attribution
+            + Add Origination
           </button>
         )}
       </div>
 
       {form && (
         <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">Add Referral Attribution</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Add Referral Origination</h3>
           {formError && <p className="text-xs text-red-600">{formError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -232,7 +232,7 @@ export function ReferralAttributionsAdmin() {
         <p className="text-sm text-gray-500">Loading…</p>
       ) : items.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-lg p-8 text-center text-sm text-gray-500">
-          No Referral Attributions configured yet.
+          No Referral Originations configured yet.
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">

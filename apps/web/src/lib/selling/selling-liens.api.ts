@@ -13,7 +13,7 @@ import type {
   ReassignFundingCompanyRequestDto,
   ReassignMedicalProviderRequestDto,
   SaveSellingLienInformationRequest,
-  SaveSellingCaseInformationRequest,
+  SaveSellingProviderFundingRequest,
   SaveSellingMedicalPricingRequest,
   SaveSellingDocumentsRequest,
   PrepareSellingLienRequest,
@@ -22,8 +22,22 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  CaseDraftRequest,
+  CaseDraftResult,
+  FinalizeCaseDraftRequest,
+  FinalizeCaseDraftResult,
+  UpdateCaseRequest,
+  UpdateCaseResult,
+  CaseDetailResult,
+  CaseSearchQuery,
+  CaseSearchResultDto,
+  UpdateCasePlaintiffRequest,
+  UpdateCasePlaintiffResult,
+  MoveToManagementRequest,
   LienListItem,
   LienActivityFeedResult,
+  SellerLienMessagesResult,
+  SendSellerLienMessageRequest,
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
@@ -40,6 +54,10 @@ import type {
   MonthlyAgingReport,
   MonthlyAgingReportQuery,
 } from "./aging-report.types";
+import type {
+  SellingOperationsDashboardQuery,
+  SellingOperationsDashboardResponse,
+} from "./dashboard-analytics.types";
 
 const BASE = "/selling/api/liens/selling";
 
@@ -88,6 +106,24 @@ export const liensApi = {
     return apiClient.get<LienActivityFeedResult>(`${BASE}/liens/${id}/activity`);
   },
 
+  getMessages(id: string) {
+    return apiClient.get<SellerLienMessagesResult>(`${BASE}/liens/${id}/messages`);
+  },
+
+  sendMessage(id: string, request: SendSellerLienMessageRequest) {
+    return apiClient.post<SellerLienMessagesResult["items"][number]>(
+      `${BASE}/liens/${id}/messages`,
+      request,
+    );
+  },
+
+  sendMessageForm(id: string, request: FormData) {
+    return apiClient.postForm<SellerLienMessagesResult["items"][number]>(
+      `${BASE}/liens/${id}/messages`,
+      request,
+    );
+  },
+
   getDashboard(query: DashboardQuery = {}) {
     return apiClient.get<LienResponseDto>(
       `${BASE}/dashboard${toQs(query as Record<string, unknown>)}`,
@@ -97,6 +133,12 @@ export const liensApi = {
   getMonthlyAgingReport(query: MonthlyAgingReportQuery) {
     return apiClient.get<MonthlyAgingReport>(
       `/selling/api/liens/reports/monthly-aging${toQs(query as unknown as Record<string, unknown>)}`,
+    );
+  },
+
+  getAnalyticsDashboard(query: SellingOperationsDashboardQuery = {}) {
+    return apiClient.get<SellingOperationsDashboardResponse>(
+      `${BASE}/analytics/dashboard${toQs(query as unknown as Record<string, unknown>)}`,
     );
   },
 
@@ -119,6 +161,10 @@ export const liensApi = {
     return apiClient.post<any>(`${BASE}/bulk-imports/${id}/validate`, {});
   },
 
+  cancelUpload(id: string) {
+    return apiClient.delete<any>(`${BASE}/bulk-imports/${id}`);
+  },
+
   getBulkImport(id: string) {
     return apiClient.get<BulkImportSummary>(`${BASE}/bulk-imports/${id}`);
   },
@@ -139,12 +185,56 @@ export const liensApi = {
     );
   },
 
-  // Undocumented (no OpenAPI entry) but real — see SellingV2Endpoints.CreateLien
-  // in apps/services/liens/Liens.Api/Endpoints/SellingV2Endpoints.cs. There is
-  // no `/drafts` route; this POST to `/liens` is what actually creates a new
-  // seller lien, and it's the only way to get a lienId before saving the rest
-  // of the intake steps (lien-information, case-information, etc). Response
-  // is `{ lienId, lienNumber, sellerStatus }`, not `{ id }`.
+  createCaseDraft(request: CaseDraftRequest) {
+    return apiClient.post<CaseDraftResult>(
+      `${BASE}/case-drafts`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  updateCaseDraft(draftId: string, request: CaseDraftRequest) {
+    return apiClient.put<CaseDraftResult>(
+      `${BASE}/case-drafts/${draftId}`,
+      request,
+    );
+  },
+
+  getCaseDraftById(draftId: string) {
+    return apiClient.get<CaseDraftResult>(`${BASE}/case-drafts/${draftId}`);
+  },
+
+  finalizeCaseDraft(draftId: string, request: FinalizeCaseDraftRequest) {
+    return apiClient.post<FinalizeCaseDraftResult>(
+      `${BASE}/case-drafts/${draftId}/plaintiff`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  updateCase(caseId: string, request: UpdateCaseRequest) {
+    return apiClient.put<UpdateCaseResult>(`${BASE}/cases/${caseId}`, request);
+  },
+
+  searchCases(query: CaseSearchQuery = {}) {
+    return apiClient.get<CaseSearchResultDto>(
+      `${BASE}/cases${toQs(query as Record<string, unknown>)}`,
+    );
+  },
+
+  getCaseById(caseId: string) {
+    return apiClient.get<CaseDetailResult>(`${BASE}/cases/${caseId}`);
+  },
+
+  updateCasePlaintiff(caseId: string, request: UpdateCasePlaintiffRequest) {
+    return apiClient.put<UpdateCasePlaintiffResult>(
+      `${BASE}/cases/${caseId}/plaintiff`,
+      request,
+    );
+  },
+
+  // A seller lien is created only after the case-draft/plaintiff flow returns
+  // a canonical caseId. Response is `{ lienId, lienNumber, sellerStatus }`.
   createLien(request: CreateLienParams) {
     return apiClient.post<CreateLienResult>(
       `${BASE}/liens`,
@@ -163,9 +253,11 @@ export const liensApi = {
     );
   },
 
-  saveCaseInformation(
+  // Endpoint path is the backend's — kept as "case-information" even though
+  // the payload is really the lien's provider/funding-company links.
+  saveProviderFundingDetails(
     lienId: string,
-    request: SaveSellingCaseInformationRequest,
+    request: SaveSellingProviderFundingRequest,
   ) {
     return apiClient.put<any>(
       `${BASE}/liens/${lienId}/case-information`,
@@ -230,6 +322,14 @@ export const liensApi = {
   submitLien(lienId: string, request: SubmitSellingLienRequest) {
     return apiClient.put<any>(
       `${BASE}/liens/${lienId}/lien-information`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  moveToManagement(lienId: string, request: MoveToManagementRequest = {}) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/move-to-management`,
       request,
       idempotencyHeaders(),
     );

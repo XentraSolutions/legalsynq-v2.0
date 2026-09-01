@@ -12,6 +12,8 @@ interface RepresentativePortalContextValue {
   code:                         string;
   referralAttributionId:        string;
   referralAttributionFullName:  string;
+  /** Tenant display name, resolved server-side in the layout — used to label the tenant's own network as "{tenantName} Preferred Providers". */
+  tenantDisplayName:            string;
   /** Clears the stored code and returns to the gate. There is no "sign out" — no session exists to end. */
   lock:                         () => void;
 }
@@ -26,21 +28,22 @@ export function useRepresentativePortal(): RepresentativePortalContextValue {
 
 interface Props {
   tenantId: string;
+  tenantDisplayName: string;
   children: ReactNode;
 }
 
 /**
- * Fully anonymous gate for the Referral Representative Portal — no login, matching the
+ * Fully anonymous gate for the Referral Portal — no login, matching the
  * public network directory's AccessCodeGate branding/UX. Unlike that gate (which caches a
  * one-time client-side "unlocked" boolean while the actual data endpoints stay open
  * regardless), this one persists the raw code itself and every page under it resends that
  * code on every data request; the backend re-verifies it from scratch each time (see
- * PublicRepresentativeEndpoints). Revoking a code or deactivating its attribution takes
+ * PublicRepresentativeEndpoints). Revoking a code or deactivating its origination takes
  * effect on the very next request, not on next unlock.
  */
-export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
+export function RepresentativeAccessCodeGate({ tenantId, tenantDisplayName, children }: Props) {
   const [ready, setReady] = useState(false);
-  const [unlocked, setUnlocked] = useState<Omit<RepresentativePortalContextValue, 'lock'> | null>(null);
+  const [unlocked, setUnlocked] = useState<Omit<RepresentativePortalContextValue, 'lock' | 'tenantDisplayName'> | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -117,7 +120,7 @@ export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
 
   if (unlocked) {
     return (
-      <RepresentativePortalContext.Provider value={{ ...unlocked, lock }}>
+      <RepresentativePortalContext.Provider value={{ ...unlocked, tenantDisplayName, lock }}>
         {children}
       </RepresentativePortalContext.Provider>
     );
@@ -138,7 +141,7 @@ export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
             priority
           />
           <p className="text-slate-300 text-xs tracking-wide text-center">
-            Referral Representative Portal
+            Referral Portal
           </p>
         </div>
 
@@ -179,7 +182,7 @@ export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
           <button
             type="submit"
             disabled={!code.trim() || submitting}
-            className="w-full rounded-lg text-sm font-semibold py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 bg-orange-500 text-white hover:bg-orange-600 disabled:bg-orange-300"
+            className="w-full cursor-pointer rounded-lg text-sm font-semibold py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 bg-orange-500 text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
           >
             {submitting ? 'Verifying…' : 'View My Referrals'}
           </button>

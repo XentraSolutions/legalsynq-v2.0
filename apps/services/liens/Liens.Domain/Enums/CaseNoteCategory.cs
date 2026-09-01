@@ -19,4 +19,14 @@ public static class CaseNoteCategory
             CaseCreated,
             SettlementHistory,
         };
+
+    public static string? Normalize(string? category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return null;
+
+        var trimmed = category.Trim();
+        return All.FirstOrDefault(candidate =>
+            string.Equals(candidate, trimmed, StringComparison.OrdinalIgnoreCase));
+    }
 }

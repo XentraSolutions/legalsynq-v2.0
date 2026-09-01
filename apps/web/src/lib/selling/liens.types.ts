@@ -168,6 +168,7 @@ export interface LiensQuery {
 export interface LienListItem {
   lienId: string;
   lienNumber: string;
+  createdAtUtc: string;
   fundingCompany: string;
   initialServiceDate: string;
   billingAmount: number;
@@ -263,15 +264,145 @@ export interface SaveSellingLienInformationRequest {
   notes?: string;
 }
 
-export interface SaveSellingCaseInformationRequest {
+// A lien's funding-company/facility/medical-provider links.
+export interface SaveSellingProviderFundingRequest {
   medicalProviderId?: string;
-  fundingCompanyId?: string;
-  fundingCompanyContactId?: string;
+  fundingCompanyId?: string | null;
+  fundingCompanyContactId?: string | null;
   facilityId?: string;
+}
+
+// Case-info fields shared by the case-draft create/update step (POST/PUT
+// /case-drafts) and by updating an existing case's info (PUT /cases/{caseId}).
+export interface CaseDraftRequest {
+  // No longer user-editable — the backend defaults new cases to PreDemand
+  // and updates leave the existing status unchanged when this is omitted.
+  caseStatus?: string;
+  accidentTypeId?: string;
+  accidentState?: string;
+  dateOfLoss?: string;
   handlingLawFirmId?: string;
   caseManagerId?: string;
-  caseId?: string;
-  createCaseIfMissing?: boolean;
+  caseTrackingNotes?: string;
+}
+
+export interface CaseDraftResult {
+  draftId: string;
+  caseStatus: string;
+  accidentTypeId?: string | null;
+  accidentState?: string | null;
+  dateOfLoss?: string | null;
+  handlingLawFirmId?: string | null;
+  caseManagerId?: string | null;
+  caseTrackingNotes?: string | null;
+  // Only set once GET is called after the draft has been finalized into a
+  // real case (POST .../plaintiff) — a draft in progress has this as null.
+  caseId?: string | null;
+}
+
+// POST /case-drafts/{draftId}/plaintiff — attaches the plaintiff, finalizing
+// the draft into a real Case.
+export interface FinalizeCaseDraftRequest {
+  firstName: string;
+  lastName: string;
+  birthdate?: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+}
+
+export interface FinalizeCaseDraftResult {
+  draftId: string;
+  caseId: string;
+  caseNumber: string;
+  finalizedAtUtc: string;
+}
+
+// PUT /cases/{caseId} — case-info-only update; the plaintiff is always
+// updated separately via UpdateCasePlaintiffRequest (PUT /cases/{caseId}/plaintiff).
+export type UpdateCaseRequest = CaseDraftRequest;
+
+export interface UpdateCaseResult {
+  caseId: string;
+  caseNumber: string;
+  caseStatus: string;
+}
+
+export interface CaseDetailResult {
+  caseId: string;
+  caseNumber: string;
+  caseStatus: string;
+  accidentTypeId?: string | null;
+  accidentTypeName?: string | null;
+  accidentState?: string | null;
+  dateOfLoss?: string | null;
+  handlingLawFirmId?: string | null;
+  handlingLawFirmName?: string | null;
+  caseManagerId?: string | null;
+  caseManagerName?: string | null;
+  caseTrackingNotes?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  birthdate?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  gender?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zipcode?: string | null;
+}
+
+// GET /api/liens/selling/cases — server-side keyword search + pagination.
+// Backs both the lien wizard's Case picker (@/components/selling/case-select,
+// which only reads caseId/caseNumber/firstName/lastName) and the Cases
+// portfolio list (@/components/selling/cases-table). Response items carry the
+// same raw fields as CaseDetailResult, plus each *Id field's resolved display
+// name under a "Name" suffix (accidentTypeId -> accidentTypeName,
+// handlingLawFirmId -> handlingLawFirmName, caseManagerId ->
+// caseManagerName) when the referenced lookup value is populated.
+export interface CaseSearchQuery {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
+}
+
+export interface CaseSearchItem {
+  caseId: string;
+  caseNumber: string;
+  caseStatus: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  birthdate?: string | null;
+  dateOfLoss?: string | null;
+  accidentState?: string | null;
+  accidentTypeId?: string | null;
+  accidentTypeName?: string | null;
+  handlingLawFirmId?: string | null;
+  handlingLawFirmName?: string | null;
+  caseManagerId?: string | null;
+  caseManagerName?: string | null;
+}
+
+// The endpoint doesn't echo back `page`/`pageSize` — only `items` and
+// `totalCount` — unlike the rest of Selling's PaginatedResultDto<T> shape.
+export interface CaseSearchResultDto {
+  items: CaseSearchItem[];
+  totalCount: number;
+}
+
+export type UpdateCasePlaintiffRequest = FinalizeCaseDraftRequest;
+
+export interface UpdateCasePlaintiffResult {
+  caseId: string;
+  caseNumber: string;
+  updatedAtUtc: string;
 }
 
 export interface SellingMedicalPricingRowRequest {
@@ -334,6 +465,10 @@ export interface SubmitSellingLienRequest {
   listingVisibility: string;
 }
 
+export interface MoveToManagementRequest {
+  reason?: string;
+}
+
 // Shape returned by GET {lienId}/activity (SellingV2Endpoints.GetLienActivity) —
 // distinct field names from the `activity` array embedded in GetLienDetail
 // (LienActivityItem), which uses changedByUserId/changedAtUtc instead.
@@ -348,6 +483,36 @@ export interface LienActivityFeedItem {
 export interface LienActivityFeedResult {
   lienId: string;
   items: LienActivityFeedItem[];
+}
+
+export interface SellerLienMessage {
+  id: string;
+  senderType: string;
+  senderName: string;
+  senderInitials?: string | null;
+  senderEmail?: string | null;
+  message: string;
+  createdAtUtc: string;
+  isCurrentUser?: boolean;
+  attachments?: SellerLienMessageAttachment[];
+}
+
+export interface SellerLienMessageAttachment {
+  id: string;
+  fileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  createdAtUtc: string;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
+}
+
+export interface SellerLienMessagesResult {
+  items: SellerLienMessage[];
+}
+
+export interface SendSellerLienMessageRequest {
+  message: string;
 }
 
 // Shape returned by GET /bulk-imports/{id} (SellingV2Endpoints.GetBulkImport / MapBulkImport).

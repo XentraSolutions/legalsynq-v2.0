@@ -123,7 +123,7 @@ public sealed class VerificationRetryService : IVerificationRetryService
                 continue;
             }
 
-            var hostname = _dns.BuildHostname(tenant.Subdomain);
+            var hostname = await ResolveHostnameAsync(tenant, ct);
 
             try
             {
@@ -135,5 +135,19 @@ public sealed class VerificationRetryService : IVerificationRetryService
                     "Exception during automatic verification retry for tenant {TenantCode}", tenant.Code);
             }
         }
+    }
+
+    private async Task<string> ResolveHostnameAsync(Tenant tenant, CancellationToken ct)
+    {
+        var persisted = await _db.TenantDomains
+            .Where(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN")
+            .OrderByDescending(d => d.IsPrimary)
+            .ThenByDescending(d => d.IsVerified)
+            .Select(d => d.Domain)
+            .FirstOrDefaultAsync(ct);
+
+        return !string.IsNullOrWhiteSpace(persisted)
+            ? persisted
+            : _dns.BuildHostname(tenant.Subdomain!);
     }
 }

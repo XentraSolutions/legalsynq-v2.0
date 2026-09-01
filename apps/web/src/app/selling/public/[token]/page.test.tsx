@@ -131,9 +131,11 @@ describe("PublicBuyerPortalPage", () => {
       requestHost: "synqlien-demo.localhost:3000",
       requestProto: "http",
     });
-    expect(screen.getByAltText("LegalSynq")).toHaveAttribute(
+    expect(screen.getByText("LEGALSYNQ")).toBeInTheDocument();
+    expect(screen.getByText("Funding Company Portal")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/figma/synqlien-funding-public/icon-logo.svg"]')).toHaveAttribute(
       "src",
-      "/legalsynq-logo-temp-portal.svg",
+      "/figma/synqlien-funding-public/icon-logo.svg",
     );
     expect(screen.getByText("Manage Offered Liens")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Activate Free Account" })).toHaveAttribute(
@@ -143,6 +145,8 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getByText("Your Response")).toBeInTheDocument();
     expect(screen.getByText("Lien Summary")).toBeInTheDocument();
     expect(screen.getByText("Awaiting Your Response")).toBeInTheDocument();
+    expect(screen.queryByText("Listing Visibility")).not.toBeInTheDocument();
+    expect(screen.queryByText("Private")).not.toBeInTheDocument();
     expect(screen.getByText("Seller Information")).toBeInTheDocument();
     expect(screen.getAllByText("RL Liens1").length).toBeGreaterThan(0);
     expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
@@ -262,6 +266,8 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.queryByText("Lien Details Sent")).not.toBeInTheDocument();
     expect(screen.queryByText(/This lien offer was sent to/)).not.toBeInTheDocument();
     expect(screen.queryByText("Sent to Funding Company")).not.toBeInTheDocument();
+    expect(screen.queryByText("Listing Visibility")).not.toBeInTheDocument();
+    expect(screen.queryByText("Private")).not.toBeInTheDocument();
     expect(screen.getByText("Buyer Information")).toBeInTheDocument();
     expect(screen.getByText("Buyer Reviewer")).toBeInTheDocument();
     expect(screen.getAllByText("Capital Fund LLC").length).toBeGreaterThan(0);

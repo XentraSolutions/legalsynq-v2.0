@@ -18,6 +18,7 @@ export function StatCard({
   centerLabel,
   valueFormat = "currency",
   detailsHref,
+  unavailableMessage,
 }: {
   title: string;
   total: number;
@@ -36,7 +37,29 @@ export function StatCard({
   valueFormat?: "currency" | "number";
   /** Optional in-page or route link to the data behind the summary. */
   detailsHref?: string;
+  /** When set, replaces the donut/legend body with a centered message — for data the backend can't compute yet. */
+  unavailableMessage?: string;
 }) {
+  if (unavailableMessage) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 flex flex-col gap-4">
+        <div className="flex items-center justify-between border-b border-gray-100 p-5">
+          <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
+          {detailsHref && (
+            <Link
+              href={detailsHref}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            >
+              View details
+            </Link>
+          )}
+        </div>
+        <div className="flex h-[220px] items-center justify-center p-5 text-sm text-gray-400">
+          {unavailableMessage}
+        </div>
+      </div>
+    );
+  }
   const filteredSegments = segments.filter((s) => s.value > 0);
   const segmentTotal = filteredSegments.reduce((sum, s) => sum + s.value, 0);
   const displayValue =

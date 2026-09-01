@@ -36,6 +36,21 @@ public sealed class ExceptionHandlingMiddleware
 
         switch (ex)
         {
+            // Kestrel rejects oversized request bodies before endpoint-level file validation.
+            case BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }:
+                statusCode = StatusCodes.Status413PayloadTooLarge;
+                ScanMetrics.UploadFileTooLargeTotal.Inc();
+                _log.LogWarning(
+                    "Upload request rejected by the server body-size limit correlationId={CorrelationId}",
+                    correlationId);
+                body = new
+                {
+                    error = "FILE_TOO_LARGE",
+                    message = "The request body exceeds the configured maximum upload size.",
+                    correlationId,
+                };
+                break;
+
             // ── Specific DocumentsException subtypes (must come before base) ──
 
             // 413 — file exceeds upload size limit

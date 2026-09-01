@@ -79,11 +79,22 @@ public class LienRepository : ILienRepository
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
-            q = q.Where(l =>
-                l.LienNumber.Contains(term) ||
-                (l.SubjectFirstName != null && l.SubjectFirstName.Contains(term)) ||
-                (l.SubjectLastName != null && l.SubjectLastName.Contains(term)) ||
-                (l.Description != null && l.Description.Contains(term)));
+            var tokens = term.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var token in tokens)
+            {
+                var local = token;
+                q = q.Where(l =>
+                    l.LienNumber.Contains(local) ||
+                    (l.SubjectFirstName != null && l.SubjectFirstName.Contains(local)) ||
+                    (l.SubjectLastName != null && l.SubjectLastName.Contains(local)) ||
+                    (l.Description != null && l.Description.Contains(local)) ||
+                    _db.Cases.Any(c =>
+                        c.TenantId == tenantId &&
+                        l.CaseId.HasValue &&
+                        c.Id == l.CaseId.Value &&
+                        (c.ClientFirstName.Contains(local) || c.ClientLastName.Contains(local))));
+            }
         }
 
         var statuses = LienStatus.ExpandFilterValues(
@@ -121,7 +132,7 @@ public class LienRepository : ILienRepository
         return (items, totalCount);
     }
 
-    public async Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
+    public async Task<List<Lien>> SearchReportAsync(
         Guid tenantId,
         string? search,
         IReadOnlyCollection<string> lienStatuses,
@@ -133,11 +144,13 @@ public class LienRepository : ILienRepository
         bool useSettlementDateForClosedFilter,
         string? isBulk,
         IReadOnlyCollection<Guid> caseIds,
-        int page,
-        int pageSize,
         CancellationToken ct = default)
     {
-        var q = _db.Liens.Where(l => l.TenantId == tenantId);
+        var q = _db.Liens
+            .AsNoTracking()
+            .Where(l =>
+                l.TenantId == tenantId &&
+                l.Status != LienStatus.Cancelled);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -254,15 +267,9 @@ public class LienRepository : ILienRepository
             q = q.Where(l => l.CaseId.HasValue && ids.Contains(l.CaseId.Value));
         }
 
-        var ordered = q.OrderByDescending(l => l.CreatedAtUtc);
-        var totalCount = await ordered.CountAsync(ct);
-        var allItems = await ordered.ToListAsync(ct);
-        var pageItems = allItems
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        return (pageItems, allItems, totalCount);
+        return await q
+            .OrderByDescending(l => l.CreatedAtUtc)
+            .ToListAsync(ct);
     }
 
     public async Task<List<Lien>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default)

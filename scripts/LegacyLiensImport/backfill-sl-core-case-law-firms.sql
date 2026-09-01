@@ -147,7 +147,7 @@ BEGIN
     WHERE r.TenantId = v_tenant_id
       AND r.SourceSystem = 'SL-CORE'
       AND r.LegacyProgram = '1'
-      AND r.MappingVersion = 'sl-core-contact-facility-v1'
+      AND r.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2')
       AND r.SourceFingerprint = v_source_fingerprint
       AND r.Status = 'Completed'
       AND EXISTS (
@@ -167,7 +167,7 @@ BEGIN
     WHERE r.TenantId = v_tenant_id
       AND r.SourceSystem = 'SL-CORE'
       AND r.LegacyProgram = '1'
-      AND r.MappingVersion = 'sl-core-contact-facility-v1'
+      AND r.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2')
       AND r.SourceFingerprint = v_source_fingerprint
       AND r.Status = 'Completed'
       AND EXISTS (

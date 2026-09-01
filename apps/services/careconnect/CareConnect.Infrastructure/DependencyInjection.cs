@@ -45,7 +45,7 @@ public static class DependencyInjection
                 "Set the 'DocumentsService:DocumentTypeId' configuration key to a valid UUID. " +
                 $"Current environment: '{environment}'.");
 
-        // Referral Attribution access codes are hashed with SHA-256 + this server-side pepper
+        // Referral Origination access codes are hashed with SHA-256 + this server-side pepper
         // before storage (never persisted in plaintext). Without a strong pepper in
         // non-Development environments, the hash would be a bare SHA-256 of the code alone.
         var accessCodePepper = configuration["ReferralAttributionAccessCode:Pepper"];
@@ -111,9 +111,11 @@ public static class DependencyInjection
         services.AddScoped<INotificationRepository, NotificationRepository>();
         // LSCC-009: Provider activation queue
         services.AddScoped<IActivationRequestRepository, ActivationRequestRepository>();
-        // Referral Attribution + Referral Representative access
+        // Referral Origination + Referral Representative access
         services.AddScoped<IReferralAttributionRepository, ReferralAttributionRepository>();
         services.AddScoped<IReferralAttributionAccessCodeRepository, ReferralAttributionAccessCodeRepository>();
+        services.AddScoped<IPendingReferralRequestRepository, PendingReferralRequestRepository>();
+        services.AddScoped<IPendingReferralAttachmentRepository, PendingReferralAttachmentRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
@@ -133,10 +135,11 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         // LSCC-009: Provider activation queue service
         services.AddScoped<IActivationRequestService, ActivationRequestService>();
-        // Referral Attribution + Referral Representative access
+        // Referral Origination + Referral Representative access
         services.AddScoped<IReferralAttributionService, ReferralAttributionService>();
         services.AddScoped<IReferralAttributionAccessCodeService, ReferralAttributionAccessCodeService>();
         services.AddScoped<IRepresentativeReferralService, RepresentativeReferralService>();
+        services.AddScoped<IPendingReferralRequestService, PendingReferralRequestService>();
 
         // LSCC-010: Auto-provisioning — Identity org HTTP client + orchestration service
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
@@ -178,7 +181,7 @@ public static class DependencyInjection
         services.AddHttpClient("NotificationsService")
             .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationsProducer, NotificationsProducerClient>();
-        // Singleton: subdomain slugs never change after provisioning; cache must outlive Scoped email service.
+        // Singleton: tenant platform host details never change after provisioning; cache must outlive Scoped email service.
         services.AddSingleton<ITenantSubdomainCache, TenantSubdomainCache>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
@@ -207,6 +210,9 @@ public static class DependencyInjection
         services.AddScoped<INetworkRepository, NetworkRepository>();
         services.AddScoped<IProviderImportParser, CsvProviderImportParser>();
         services.AddScoped<INetworkService, NetworkService>();
+
+        // LSV3-1083: Law Firm Company Super Admin/Manager
+        services.AddScoped<ILawFirmUserService, LawFirmUserService>();
 
         return services;
     }

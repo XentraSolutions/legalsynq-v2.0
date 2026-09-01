@@ -6,6 +6,15 @@ import type {
   OrgTypeValue,
 } from "@/types";
 import { ProductRole, OrgType } from "@/types";
+import {
+  FolderClosed,
+  Briefcase,
+  ScrollText,
+  ContactRound,
+  Building2,
+  UserRound,
+  LayoutDashboard,
+} from "lucide-react";
 
 // ── Per-product sidebar navigation (sections) ─────────────────────────────────
 
@@ -24,6 +33,13 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           icon: "ri-file-list-3-line",
           badgeKey: "newReferrals",
         },
+        {
+          href: "/careconnect/pending-requests",
+          label: "Referral Requests",
+          icon: "ri-inbox-unarchive-line",
+          requiredRoles: [ProductRole.CareConnectReferrer],
+          hiddenForOrgTypes: [OrgType.Provider, OrgType.LienOwner],
+        },
         // CC-REFERRER-BROWSE: for elevated law firm referrers (tenant portal).
         // Hidden from network managers AND from lien-owner orgs (they manage their
         // own network; they never browse other networks).
@@ -38,6 +54,9 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         // Lien company network management — visible to network managers AND to
         // any TenantAdmin at a LIEN_OWNER org (covers the case where the admin
         // hasn't been explicitly granted the NetworkManager product role yet).
+        // Unchanged by the single-tenant-network cutover — this stays the tenant
+        // portal's own network-management screen; law firms get a separate
+        // "Network Setup" entry below instead of sharing this one.
         {
           href: "/careconnect/my-network",
           label: "My Network",
@@ -45,20 +64,36 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           requiredRoles: [ProductRole.CareConnectNetworkManager],
           visibleForTenantAdminInOrgTypes: [OrgType.LienOwner],
         },
-        // Multi-network admin view — internal/admin use only; hidden from lien company orgs.
+        // Single-tenant-network cutover: law firms add/manage their own providers
+        // directly in the tenant's one shared network (instead of creating their
+        // own separate network). Role-gated only — CareConnectReferrerAdmin sees
+        // this regardless of which portal/subdomain they're on. Safe because
+        // NetworkProvider.Visibility/OwningOrganizationId are enforced on read, so
+        // a law-firm-scoped admin only ever sees Public providers plus their own org's.
         {
-          href: "/careconnect/networks",
-          label: "Networks",
+          href: "/careconnect/network-setup",
+          label: "Network Setup",
           icon: "ri-share-forward-2-line",
-          requiredRoles: [ProductRole.CareConnectNetworkManager],
+          requiredRoles: [ProductRole.CareConnectReferrerAdmin],
           hiddenForOrgTypes: [OrgType.LienOwner],
         },
-        // Referral Attribution configuration — tenant admin only. Tenant-portal
+        // LSV3-1083: Law Firm Company Super Admin/Manager — lets a
+        // CareConnectReferrerAdmin view and manage the users belonging to their
+        // own law firm (invite, activate/deactivate, assign/revoke CareConnect
+        // roles). Law-firm-only, mirrors the "Network Setup" entry above.
+        {
+          href: "/careconnect/law-firm-users",
+          label: "Firm Users",
+          icon: "ri-team-line",
+          requiredRoles: [ProductRole.CareConnectReferrerAdmin],
+          hiddenForOrgTypes: [OrgType.LienOwner],
+        },
+        // Referral Origination configuration — tenant admin only. Tenant-portal
         // configuration, not part of the restricted single-product CareConnect
         // common portal (careconnect-demo.* / PORTAL_CARECONNECT_SUBDOMAIN).
         {
           href: "/careconnect/referral-attributions",
-          label: "Referral Attributions",
+          label: "Referral Originations",
           icon: "ri-price-tag-3-line",
           adminOnly: true,
           hiddenInProductPortal: true,
@@ -253,14 +288,41 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       heading: "Lien Portfolio",
       items: [
         {
-          href: "/selling/portfolio",
-          label: "Portfolio",
-          icon: "ri-folder-3-line",
+          href: "/selling/dashboard",
+          label: "Dashboard",
+          lucideIcon: LayoutDashboard,
         },
         {
-          href: "/selling/contacts",
-          label: "Contacts",
-          icon: "ri-contacts-book-line",
+          heading: "Portfolio",
+          lucideIcon: FolderClosed,
+          children: [
+            {
+              href: "/selling/portfolio/cases",
+              label: "Cases",
+              lucideIcon: Briefcase,
+            },
+            {
+              href: "/selling/portfolio/lien",
+              label: "Liens",
+              lucideIcon: ScrollText,
+            },
+          ],
+        },
+        {
+          heading: "Contacts",
+          lucideIcon: ContactRound,
+          children: [
+            {
+              href: "/selling/contacts/companies",
+              label: "Companies",
+              lucideIcon: Building2,
+            },
+            {
+              href: "/selling/contacts/persons",
+              label: "Contact Persons",
+              lucideIcon: UserRound,
+            },
+          ],
         },
       ],
     },

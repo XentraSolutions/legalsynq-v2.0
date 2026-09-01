@@ -20,7 +20,7 @@ export default function UploadDocsStep({ lienId, caseId }: UploadDocsStepProps) 
 
   const handleContinue = () => {
     toast.success("Lien added successfully.");
-    router.push("/selling/portfolio");
+    router.push("/selling/portfolio/lien");
   };
 
   return (
@@ -28,6 +28,7 @@ export default function UploadDocsStep({ lienId, caseId }: UploadDocsStepProps) 
       step={4}
       continueLabel="Finish"
       onBack={() => goToStep(router, lienId, 3)}
+      onCancel={() => router.push("/selling/portfolio/lien")}
       onContinue={handleContinue}
     >
       <UploadDocuments caseId={caseId} lienId={lienId} onUploaded={() => {}} />

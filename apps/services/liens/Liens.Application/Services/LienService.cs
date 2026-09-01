@@ -61,13 +61,13 @@ public sealed class LienService : ILienService
         var keyword = search?.Trim();
         var (items, totalCount) = await _lienRepo.SearchAsync(
             tenantId,
-            hasKeyword ? null : search,
+            search,
             status,
             lienType,
             caseId,
             facilityId,
-            hasKeyword ? 1 : page,
-            hasKeyword ? FuzzySearchScorer.CandidateLimit : pageSize,
+            page,
+            pageSize,
             ct,
             createdFromUtc,
             createdToUtc,
@@ -77,6 +77,29 @@ public sealed class LienService : ILienService
             includeHolderOrg,
             includeMarketplace,
             excludeRejectedAndCancelled);
+        var useFuzzyFallback = hasKeyword && totalCount == 0;
+
+        if (useFuzzyFallback)
+        {
+            (items, totalCount) = await _lienRepo.SearchAsync(
+                tenantId,
+                null,
+                status,
+                lienType,
+                caseId,
+                facilityId,
+                1,
+                FuzzySearchScorer.CandidateLimit,
+                ct,
+                createdFromUtc,
+                createdToUtc,
+                visibleOrgId,
+                includeSellerOrg,
+                includeBuyerOrg,
+                includeHolderOrg,
+                includeMarketplace,
+                excludeRejectedAndCancelled);
+        }
 
         var casesById = await LoadCasesByIdAsync(tenantId, items, ct);
         var facilitiesById = await LoadFacilitiesByIdAsync(tenantId, items, ct);
@@ -98,7 +121,7 @@ public sealed class LienService : ILienService
                 ResolveCaseManagerName(caseEntity, caseManagerById));
         }).ToList();
 
-        if (hasKeyword)
+        if (useFuzzyFallback)
         {
             var matches = candidates
                 .Select(candidate => new { Candidate = candidate, Score = GetLienKeywordScore(candidate, keyword!) })
@@ -454,6 +477,7 @@ public sealed class LienService : ILienService
             Status = entity.Status,
             StatusLabel = MapBusinessStatusLabel(entity.Status),
             CaseId = entity.CaseId,
+            SellingCaseId = entity.SellingCaseId,
             FacilityId = entity.FacilityId,
             OriginalAmount = entity.OriginalAmount,
             CurrentBalance = entity.CurrentBalance,
@@ -473,6 +497,7 @@ public sealed class LienService : ILienService
             SellingOrgId = entity.SellingOrgId,
             BuyingOrgId = entity.BuyingOrgId,
             HoldingOrgId = entity.HoldingOrgId,
+            SellerStatus = entity.SellerStatus,
             IncidentDate = entity.IncidentDate,
             PurchaseDate = entity.PurchaseDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
             InitialServiceDate = entity.InitialServiceDate,
@@ -481,7 +506,9 @@ public sealed class LienService : ILienService
             TotalBilling = null,
             IsBulk = entity.IsBulk,
             IsServicing = entity.IsServicing,
+            ImportedCreatedByName = entity.ImportedCreatedByName,
             Description = entity.Description,
+            Notes = entity.Notes,
             OpenedAtUtc = entity.OpenedAtUtc,
             ClosedAtUtc = entity.ClosedAtUtc,
             CreatedAtUtc = entity.CreatedAtUtc,

@@ -18,7 +18,10 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { LienTable } from "@/components/lien/lien-table";
-import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
+import type {
+  LienColumnDef,
+  LienFooterCell,
+} from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -28,13 +31,15 @@ function formatCurrency(amount: number | null): string {
   }).format(amount);
 }
 
-function pickLienStatusOptions(items: LiensStatusResponse[]): LiensStatusResponse[] {
+function pickLienStatusOptions(
+  items: LiensStatusResponse[],
+): LiensStatusResponse[] {
   const byCode = (codes: string[]) =>
     items.find((i) => codes.includes((i.code || "").toLowerCase()));
   const openOrActive = byCode(["active", "open"]);
   const settledOrClosed = byCode(["settled", "closed"]);
-  return [openOrActive, settledOrClosed].filter(
-    (i): i is LiensStatusResponse => Boolean(i),
+  return [openOrActive, settledOrClosed].filter((i): i is LiensStatusResponse =>
+    Boolean(i),
   );
 }
 
@@ -72,10 +77,12 @@ export function NoRecoveryForm({
   const [lienStatuses, setLienStatuses] = useState<LiensStatusResponse[]>([]);
 
   const openLiens = liens.filter(
-    (l) => l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
+    (l) =>
+      l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
   );
 
-  const allChecked = openLiens.length > 0 && checkedIds.size === openLiens.length;
+  const allChecked =
+    openLiens.length > 0 && checkedIds.size === openLiens.length;
 
   useEffect(() => {
     if (open) {
@@ -89,8 +96,13 @@ export function NoRecoveryForm({
     lookupService.getLiensStatus().then((res) => {
       const options = pickLienStatusOptions(res.items);
       setLienStatuses(options);
-      const settled = options.find((s) => (s.code || "").toLowerCase() === "settled");
-      setForm((prev) => ({ ...prev, lienStatus: (settled ?? options[0])?.code ?? "" }));
+      const settled = options.find(
+        (s) => (s.code || "").toLowerCase() === "settled",
+      );
+      setForm((prev) => ({
+        ...prev,
+        lienStatus: (settled ?? options[1])?.code ?? "",
+      }));
     });
   }, [open]);
 
@@ -102,9 +114,7 @@ export function NoRecoveryForm({
   };
 
   const toggleAll = () => {
-    setCheckedIds(
-      allChecked ? new Set() : new Set(openLiens.map((l) => l.id)),
-    );
+    setCheckedIds(allChecked ? new Set() : new Set(openLiens.map((l) => l.id)));
   };
 
   const handleResetClose = () => {
@@ -164,16 +174,33 @@ export function NoRecoveryForm({
     }
   };
 
-  const totalBilling = openLiens
-    .filter((l) => checkedIds.has(l.id))
-    .reduce((s, l) => s + (l.originalAmount ?? 0), 0);
+  const totalBilling = openLiens.reduce(
+    (s, l) => s + (l.originalAmount ?? 0),
+    0,
+  );
+  const totalPurchase =
+    liens.reduce((s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100), 0) /
+    100;
+
+  const totalBalance = openLiens.reduce((s, l) => s + (l.balance ?? 0), 0);
 
   const noRecoveryColumns: LienColumnDef[] = [
     {
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+        <span className="text-sm text-primary whitespace-nowrap">
+          {l.lienNumber}
+        </span>
+      ),
+    },
+    {
+      id: "facilityName",
+      header: "Medical Facility",
+      cell: (l) => (
+        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
+          {l.facilityName || ""}
+        </span>
       ),
     },
     {
@@ -187,8 +214,19 @@ export function NoRecoveryForm({
       ),
     },
     {
+      id: "purchase",
+      header: "Purchase Amount",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.purchaseAmount ?? 0)}
+        </span>
+      ),
+    },
+
+    {
       id: "balance",
-      header: "Balance",
+      header: "Amount to Settle",
       align: "right",
       cell: (l) => (
         <span className="text-sm text-gray-700 tabular-nums">
@@ -200,7 +238,7 @@ export function NoRecoveryForm({
 
   const noRecoveryFooter: LienFooterCell[] = [
     {
-      colSpan: 3,
+      colSpan: 4,
       content: (
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
           Selected ({checkedIds.size} of {openLiens.length})
@@ -215,7 +253,22 @@ export function NoRecoveryForm({
         </span>
       ),
     },
-    { content: null },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalPurchase)}
+        </span>
+      ),
+    },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalBalance)}
+        </span>
+      ),
+    },
   ];
 
   return (

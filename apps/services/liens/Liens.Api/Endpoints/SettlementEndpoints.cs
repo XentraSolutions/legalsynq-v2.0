@@ -117,7 +117,7 @@ public static class SettlementEndpoints
         CancellationToken ct = default)
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
-        var result = await svc.GetReductionsByCaseAsync(tenantId, caseId, ct);
+        var result = await svc.GetLatestReductionsByCaseAsync(tenantId, caseId, ct);
         return Results.Ok(result);
     }
 
@@ -349,13 +349,29 @@ public static class SettlementEndpoints
     private static async Task<IResult> DeletePayment(
         Guid id,
         ISettlementService svc,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
         var userId   = CaseEndpoints.RequireUserId(ctx);
-        await svc.DeletePaymentAsync(tenantId, id, userId, ct);
-        return Results.Ok(new { isSuccess = true, message = "Successfully Deleted." });
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        try
+        {
+            await svc.DeletePaymentAsync(tenantId, id, userId, ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            return Results.Ok(new { isSuccess = true, message = "Successfully Deleted." });
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> GetSettlementHistory(

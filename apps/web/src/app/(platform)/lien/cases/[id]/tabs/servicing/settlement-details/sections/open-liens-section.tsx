@@ -9,7 +9,9 @@ const lienDisplayColumns: LienColumnDef[] = [
     id: "lienId",
     header: "Lien ID",
     cell: (l) => (
-      <span className="text-sm text-gray-600 whitespace-nowrap">{l.lienNumber}</span>
+      <span className="text-sm text-gray-600 whitespace-nowrap">
+        {l.lienNumber}
+      </span>
     ),
   },
   {
@@ -67,7 +69,7 @@ const lienDisplayColumns: LienColumnDef[] = [
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 font-medium tabular-nums">
-        {formatCurrency(l.balance)}
+        {formatCurrency(l.balance ?? 0)}
       </span>
     ),
   },
@@ -77,7 +79,7 @@ const lienDisplayColumns: LienColumnDef[] = [
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 font-medium tabular-nums">
-        {formatCurrency(l.paymentAmount)}
+        {formatCurrency(l.paymentAmount ?? 0)}
       </span>
     ),
   },
@@ -165,11 +167,11 @@ export function OpenLiensSection({
                 ),
               },
               {
-              align: "right",
-              content: (
-                <span className="text-sm font-semibold text-gray-700 tabular-nums">
-                  ---
-                </span>
+                align: "right",
+                content: (
+                  <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                    ---
+                  </span>
                 ),
               },
               {

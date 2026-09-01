@@ -26,7 +26,7 @@ public interface ILienRepository
         bool includeHolderOrg = false,
         bool includeMarketplace = false,
         bool excludeRejectedAndCancelled = false);
-    Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
+    Task<List<Lien>> SearchReportAsync(
         Guid tenantId,
         string? search,
         IReadOnlyCollection<string> lienStatuses,
@@ -38,8 +38,6 @@ public interface ILienRepository
         bool useSettlementDateForClosedFilter,
         string? isBulk,
         IReadOnlyCollection<Guid> caseIds,
-        int page,
-        int pageSize,
         CancellationToken ct = default);
     Task<List<Lien>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<List<Lien>> GetByFacilityIdAsync(Guid tenantId, Guid facilityId, CancellationToken ct = default);

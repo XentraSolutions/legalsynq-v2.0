@@ -7,6 +7,12 @@ PUBLISH_ROOT="${PUBLISH_ROOT:-$ROOT/publish}"
 NO_RESTORE="${NO_RESTORE:-0}"
 VERBOSITY="${VERBOSITY:-minimal}"
 
+if [[ "${PUBLISH_ROOT%/}" == "/opt/legalsynq/publish" ]]; then
+  echo "ERROR: refusing to publish over the live Liens runtime directory." >&2
+  echo "Publish to /opt/legalsynq/staging/<release-id> and activate it only after stopping legalsynq-liens." >&2
+  exit 1
+fi
+
 usage() {
   cat <<USAGE
 Usage:

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using BuildingBlocks.Authorization.Filters;
 using PermCodes = BuildingBlocks.Authorization.PermissionCodes;
+using ProductRoleCodes = BuildingBlocks.Authorization.ProductRoleCodes;
 using Identity.Api.Helpers;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -435,6 +436,8 @@ public static class AdminEndpoints
         }).ToList();
 
         var defaultOrg = t.Organizations.OrderBy(o => o.CreatedAtUtc).FirstOrDefault();
+        var persistedHostname = await ResolvePersistedTenantHostnameAsync(db, t.Id, default);
+
         return Results.Ok(new
         {
             id                    = t.Id,
@@ -460,15 +463,26 @@ public static class AdminEndpoints
             lastProvisioningAttemptUtc       = t.LastProvisioningAttemptUtc,
             provisioningFailureReason       = t.ProvisioningFailureReason,
             provisioningFailureStage        = t.ProvisioningFailureStage.ToString(),
-            hostname                        = t.Subdomain != null
+            hostname                        = persistedHostname ?? (t.Subdomain != null
                 ? dnsService.BuildHostname(t.Subdomain)
-                : (string?)null,
+                : (string?)null),
             verificationAttemptCount        = t.VerificationAttemptCount,
             lastVerificationAttemptUtc      = t.LastVerificationAttemptUtc,
             nextVerificationRetryAtUtc      = t.NextVerificationRetryAtUtc,
             isVerificationRetryExhausted    = t.IsVerificationRetryExhausted,
         });
     }
+
+    private static Task<string?> ResolvePersistedTenantHostnameAsync(
+        IdentityDbContext db,
+        Guid tenantId,
+        CancellationToken ct) =>
+        db.TenantDomains
+            .Where(d => d.TenantId == tenantId && d.DomainType == "SUBDOMAIN")
+            .OrderByDescending(d => d.IsPrimary)
+            .ThenByDescending(d => d.IsVerified)
+            .Select(d => d.Domain)
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>
     /// POST /api/admin/tenants
@@ -585,8 +599,9 @@ public static class AdminEndpoints
             tenantId:  tenant.Id);
         db.ScopedRoleAssignments.Add(sra);
 
-        // ── Mark tenant owner (the admin user just created) ───────────────────
+        // ── Mark tenant + org owner (the admin user just created) ─────────────
         tenant.SetOwner(user.Id);
+        org.SetOwner(user.Id);
 
         await db.SaveChangesAsync(ct);
 
@@ -600,6 +615,7 @@ public static class AdminEndpoints
                 DisplayName:         tenant.Name,
                 Status:              "Active",
                 Subdomain:           tenant.Subdomain,
+                Hostname:            null,
                 LogoDocumentId:      tenant.LogoDocumentId,
                 LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
                 SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -616,6 +632,32 @@ public static class AdminEndpoints
 
         // ── Provision subdomain (DNS + TenantDomain record) ──────────────────
         var provResult = await provisioningService.ProvisionAsync(tenant, ct);
+
+        if (!string.IsNullOrWhiteSpace(provResult.Hostname))
+        {
+            try
+            {
+                await syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+                    TenantId:            tenant.Id,
+                    Code:                tenant.Code,
+                    DisplayName:         tenant.Name,
+                    Status:              tenant.IsActive ? "Active" : "Inactive",
+                    Subdomain:           tenant.Subdomain,
+                    Hostname:            provResult.Hostname,
+                    LogoDocumentId:      tenant.LogoDocumentId,
+                    LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
+                    SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+                    SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+                    EventType:           "Update"), ct);
+            }
+            catch (Exception syncEx)
+            {
+                log.LogError(syncEx,
+                    "[TenantDualWrite] Strict host sync failure in CreateTenant for TenantId={TenantId}, aborting.",
+                    tenant.Id);
+                return Results.Problem("Tenant host sync failed (strict mode active).", statusCode: 502);
+            }
+        }
 
         if (provResult.Success)
         {
@@ -893,7 +935,8 @@ public static class AdminEndpoints
         var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
         log.LogInformation("Verification retry requested (admin) for tenant {TenantCode}", tenant.Code);
 
-        var hostname = dnsService.BuildHostname(tenant.Subdomain);
+        var hostname = await ResolvePersistedTenantHostnameAsync(db, tenant.Id, ct)
+            ?? dnsService.BuildHostname(tenant.Subdomain);
 
         tenant.ResetVerificationRetryState();
         await db.SaveChangesAsync(ct);
@@ -1149,6 +1192,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      tenant.LogoDocumentId,
             LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1223,6 +1267,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      null,
             LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1302,6 +1347,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      tenant.LogoDocumentId,
             LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1371,6 +1417,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      tenant.LogoDocumentId,
             LogoWhiteDocumentId: null,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1421,6 +1468,7 @@ public static class AdminEndpoints
         ["Xenia"]         = "SYNQ_AI",
         ["SynqAI"]        = "SYNQ_AI",
         ["SynqInsights"]  = "SYNQ_INSIGHTS",
+        ["SynqSelling"]   = "SYNQ_SELLING",
     };
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).
@@ -1432,6 +1480,7 @@ public static class AdminEndpoints
         ["SYNQ_AI"]          = "Xenia",
         ["XENIA"]           = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
+        ["SYNQ_SELLING"]     = "SynqSelling",
     };
 
     private static IEnumerable<string> GetDbProductCodeCandidates(string productCode)
@@ -2292,7 +2341,9 @@ public static class AdminEndpoints
         });
 
         // LS-ID-TNT-016-01: Build tenant-subdomain-aware reset link.
-        var resetTenant = await db.Tenants.FindAsync([opTenantId], ct);
+        var resetTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == opTenantId, ct);
         var resetLink   = TenantPortalUrlHelper.Build(resetTenant, "reset-password", rawToken, notificationsOptions.Value);
         if (resetLink is not null)
         {
@@ -4447,7 +4498,9 @@ public static class AdminEndpoints
         if (body.TenantId == Guid.Empty)
             return Results.BadRequest(new { error = "tenantId is required." });
 
-        var tenant = await db.Tenants.FindAsync([body.TenantId], ct);
+        var tenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == body.TenantId, ct);
         if (tenant is null) return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
 
         // UIX-003-01: TenantAdmin may only invite users into their own tenant.
@@ -4501,6 +4554,8 @@ public static class AdminEndpoints
                     displayName: string.IsNullOrWhiteSpace(body.OrganizationDisplayName)
                         ? orgName
                         : body.OrganizationDisplayName.Trim());
+                // The invited user is the founding member of this brand-new org.
+                org.SetOwner(user.Id);
                 db.Organizations.Add(org);
             }
 
@@ -4774,7 +4829,9 @@ public static class AdminEndpoints
 
         // Build activation link via tenant portal helper.
         var logger         = loggerFactory.CreateLogger("AdminEndpoints.InvitePlatformUser");
-        var platformTenant = await db.Tenants.FindAsync([platformTenantId], ct);
+        var platformTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == platformTenantId, ct);
         string? activationLink = null;
         if (platformTenant is not null)
         {
@@ -4859,7 +4916,9 @@ public static class AdminEndpoints
 
         // LS-ID-TNT-016-01: Build tenant-subdomain-aware activation link.
         var logger        = loggerFactory.CreateLogger("AdminEndpoints.ResendInvite");
-        var inviteTenant  = await db.Tenants.FindAsync([opTenantId], ct);
+        var inviteTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == opTenantId, ct);
         var activationLink = TenantPortalUrlHelper.Build(inviteTenant, "accept-invite", rawToken, notifOptions.Value);
 
         if (activationLink is null)
@@ -5900,6 +5959,7 @@ public static class AdminEndpoints
         IdentityDbContext db,
         ClaimsPrincipal   caller,
         string            tenantId = "",
+        string            orgType = "",
         CancellationToken ct       = default)
     {
         var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
@@ -5914,8 +5974,13 @@ public static class AdminEndpoints
         }
         else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var filterTid))
         {
-            q = q.Where(o => o.TenantId == filterTid);
+            q = string.Equals(orgType, OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
+                ? q.Where(o => o.TenantId == filterTid || o.TenantId == null)
+                : q.Where(o => o.TenantId == filterTid);
         }
+
+        if (!string.IsNullOrWhiteSpace(orgType))
+            q = q.Where(o => o.OrgType == orgType);
 
         var items = await q
             .Where(o => o.IsActive)
@@ -7997,8 +8062,8 @@ public static partial class AdminEndpointsLscc010
 
         return effectiveOrgType?.ToUpperInvariant() switch
         {
-            OrgType.LawFirm => "CARECONNECT_REFERRER",
-            OrgType.Provider => "CARECONNECT_RECEIVER",
+            OrgType.LawFirm => ProductRoleCodes.CareConnectReferrerAdmin,
+            OrgType.Provider => ProductRoleCodes.CareConnectReceiver,
             _ => null,
         };
     }
@@ -8097,7 +8162,7 @@ public static partial class AdminEndpointsLscc010
         var org = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == id)
-            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.ProviderMode, o.IsActive, o.CreatedAtUtc })
+            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.ProviderMode, o.IsActive, o.CreatedAtUtc, o.OwnerUserId })
             .FirstOrDefaultAsync(ct);
 
         return org is null ? Results.NotFound() : Results.Ok(org);
@@ -8333,7 +8398,9 @@ public static partial class AdminEndpointsLscc010
 
                 // Best-effort tenant-access-granted notification email.
                 var notificationSent = false;
-                var providerTenantForNotif = await db.Tenants.FindAsync([targetTenantId], ct);
+                var providerTenantForNotif = await db.Tenants
+                    .Include(t => t.Domains)
+                    .FirstOrDefaultAsync(t => t.Id == targetTenantId, ct);
                 var portalUrl = TenantPortalUrlHelper.BuildBaseUrl(providerTenantForNotif, notifOptions.Value);
                 if (portalUrl is not null)
                 {
@@ -8401,7 +8468,9 @@ public static partial class AdminEndpointsLscc010
                     ct);
 
                 var invSent       = false;
-                var provTenant    = await db.Tenants.FindAsync([targetTenantId], ct);
+                var provTenant = await db.Tenants
+                    .Include(t => t.Domains)
+                    .FirstOrDefaultAsync(t => t.Id == targetTenantId, ct);
                 var activationLink = TenantPortalUrlHelper.Build(provTenant, "accept-invite", rawToken, notifOptions.Value);
                 if (activationLink is not null)
                 {
@@ -8476,7 +8545,9 @@ public static partial class AdminEndpointsLscc010
 
         // Best-effort invitation email — LS-ID-TNT-016-01: tenant-subdomain-aware link.
         var invitationSent = false;
-        var providerTenant = await db.Tenants.FindAsync([targetTenantId], ct);
+        var providerTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == targetTenantId, ct);
         var activationLinkNew = TenantPortalUrlHelper.Build(providerTenant, "accept-invite", rawToken2, notifOptions.Value);
         if (activationLinkNew is not null)
         {
@@ -8791,6 +8862,23 @@ public static partial class AdminEndpointsLscc010
         var (phoneOk, normalisedPhone, phoneError) = PhoneNumber.TryNormalise(body.Phone);
         if (!phoneOk)
             return Results.BadRequest(new { error = phoneError });
+
+        var organizationAlreadyHasActiveMember = await db.UserOrganizationMemberships
+            .AsNoTracking()
+            .AnyAsync(m => m.OrganizationId == id && m.IsActive, ct);
+
+        if (organizationAlreadyHasActiveMember)
+        {
+            logger.LogInformation(
+                "SynqLien buyer self-registration rejected for tenant {TenantId} org {OrgId} because the organization already has an active member.",
+                targetTenantId.Value,
+                id);
+            return Results.Conflict(new
+            {
+                error = "This funding company already has an activated portal user.",
+                code = "FUNDING_COMPANY_USER_ALREADY_EXISTS",
+            });
+        }
 
         var tenantOwnerUserId = await db.Tenants
             .AsNoTracking()

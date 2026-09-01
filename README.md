@@ -20,6 +20,7 @@ For agent-specific instructions, read [AGENTS.md](AGENTS.md) before changing cod
 | `SYNQ_COMMS` | SynqComms | Platform messaging and communication capabilities |
 | `SYNQ_INSIGHTS` | SynqInsights | Analytics, reports, schedules, and exports |
 | `SYNQ_PAY` | SynqPay | Payment-related product catalog anchor |
+| `SYNQ_SELLING` | Synq Selling | Portfolio sales, buyer engagement, and transaction workflows |
 | `SYNQ_PLATFORM` | Platform | Pseudo-product for tenant-level platform permissions; not a tenant subscription product |
 
 Product constants live in `shared/building-blocks/BuildingBlocks/Authorization/ProductCodes.cs`. Role constants live in `shared/building-blocks/BuildingBlocks/Authorization/ProductRoleCodes.cs`.
@@ -185,7 +186,7 @@ pnpm --dir apps/web dev
 Run only the control center:
 
 ```bash
-pnpm --dir apps/control-center dev
+pnpm dev:control-center
 ```
 
 Build, type-check, and test the tenant portal:

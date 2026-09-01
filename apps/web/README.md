@@ -83,6 +83,19 @@ src/
 | `TenantAdmin` | Tenant user/group/permission management |
 | `PlatformAdmin` | All tenants + platform admin |
 
+### CareConnect Referral Portal
+
+`/careconnect/referral/*` is the anonymous, access-code Referral Portal for referral associates.
+`/careconnect/representative/*` redirects there temporarily for compatibility. `/careconnect/referral/submit`
+submits pending referral requests to a selected law firm; `/careconnect/pending-requests` is the
+authenticated law-firm review queue where `CARECONNECT_REFERRER` users select a provider and convert
+pending requests into normal referrals. Authenticated and public referral submission forms include optional
+lien company name/email fields, and referral detail surfaces display the immutable origin and lien company data.
+When the authenticated review queue needs the public provider-network payload for final provider selection, it
+uses `/api/careconnect/public-network/*`, a read-only BFF bridge that resolves the tenant from the
+validated `platform_session` instead of the request hostname. This keeps common CareConnect portal hosts
+from being treated as tenant subdomains while preserving the CareConnect public trust-boundary headers.
+
 ## Environment
 
 `apps/web/.env.local` (gitignored):
@@ -145,7 +158,8 @@ Implemented routes:
 | `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. Pending offers expose View, Accept, and Decline actions; response actions require confirmation and show accepted/declined completion feedback. |
 | `/funding/offered-liens/{accessLinkId}` | Authenticated offered-lien detail page with Overview, Documents, and Messages tabs backed by real Liens service data. Its Messages tab posts to the same offer thread as the public email link, and its Actions menu uses the same confirmed accept/decline response flow as the list through the Liens workflow. |
 | `/selling/public/{token}` | Public, token-gated buyer or seller-view offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. Buyer-audience links include accept/decline buttons; seller-audience links are read-only and show buyer/funding-company details. |
-| `/selling/public/{token}/activate` | Public SynqLien buyer account activation page for buyer-audience links. Prefills and locks available buyer contact data from the lien offer, then creates or links a `SYNQ_LIENS:SYNQLIEN_BUYER` login through Liens and Identity. |
+| `/selling/public/{token}/activate` | Public SynqLien funding-company intro page for buyer-audience links. Its `Get Started` CTA opens the registration flow. |
+| `/selling/public/{token}/activate/register` | Public SynqLien buyer account activation registration flow. Prefills and locks available buyer contact data from the lien offer, then creates or links a `SYNQ_LIENS:SYNQLIEN_BUYER` login through Liens and Identity. |
 | `/api/lien/api/liens/selling/public/{token}` | Public BFF path for the Liens JSON data endpoint and response/account-activation actions. Accept/decline posts use `/api/lien/api/liens/selling/public/{token}/{action}` and account activation uses `/api/lien/api/liens/selling/public/{token}/activate-account`; seller-view tokens are rejected for those mutation paths, so browser traffic always runs through the tenant portal BFF before reaching the gateway. |
 
 The frontend does not include mock rows. Server components target Liens endpoints through the gateway:

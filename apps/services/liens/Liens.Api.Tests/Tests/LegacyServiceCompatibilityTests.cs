@@ -360,7 +360,7 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             await db.SaveChangesAsync();
         }
 
-        const string keyword = "Hanna Jud";
+        const string keyword = "Hannab Judx";
 
         var globalResponse = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
         {
@@ -424,6 +424,56 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
         var serviceLien = JsonNode.Parse(await serviceLienResponse.Content.ReadAsStringAsync())!;
         serviceLien["data"]!.AsArray().Should().Contain(item =>
             item!["lienCode"]!.GetValue<string>() == lienNumber);
+    }
+
+    [Fact]
+    public async Task Global_search_returns_legacy_result_categories_with_v3_cases_and_liens()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
+        {
+            page = 1,
+            limit = 20,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        body["cases"]!["items"]!.AsArray().Should().Contain(item =>
+            item!["id"]!.GetValue<Guid>() == SeedHelper.CaseId);
+        body["liens"]!["items"]!.AsArray().Should().Contain(item =>
+            item!["id"]!.GetValue<Guid>() == SeedHelper.LienId);
+        body["plaintiffs"]!.AsArray().Should().Contain(item =>
+            item!["caseId"]!.GetValue<string>() == SeedHelper.CaseId.ToString() &&
+            item["plaintiffName"]!.GetValue<string>() == "John Plaintiff");
+        body["lawFirms"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.LawFirmId.ToString());
+        body["medicalFacilities"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.MedicalFacilityContactId.ToString());
+        body["medicalProviders"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.MedicalProviderId.ToString());
+        body["fundingCompanies"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.FundingCompanyId.ToString());
+        body["Leads"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.LeadContactId.ToString());
+        body["servicing"]!.AsArray().Should().Contain(item =>
+            item!["caseId"]!.GetValue<string>() == SeedHelper.CaseId.ToString());
+    }
+
+    [Fact]
+    public async Task Global_search_accepts_legacy_keyword_field()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
+        {
+            keyword = "Jane Doe",
+            page = 1,
+            limit = 20,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        body["Leads"]!.AsArray().Should().ContainSingle(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.LeadContactId.ToString());
     }
 
     [Fact]
@@ -616,6 +666,47 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
         });
 
         hasExpectedItem.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ServiceSettlementHistory_v3_preserves_payment_note_and_updater_when_identity_does_not_return_the_user()
+    {
+        var updatingUserId = Guid.CreateVersion7();
+        SettlementPaymentDetail payment;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                SeedHelper.LienId,
+                3626,
+                100m,
+                updatingUserId,
+                checkNumber: "3626",
+                note: "Paid with CK#3626");
+
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
+        {
+            caseId = SeedHelper.CaseId,
+            page = 1,
+            limit = 100,
+        });
+        historyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await historyResponse.Content.ReadAsStringAsync())!;
+        var item = body["data"]!.AsArray().Single(historyItem =>
+            historyItem!["id"]!.GetValue<string>() == payment.Id.ToString())!;
+
+        item["note"]!.GetValue<string>().Should().Be("Paid with CK#3626");
+        item["checkNumber"]!.GetValue<string>().Should().Be("3626");
+        item["updatedBy"]!.GetValue<string>().Should().Be(updatingUserId.ToString());
     }
 
     [Fact]
