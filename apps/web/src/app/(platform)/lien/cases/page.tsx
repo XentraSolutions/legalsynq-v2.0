@@ -134,7 +134,7 @@ export default function CasesPage() {
 
   const query = {
     keyword: search || "",
-    page: pagination.page,
+    page: search ? 1 : pagination.page,
     limit: 10,
     sortBy: (sorting[0] && SORT_BY_MAP[sorting[0].id]) ?? "createdAt",
     sortDirection: sorting[0]?.desc === false ? "asc" : "desc",
