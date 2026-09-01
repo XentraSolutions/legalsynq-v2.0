@@ -63,7 +63,7 @@ Install base packages:
 
 ```bash
 sudo apt update
-sudo apt install -y git curl unzip nginx mysql-client jq
+sudo apt install -y git curl unzip nginx mysql-client jq rsync
 ```
 
 Install .NET 10:
@@ -1459,21 +1459,34 @@ git fetch
 git checkout <new-release-tag>
 ```
 
-Publish the changed service:
+Publish the changed service into a staging directory. Never publish directly into
+`/opt/legalsynq/publish/<service>` while its systemd service is running; replacing
+loaded assemblies in place can crash the active .NET process with
+`BadImageFormatException` and reset gateway requests.
 
 ```bash
-dotnet publish apps/services/identity/Identity.Api/Identity.Api.csproj -c Release -o /opt/legalsynq/publish/identity
+release_id="$(date -u +%Y%m%d%H%M%S)"
+staged_service="/opt/legalsynq/staging/${release_id}/identity"
+dotnet publish apps/services/identity/Identity.Api/Identity.Api.csproj -c Release -o "$staged_service"
 ```
 
-Restart and verify:
+Activate the staged files only while the service is stopped, then verify it:
 
 ```bash
 exit
-sudo systemctl restart legalsynq-identity
+staged_release="/opt/legalsynq/staging/<release-id-created-above>"
+sudo systemctl stop legalsynq-identity
+sudo rsync -a --delete "$staged_release/identity/" /opt/legalsynq/publish/identity/
+sudo systemctl start legalsynq-identity
 curl -f http://127.0.0.1:5001/health
 ```
 
-For a full backend deploy, publish all services, then restart in this order:
+Replace `<release-id-created-above>` with the exact staging directory name. If
+activation fails, leave the service stopped, restore the previous known-good staged
+output, and start it again.
+
+For a full backend deploy, stage all services first. Then stop, copy, start, and
+health-check each affected service in this order:
 
 ```text
 audit/notifications

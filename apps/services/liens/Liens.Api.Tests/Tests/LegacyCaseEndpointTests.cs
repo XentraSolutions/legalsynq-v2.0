@@ -7,6 +7,7 @@ using Liens.Api;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -867,6 +868,76 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             "MedicalProvider",
             "PlainTiffName",
             "ClosedDate");
+    }
+
+    [Fact]
+    public async Task GenerateLiensCsv_includes_all_batched_medical_codes_beyond_search_page_limit()
+    {
+        const int medicalCodeCount = 125;
+        var orgId = Guid.CreateVersion7();
+        var canonicalLawFirm = Company.Create(
+            SeedHelper.TenantId,
+            orgId,
+            CompanyDirectoryReferenceData.LawFirmId,
+            "Batched Export Law Firm",
+            SeedHelper.UserId);
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            orgId,
+            $"CASE-LIEN-CSV-BATCH-{Guid.CreateVersion7():N}",
+            "Batch",
+            "Export",
+            SeedHelper.UserId);
+        caseEntity.LinkCanonicalCaseParties(canonicalLawFirm.Id, null);
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            orgId,
+            $"LIEN-CSV-BATCH-{Guid.CreateVersion7():N}"[..36],
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: caseEntity.Id);
+        var medicalCodes = Enumerable.Range(1, medicalCodeCount)
+            .Select(index => ServicingItem.Create(
+                SeedHelper.TenantId,
+                orgId,
+                $"CSV-BATCH-CODE-{index:D3}-{Guid.CreateVersion7():N}",
+                "LegacyMedicalCode",
+                "Batched CSV medical code",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                lienId: lien.Id,
+                notes: "purchaseAmount=1.00; billingAmount=2.00"))
+            .ToList();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Companies.Add(canonicalLawFirm);
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.ServicingItems.AddRange(medicalCodes);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/liens/generate-csv", new
+        {
+            liensId = lien.Id,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = payload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var row = ParseCsvLine(lines[1]);
+
+        row[0].Should().Be(lien.LienNumber);
+        row[2].Should().Be(canonicalLawFirm.Name);
+        row[5].Should().Be("125.00");
+        row[6].Should().Be("250.00");
     }
 
     private static string[] ParseCsvLine(string line)

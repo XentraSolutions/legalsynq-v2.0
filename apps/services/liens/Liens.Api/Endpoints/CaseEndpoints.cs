@@ -4585,8 +4585,9 @@ public static class CaseEndpoints
     private static async Task<IResult> GenerateLiensCsvLegacy(
         LegacyGenerateLiensCsvRequest request,
         ILienService lienService,
-        ICaseService caseService,
-        IServicingItemService servicingItemService,
+        ICaseRepository caseRepository,
+        ICompanyRepository companyRepository,
+        IServicingItemRepository servicingItemRepository,
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
@@ -4690,18 +4691,48 @@ public static class CaseEndpoints
                 .OrderByDescending(l => l.CreatedAtUtc)
                 .ToList();
 
+            var filteredCaseIds = filteredLiens
+                .Where(lien => lien.CaseId.HasValue)
+                .Select(lien => lien.CaseId!.Value)
+                .Distinct()
+                .ToList();
+            var casesById = (await caseRepository.GetByIdsAsync(tenantId, filteredCaseIds, ct))
+                .ToDictionary(caseInfo => caseInfo.Id);
+            var handlingLawFirmCompanyIds = casesById.Values
+                .Where(caseInfo => caseInfo.HandlingLawFirmCompanyId.HasValue)
+                .Select(caseInfo => caseInfo.HandlingLawFirmCompanyId!.Value)
+                .Distinct()
+                .ToList();
+            var companiesById = (await companyRepository.GetCompaniesByIdsAsync(
+                    tenantId,
+                    handlingLawFirmCompanyIds,
+                    ct))
+                .ToDictionary(company => company.Id);
+
+            var filteredLienIds = filteredLiens
+                .Select(lien => lien.Id)
+                .Where(id => id != Guid.Empty)
+                .ToList();
+            var servicingItemsByLienId = (await servicingItemRepository.GetByLienIdsAsync(
+                    tenantId,
+                    filteredLienIds,
+                    ["LegacyMedicalCode", "LegacyMedicalFacilityInfo"],
+                    ct))
+                .Where(item => item.LienId.HasValue)
+                .GroupBy(item => item.LienId!.Value)
+                .ToDictionary(group => group.Key, group => group.ToList());
+
             var rows = new List<LegacyLiensCsvRow>();
             foreach (var lien in filteredLiens)
             {
-                CaseResponse? caseInfo = null;
+                Case? caseInfo = null;
                 Dictionary<string, string> caseFields;
                 if (lien.CaseId.HasValue)
                 {
-                    caseInfo = await caseService.GetByIdAsync(tenantId, lien.CaseId.Value, ct);
-                    if (caseInfo is null)
+                    if (!casesById.TryGetValue(lien.CaseId.Value, out caseInfo))
                         continue;
 
-                    caseFields = ParseLegacyNoteFields(caseInfo.Notes);
+                    caseFields = ParseLegacyNoteFields(ExtractLegacyNoteText(caseInfo.Notes));
                 }
                 else
                 {
@@ -4710,61 +4741,43 @@ public static class CaseEndpoints
 
                 decimal totalPurchase = 0m;
                 decimal totalBilling = 0m;
-                if (lien.Id != Guid.Empty)
+                var servicingItems = servicingItemsByLienId.GetValueOrDefault(lien.Id) ?? [];
+                foreach (var item in servicingItems.Where(item =>
+                             string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal)))
                 {
-                    var codeResults = await servicingItemService.SearchAsync(
-                        tenantId,
-                        search: "LegacyMedicalCode",
-                        status: null,
-                        priority: null,
-                        assignedTo: null,
-                        caseId: null,
-                        lienId: lien.Id,
-                        page: 1,
-                        pageSize: 500,
-                        ct);
-
-                    foreach (var item in codeResults.Items.Where(i =>
-                                 string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal)))
-                    {
-                        var codeFields = ParseLegacyNoteFields(item.Notes);
-                        if (decimal.TryParse(codeFields.GetValueOrDefault("purchaseAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var purchase))
-                            totalPurchase += purchase;
-                        if (decimal.TryParse(codeFields.GetValueOrDefault("billingAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var billing))
-                            totalBilling += billing;
-                    }
+                    var codeFields = ParseLegacyNoteFields(item.Notes);
+                    if (decimal.TryParse(codeFields.GetValueOrDefault("purchaseAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var purchase))
+                        totalPurchase += purchase;
+                    if (decimal.TryParse(codeFields.GetValueOrDefault("billingAmount", string.Empty), NumberStyles.Any, CultureInfo.InvariantCulture, out var billing))
+                        totalBilling += billing;
                 }
 
                 var facilityFields = new Dictionary<string, string>(StringComparer.Ordinal);
-                if (lien.Id != Guid.Empty)
-                {
-                    var infoResults = await servicingItemService.SearchAsync(
-                        tenantId,
-                        search: "LegacyMedicalFacilityInfo",
-                        status: null,
-                        priority: null,
-                        assignedTo: null,
-                        caseId: null,
-                        lienId: lien.Id,
-                        page: 1,
-                        pageSize: 50,
-                        ct);
+                var infoItem = servicingItems
+                    .Where(item => string.Equals(
+                        item.TaskType,
+                        "LegacyMedicalFacilityInfo",
+                        StringComparison.Ordinal))
+                    .OrderByDescending(item => item.CreatedAtUtc)
+                    .ThenByDescending(item => item.Id)
+                    .FirstOrDefault();
+                if (infoItem is not null)
+                    facilityFields = ParseLegacyNoteFields(infoItem.Notes);
 
-                    var infoItem = infoResults.Items.FirstOrDefault(i =>
-                        string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal));
-                    if (infoItem is not null)
-                        facilityFields = ParseLegacyNoteFields(infoItem.Notes);
-                }
+                var casePlaintiffName = caseInfo is null
+                    ? null
+                    : $"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}".Trim();
 
                 var plaintiffName = lien.IsConfidential
                     ? "Confidential"
                     : FirstNonEmpty(
                         lien.Plaintiff,
                         lien.SubjectDisplayName,
-                        caseInfo?.ClientDisplayName) ?? string.Empty;
-                var plainTiffName = caseInfo is null
-                    ? string.Empty
-                    : $"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}".Trim();
+                        casePlaintiffName) ?? string.Empty;
+                var plainTiffName = casePlaintiffName ?? string.Empty;
+                var canonicalLawFirm = caseInfo?.HandlingLawFirmCompanyId is Guid companyId
+                    ? companiesById.GetValueOrDefault(companyId)?.Name
+                    : null;
 
                 var closedDate = LienStatus.Terminal.Contains(lien.Status)
                     ? FormatLegacyTimestamp(lien.UpdatedAtUtc)
@@ -4779,11 +4792,10 @@ public static class CaseEndpoints
                     PlaintiffName = plaintiffName,
                     DisplayLawFirm = FirstNonEmpty(
                         lien.LawFirm,
-                        caseInfo?.LawFirm,
+                        canonicalLawFirm,
                         caseFields.GetValueOrDefault("lawFirm", string.Empty)) ?? string.Empty,
                     DisplayCaseManager = FirstNonEmpty(
                         lien.CaseManager,
-                        caseInfo?.CaseManager,
                         caseFields.GetValueOrDefault("caseManager", string.Empty)) ?? string.Empty,
                     DisplayFacilityName = FirstNonEmpty(
                         lien.MedicalFacility,
