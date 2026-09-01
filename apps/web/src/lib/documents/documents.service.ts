@@ -1,10 +1,10 @@
-import { documentsApi } from './documents.api';
+import { documentsApi } from "./documents.api";
 import {
   mapDocumentToListItem,
   mapDocumentToDetail,
   mapDocumentVersion,
   mapDocumentPagination,
-} from './documents.mapper';
+} from "./documents.mapper";
 import type {
   DocumentsQuery,
   DocumentListItem,
@@ -13,7 +13,7 @@ import type {
   PaginationMeta,
   UpdateDocumentRequestDto,
   UploadDocumentParams,
-} from './documents.types';
+} from "./documents.types";
 
 export interface DocumentListResult {
   items: DocumentListItem[];
@@ -39,7 +39,10 @@ export const documentsService = {
     return mapDocumentToDetail(data);
   },
 
-  async update(id: string, request: UpdateDocumentRequestDto): Promise<DocumentDetail> {
+  async update(
+    id: string,
+    request: UpdateDocumentRequestDto,
+  ): Promise<DocumentDetail> {
     const { data } = await documentsApi.update(id, request);
     return mapDocumentToDetail(data.data);
   },
@@ -50,14 +53,19 @@ export const documentsService = {
 
   async getViewUrl(id: string): Promise<string> {
     const { data } = await documentsApi.requestViewUrl(id);
-    const redeem = data.data.redeemUrl.replace(/^\/+/, '');
+    const redeem = data.data.redeemUrl.replace(/^\/+/, "");
     return `/api/lien/documents/${redeem}`;
   },
 
   async getDownloadUrl(id: string): Promise<string> {
     const { data } = await documentsApi.requestDownloadUrl(id);
-    const redeem = data.data.redeemUrl.replace(/^\/+/, '');
+    const redeem = data.data.redeemUrl.replace(/^\/+/, "");
     return `/api/lien/documents/${redeem}`;
+  },
+
+  async pdfMerge(urls: string[]): Promise<any> {
+    const { data } = await documentsApi.pdfMerge(urls);
+    return data.data;
   },
 
   async listVersions(id: string): Promise<DocumentVersion[]> {
