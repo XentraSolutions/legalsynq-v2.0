@@ -3272,7 +3272,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.BuyingOrgId.Should().BeNull();
         db.LienStatusHistories.Should().Contain(item =>
             item.LienId == lienId &&
-            item.Description == "Lien Status: Accepted. Buyer response recorded as Accepted.");
+            item.Description.StartsWith(
+                "Lien Status: Accepted. Buyer response recorded as Accepted. Changes:",
+                StringComparison.Ordinal));
 
         var sellerDetailResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
         sellerDetailResponse.StatusCode.Should().Be(HttpStatusCode.OK,

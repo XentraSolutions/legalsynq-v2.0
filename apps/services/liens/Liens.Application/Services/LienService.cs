@@ -336,6 +336,8 @@ public sealed class LienService : ILienService
                 new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
         }
 
+        var changes = BuildLienFieldChanges(entity, request, resolvedFacilityId);
+
         entity.Update(
             lienType: request.LienType,
             originalAmount: request.OriginalAmount,
@@ -361,6 +363,12 @@ public sealed class LienService : ILienService
 
         await _lienRepo.UpdateAsync(entity, ct);
 
+        if (changes.Count > 0)
+        {
+            foreach (var description in LienUpdateHistoryFormatter.BuildDescriptions("Lien updated", changes).Reverse())
+                await RecordStatusHistoryAsync(entity, actingUserId, description, ct);
+        }
+
         _logger.LogInformation(
             "Lien updated: {LienId} Tenant={TenantId}", entity.Id, tenantId);
 
@@ -383,14 +391,22 @@ public sealed class LienService : ILienService
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
+        var previousStatus = entity.Status;
         entity.SetLegacyMedicalStatus(status.Trim(), actingUserId);
 
         await _lienRepo.UpdateAsync(entity, ct);
-        await RecordStatusHistoryAsync(
-            entity,
-            actingUserId,
-            $"Lien status updated to {MapBusinessStatusLabel(entity.Status)}.",
-            ct);
+        if (!string.Equals(previousStatus, entity.Status, StringComparison.Ordinal))
+        {
+            var displayStatus = MapBusinessStatusLabel(entity.Status);
+            var descriptions = LienUpdateHistoryFormatter.BuildDescriptions(
+                $"Lien status updated to {displayStatus}",
+                [new LienFieldChange(
+                    "Status",
+                    MapBusinessStatusLabel(previousStatus),
+                    displayStatus)]);
+            foreach (var description in descriptions.Reverse())
+                await RecordStatusHistoryAsync(entity, actingUserId, description, ct);
+        }
 
         _logger.LogInformation(
             "Legacy medical lien status updated: {LienId} Status={Status} Tenant={TenantId}",
@@ -750,6 +766,7 @@ public sealed class LienService : ILienService
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
+        var previousStatus = entity.Status;
         if (LienStatus.Terminal.Contains(entity.Status))
         {
             // A closed lien can still be removed from the case. Use the same
@@ -767,7 +784,11 @@ public sealed class LienService : ILienService
         }
 
         await _lienRepo.UpdateAsync(entity, ct);
-        await RecordStatusHistoryAsync(entity, actingUserId, "Lien status updated to Delete.", ct);
+        var descriptions = LienUpdateHistoryFormatter.BuildDescriptions(
+            "Lien status updated to Delete",
+            [new LienFieldChange("Status", MapBusinessStatusLabel(previousStatus), "Delete")]);
+        foreach (var description in descriptions.Reverse())
+            await RecordStatusHistoryAsync(entity, actingUserId, description, ct);
 
         _logger.LogInformation(
             "Lien deleted (status={Status}): {LienId} Tenant={TenantId}", entity.Status, entity.Id, tenantId);
@@ -780,6 +801,62 @@ public sealed class LienService : ILienService
             actorUserId: actingUserId,
             entityType: "Lien",
             entityId: entity.Id.ToString());
+    }
+
+    private static IReadOnlyList<LienFieldChange> BuildLienFieldChanges(
+        Lien entity,
+        UpdateLienRequest request,
+        Guid? resolvedFacilityId)
+    {
+        var changes = new List<LienFieldChange>();
+
+        AddChange(changes, "Lien Type", entity.LienType, request.LienType);
+        AddChange(changes, "Original Amount", entity.OriginalAmount, request.OriginalAmount);
+        AddChange(changes, "External Reference", entity.ExternalReference, request.ExternalReference?.Trim());
+        AddChange(changes, "Case ID", entity.CaseId, request.CaseId ?? entity.CaseId);
+        AddChange(changes, "Facility ID", entity.FacilityId, resolvedFacilityId ?? entity.FacilityId);
+        AddChange(changes, "Jurisdiction", entity.Jurisdiction, request.Jurisdiction?.Trim());
+        AddChange(changes, "Confidential", entity.IsConfidential, request.IsConfidential ?? entity.IsConfidential);
+        AddChange(changes, "Subject First Name", entity.SubjectFirstName, request.SubjectFirstName?.Trim());
+        AddChange(changes, "Subject Last Name", entity.SubjectLastName, request.SubjectLastName?.Trim());
+        AddChange(changes, "Incident Date", entity.IncidentDate, request.IncidentDate);
+        AddChange(changes, "Purchase Date", entity.PurchaseDate, request.PurchaseDate ?? entity.PurchaseDate);
+        AddChange(changes, "Initial Service Date", entity.InitialServiceDate, request.InitialServiceDate ?? entity.InitialServiceDate);
+        AddChange(changes, "End Service Date", entity.EndServiceDate, request.EndServiceDate ?? entity.EndServiceDate);
+        AddChange(changes, "Bulk", entity.IsBulk, request.IsBulk?.Trim() ?? entity.IsBulk);
+        AddChange(changes, "Servicing", entity.IsServicing, request.IsServicing?.Trim() ?? entity.IsServicing);
+        AddChange(changes, "Description", entity.Description, request.Description?.Trim());
+
+        return changes;
+    }
+
+    private static void AddChange<T>(
+        ICollection<LienFieldChange> changes,
+        string field,
+        T previousValue,
+        T newValue)
+    {
+        if (previousValue is string previousText && newValue is string newText)
+        {
+            if (string.Equals(previousText.Trim(), newText.Trim(), StringComparison.Ordinal))
+                return;
+        }
+        else if (previousValue is string previousOnly && newValue is null)
+        {
+            if (string.IsNullOrWhiteSpace(previousOnly))
+                return;
+        }
+        else if (previousValue is null && newValue is string newOnly)
+        {
+            if (string.IsNullOrWhiteSpace(newOnly))
+                return;
+        }
+        else if (EqualityComparer<T>.Default.Equals(previousValue, newValue))
+        {
+            return;
+        }
+
+        changes.Add(new LienFieldChange(field, previousValue, newValue));
     }
 
     private Task RecordStatusHistoryAsync(

@@ -10,6 +10,7 @@ using BuildingBlocks.Exceptions;
 using BuildingBlocks.Notifications;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Application.Services;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -3968,19 +3969,32 @@ public static class SellingV2Endpoints
     private static bool HasIdempotencyKey(HttpRequest request, out IResult? error) => HasIdempotencyKey(request, out error, out _);
     private static void AddActivity(LiensDbContext db, Lien lien, Guid userId, string description)
     {
-        const int maxDescriptionLength = 500;
-        var lienStatus = string.IsNullOrWhiteSpace(lien.SellerStatus) ? lien.Status : lien.SellerStatus;
-        var statusPrefix = $"Lien Status: {lienStatus}. ";
-        var activityDescription = description.Trim();
-        if (activityDescription.Length > maxDescriptionLength - statusPrefix.Length)
-            activityDescription = activityDescription[..(maxDescriptionLength - statusPrefix.Length)].TrimEnd();
+        db.ChangeTracker.DetectChanges();
+        var excludedProperties = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(Lien.UpdatedAtUtc),
+            nameof(Lien.UpdatedByUserId),
+        };
+        var changes = db.Entry(lien).Properties
+            .Where(property => property.IsModified && !excludedProperties.Contains(property.Metadata.Name))
+            .Select(property => new LienFieldChange(
+                LienUpdateHistoryFormatter.DisplayFieldName(property.Metadata.Name),
+                property.OriginalValue,
+                property.CurrentValue))
+            .ToList();
 
-        db.LienStatusHistories.Add(LienStatusHistory.Create(
-            lien.TenantId,
-            lien.Id,
-            lien.CaseId,
-            $"{statusPrefix}{activityDescription}",
-            userId));
+        var lienStatus = string.IsNullOrWhiteSpace(lien.SellerStatus) ? lien.Status : lien.SellerStatus;
+        foreach (var activityDescription in LienUpdateHistoryFormatter.BuildDescriptions(
+                     $"Lien Status: {lienStatus}. {description}",
+                     changes).Reverse())
+        {
+            db.LienStatusHistories.Add(LienStatusHistory.Create(
+                lien.TenantId,
+                lien.Id,
+                lien.CaseId,
+                activityDescription,
+                userId));
+        }
     }
     private static string DisplayName(Contact contact) => string.IsNullOrWhiteSpace(contact.Organization) ? contact.DisplayName : contact.Organization;
     private static string DisplayName(CompanyContactPerson contact) => $"{contact.FirstName} {contact.LastName}".Trim();

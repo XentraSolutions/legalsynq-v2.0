@@ -2063,12 +2063,29 @@ public static class SellingPublicEndpoints
         var currentStatus = ResolveActivityLienStatus(lien);
         if (!string.Equals(previousStatus, currentStatus, StringComparison.Ordinal))
         {
-            db.LienStatusHistories.Add(LienStatusHistory.Create(
-                lien.TenantId,
-                lien.Id,
-                lien.CaseId,
-                $"Lien Status: {currentStatus}. Buyer response recorded as {responseStatus}.",
-                updatedByUserId));
+            db.ChangeTracker.DetectChanges();
+            var changes = db.Entry(lien).Properties
+                .Where(property =>
+                    property.IsModified &&
+                    property.Metadata.Name != nameof(Lien.UpdatedAtUtc) &&
+                    property.Metadata.Name != nameof(Lien.UpdatedByUserId))
+                .Select(property => new LienFieldChange(
+                    LienUpdateHistoryFormatter.DisplayFieldName(property.Metadata.Name),
+                    property.OriginalValue,
+                    property.CurrentValue))
+                .ToList();
+
+            foreach (var description in LienUpdateHistoryFormatter.BuildDescriptions(
+                         $"Lien Status: {currentStatus}. Buyer response recorded as {responseStatus}",
+                         changes).Reverse())
+            {
+                db.LienStatusHistories.Add(LienStatusHistory.Create(
+                    lien.TenantId,
+                    lien.Id,
+                    lien.CaseId,
+                    description,
+                    updatedByUserId));
+            }
         }
     }
 

@@ -682,6 +682,18 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         declaration.Amount.Should().Be(0m);
         declaration.Note.Should().Contain("Recovery exhausted");
         declaration.Note.Should().Contain("status=4");
+
+        var paymentDetailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        paymentDetailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await paymentDetailsResponse.Content.ReadAsStringAsync()}");
+
+        var paymentDetails = await paymentDetailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var noRecoveryPayment = paymentDetails!.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("id").GetGuid() == declaration.Id);
+        noRecoveryPayment.GetProperty("amountToSettle").GetString().Should().Be("5000.00");
+        noRecoveryPayment.GetProperty("checkAmount").GetString().Should().BeEmpty();
+        noRecoveryPayment.GetProperty("checkDate").GetString().Should().BeEmpty();
     }
 
     [Fact]

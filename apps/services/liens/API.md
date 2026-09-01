@@ -1557,7 +1557,12 @@ also merges imported Program 1 case-update events and
 The lien-update timeline excludes case-level `Case Details Update` history that has
 no lien association. Those records remain available from `case-updates/v3`; every
 row returned by `liens-updates/v3` represents a specific lien and includes its
-`lienId` and `action`.
+`lienId`, current tenant-scoped `lienCode`, and `action`. Native lien mutations compare
+the persisted previous values with the resulting values and record every changed
+business field as `previous → new`; unchanged submissions do not create a change row.
+Summaries that exceed the 500-character history storage limit continue in additional
+rows so changed fields are not silently omitted. Selling handlers that directly mutate
+a tracked lien use the same comparison, including archive, restore, and public buyer-response transitions.
 Changing `note` through `POST /api/liens/cases/liens/update-medical` appends one
 lien-scoped `Lien Update` row. Its description is the submitted note, its
 `lienId` is the updated lien, and `updatedBy` resolves from the authenticated

@@ -815,6 +815,14 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         closeResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await closeResponse.Content.ReadAsStringAsync()}");
 
+        var repeatedCloseResponse = await _client.PatchAsJsonAsync("/service/liens/update/status", new
+        {
+            liensId = lienId,
+            statusId = "Closed",
+        });
+        repeatedCloseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await repeatedCloseResponse.Content.ReadAsStringAsync()}");
+
         var deleteResponse = await _client.DeleteAsync($"/api/liens/cases/liens/delete/{lienId}");
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await deleteResponse.Content.ReadAsStringAsync()}");
@@ -835,8 +843,13 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             .Select(item => item.GetProperty("description").GetString())
             .ToList();
 
-        descriptions.Should().Contain("Lien status updated to Closed.");
-        descriptions.Should().Contain("Lien status updated to Delete.");
+        descriptions.Should().Contain("Lien status updated to Closed. Changes: Status: Open → Closed.");
+        descriptions.Should().Contain("Lien status updated to Delete. Changes: Status: Closed → Delete.");
+        descriptions.Should().HaveCount(2);
+        updates.RootElement.GetProperty("data").EnumerateArray()
+            .Where(item => item.GetProperty("lienId").GetString() == lienId.ToString())
+            .Select(item => item.GetProperty("lienCode").GetString())
+            .Should().OnlyContain(code => code == "LIEN-HISTORY-STATUS-001");
         updates.RootElement.GetProperty("data").EnumerateArray()
             .Where(item => item.GetProperty("lienId").GetString() == lienId.ToString())
             .Select(item => item.GetProperty("updatedBy").GetString())
