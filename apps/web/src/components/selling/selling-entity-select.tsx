@@ -140,6 +140,14 @@ export function SellingEntitySelect({
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
   }, [showPendingPrompt, pendingName, suggestQuery.data]);
+  // The top suggestion's text is the same as what was imported — nothing
+  // ambiguous about the name itself, just whether it's the same real-world
+  // company (see the "Create it" fallback for when it isn't). Drives the
+  // copy below so it doesn't claim "no matching record" when there plainly
+  // is one, textually.
+  const exactSuggestion = suggestions.find(
+    (s) => s.name.trim().toLowerCase() === pendingName?.trim().toLowerCase(),
+  );
   // A debounced-search refetch in flight, distinct from the very first load —
   // BaseSelect shows a different skeleton for each.
   const isSearchingCompanies =
@@ -279,7 +287,11 @@ export function SellingEntitySelect({
               <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
               <p className="text-sm text-gray-700">
                 <span className="font-medium">&ldquo;{pendingName}&rdquo;</span>{" "}
-                was imported but doesn&apos;t have matching record yet.
+                {exactSuggestion
+                  ? "matches an existing record — confirm below to link it."
+                  : suggestions.length > 0
+                    ? "was imported, but we couldn't confidently match it to an existing record. Pick the closest match below, or create a new one."
+                    : "was imported, but we couldn't find a matching record. Create a new one below."}
               </p>
             </div>
             <button
