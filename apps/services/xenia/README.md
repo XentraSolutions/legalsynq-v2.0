@@ -340,8 +340,9 @@ participant authorization still applies. The assistant registry exposes the Care
 generic tenant agent and to their product-specific agents, while the authoritative tool implementations live behind
 each product service's `/api/assistant-tools/*` API surface. SynqLien lien tools accept broad or scoped lien read
 permissions, and the Liens service applies seller, buyer, holder, and marketplace visibility before returning records.
-Grounded date-only fields are ISO calendar dates; Xenia reproduces them without applying timezone conversion so
-assistant answers remain consistent with the tenant portal.
+Grounded SynqLien date fields include additive `*DisplayDate` companions in the tenant portal's legacy `MM/DD/YYYY`
+format. Raw `*Utc` fields remain UTC instants and raw date-only fields remain ISO calendar dates, but assistant
+answers should quote the display-date values so dates remain consistent with the tenant portal.
 The queue-summary tools are also the KPI surfaces used for questions such as "How many referrals do I have?", "How many
 liens are open?", and "How many new liens were created in the last 7 days?"
 
