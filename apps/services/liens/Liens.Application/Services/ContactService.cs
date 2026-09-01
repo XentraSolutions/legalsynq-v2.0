@@ -11,17 +11,20 @@ namespace Liens.Application.Services;
 public sealed class ContactService : IContactService
 {
     private readonly IContactRepository _repo;
+    private readonly ICompanyRepository _companyRepo;
     private readonly IFacilityRepository _facilityRepo;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<ContactService> _logger;
 
     public ContactService(
         IContactRepository repo,
+        ICompanyRepository companyRepo,
         IFacilityRepository facilityRepo,
         IAuditPublisher audit,
         ILogger<ContactService> logger)
     {
         _repo = repo;
+        _companyRepo = companyRepo;
         _facilityRepo = facilityRepo;
         _audit = audit;
         _logger = logger;
@@ -395,10 +398,14 @@ public sealed class ContactService : IContactService
                 return firmName.Contains(term, StringComparison.OrdinalIgnoreCase);
             });
 
+        var matchingCompanyIds = (await _companyRepo.FindLawFirmCompaniesByNameAsync(tenantId, term, ct))
+            .Select(company => company.Id);
+
         return matchingLawFirms
             .SelectMany(contact => new Guid?[] { contact.Id, contact.OrgId, contact.LawFirmId })
             .Where(id => id.HasValue && id.Value != Guid.Empty)
             .Select(id => id!.Value)
+            .Concat(matchingCompanyIds)
             .Distinct()
             .ToList();
     }
