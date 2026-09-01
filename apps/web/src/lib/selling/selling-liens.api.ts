@@ -161,6 +161,10 @@ export const liensApi = {
     return apiClient.post<any>(`${BASE}/bulk-imports/${id}/validate`, {});
   },
 
+  cancelUpload(id: string) {
+    return apiClient.delete<any>(`${BASE}/bulk-imports/${id}`);
+  },
+
   getBulkImport(id: string) {
     return apiClient.get<BulkImportSummary>(`${BASE}/bulk-imports/${id}`);
   },

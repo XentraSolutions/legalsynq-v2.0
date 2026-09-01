@@ -69,3 +69,32 @@ export function prependCsvColumn(
     ...fields,
   ]);
 }
+
+/**
+ * Rewrites specific column values so a re-uploaded import resolves entity
+ * links the bulk-import review step found unmatched — the confirm endpoint
+ * only ever exact-matches a row's raw text against existing records, so
+ * substituting a corrected/canonical name here is what actually makes the
+ * link stick on the next validate+confirm pass.
+ *
+ * `corrections` maps a column header to a lookup from the imported cell
+ * value (trimmed, lower-cased) to the value that should replace it. Columns
+ * and cells with no entry are left untouched.
+ */
+export function applyCsvColumnCorrections(
+  csvText: string,
+  corrections: Record<string, Map<string, string>>,
+): string {
+  let headers: string[] = [];
+  return mapCsvLines(csvText, (fields, idx) => {
+    if (idx === 0) {
+      headers = fields;
+      return fields;
+    }
+    return fields.map((value, colIndex) => {
+      const columnCorrections = corrections[headers[colIndex]];
+      const corrected = columnCorrections?.get(value.trim().toLowerCase());
+      return corrected ?? value;
+    });
+  });
+}

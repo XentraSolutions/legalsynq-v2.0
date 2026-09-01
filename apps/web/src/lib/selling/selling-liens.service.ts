@@ -164,6 +164,11 @@ export const liensService = {
     return data;
   },
 
+  async cancelUpload(id: string): Promise<any> {
+    const { data } = await liensApi.cancelUpload(id);
+    return data;
+  },
+
   async getBulkImport(id: string): Promise<BulkImportSummary> {
     const { data } = await liensApi.getBulkImport(id);
     return data;

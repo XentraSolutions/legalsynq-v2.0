@@ -59,6 +59,11 @@ export function BulkUploadForm({
   const [uploading, setUploading] = useState(false);
   const [reviewImportId, setReviewImportId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // The exact CSV text last sent to the bulk-import endpoint, kept around so
+  // the unmatched-entities panel can rewrite and re-upload a corrected
+  // version — null for .xlsx uploads, which that panel can't rewrite.
+  const [uploadedCsvText, setUploadedCsvText] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string>("");
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -95,6 +100,12 @@ export function BulkUploadForm({
         return;
       }
 
+      if (uploadFile.name.toLowerCase().endsWith(".csv")) {
+        setUploadedCsvText(await uploadFile.text());
+        setUploadedFileName(uploadFile.name);
+      } else {
+        setUploadedCsvText(null);
+      }
       setReviewImportId(uploadedfiles.importId);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -119,7 +130,37 @@ export function BulkUploadForm({
     setFile(null);
     setErrors({});
     setReviewImportId(null);
+    setUploadedCsvText(null);
+    setUploadedFileName("");
     onClose();
+  };
+
+  // Re-runs the upload -> validate pipeline against a corrected CSV, then
+  // points the review modal at the new import. Cancelling the old one is
+  // best-effort — it not being cancellable (e.g. a slow double-click) isn't
+  // worth blocking the correction on, since it's harmless leftover state.
+  const applyCorrections = async (correctedCsvText: string) => {
+    const previousImportId = reviewImportId;
+    const correctedFile = new File(
+      [correctedCsvText],
+      uploadedFileName || "corrected.csv",
+      { type: "text/csv" },
+    );
+    const formData = new FormData();
+    formData.append("File", correctedFile);
+    formData.append("templateType", "SellingLienImport");
+    formData.append("defaultListingVisibility", "Private");
+    formData.append("defaultSellerStatus", "Pending");
+    const uploaded = await liensService.upload(formData);
+    const validated = await liensService.validateUpload(uploaded.importId);
+    if (validated.status === "VALIDATED_WITH_ERRORS") {
+      toast.error(`Failed to import ${validated.invalidCount} row/s`);
+    }
+    setUploadedCsvText(correctedCsvText);
+    setReviewImportId(uploaded.importId);
+    if (previousImportId) {
+      liensService.cancelUpload(previousImportId).catch(() => {});
+    }
   };
 
   const handleConfirmImport = async () => {
@@ -269,6 +310,8 @@ export function BulkUploadForm({
       onClose={resetAndClose}
       onConfirm={handleConfirmImport}
       confirming={confirming}
+      sourceCsvText={uploadedCsvText}
+      onApplyCorrections={applyCorrections}
     />
     </>
   );

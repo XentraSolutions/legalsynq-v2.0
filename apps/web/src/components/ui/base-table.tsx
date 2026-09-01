@@ -274,6 +274,8 @@ export function BaseTable<TData>({
                       headerClassName?: string;
                       width?: string;
                       minWidth?: string;
+                      sticky?: boolean;
+                      stickyHeaderBackground?: string;
                     }
                   | undefined;
 
@@ -292,6 +294,11 @@ export function BaseTable<TData>({
                       sortable && "cursor-pointer select-none",
                       headerCellClassName,
                       meta?.headerClassName,
+                      meta?.sticky &&
+                        cn(
+                          "sticky left-0 z-20 border-r border-gray-200",
+                          meta.stickyHeaderBackground ?? "bg-[#eaeff3]",
+                        ),
                     )}
                     onClick={
                       sortable
@@ -398,6 +405,8 @@ export function BaseTable<TData>({
                           cellClassName?: string;
                           width?: string;
                           minWidth?: string;
+                          sticky?: boolean;
+                          stickyBackground?: string;
                         }
                       | undefined;
                     return (
@@ -406,6 +415,12 @@ export function BaseTable<TData>({
                         className={cn(
                           meta?.align === "right" && "text-right",
                           meta?.cellClassName,
+                          meta?.sticky &&
+                            cn(
+                              "sticky left-0 z-10 border-r border-gray-200",
+                              meta.stickyBackground ??
+                                "bg-white group-hover:bg-gray-50",
+                            ),
                         )}
                         style={{
                           width: meta?.width,
