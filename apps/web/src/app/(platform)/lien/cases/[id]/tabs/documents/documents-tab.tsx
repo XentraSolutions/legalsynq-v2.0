@@ -147,10 +147,10 @@ export function DocumentsTab({
     }
   }, [confirmAction]);
 
-  const deleteFiles = useCallback(async (payload: File[]) => {
+  const deleteFiles = useCallback(async (payload: DocumentType[]) => {
     try {
       for (const element of payload) {
-        await casesService.deleteCaseDocument(confirmAction.id);
+        await casesService.deleteCaseDocument(element.id);
 
         showConfirmAction({ id: "", isOpen: false, type: "" });
         fetchDocuments();
@@ -175,21 +175,45 @@ export function DocumentsTab({
         for (const element of selectedMergeFiles.document) {
           const documentId = element.url.split("/").filter(Boolean).pop();
 
-          const viewUrl = await documentsService.getViewUrl(documentId ?? "");
+          if (!documentId) {
+            console.error("Invalid document ID:", element.url);
+            addToast({
+              type: "error",
+              title: "Invalid Document",
+              description: `Cannot extract ID from ${element.url}`,
+            });
+            return;
+          }
+
+          const viewUrl = await documentsService.getViewUrl(documentId);
           docs.push(viewUrl);
         }
 
-        const mergedBytes = await mergePdfsFromUrls(docs);
-        const safeBytes = new Uint8Array(mergedBytes);
+        const mergePDF = await documentsService.pdfMerge(docs);
+        // Decode base64 to Uint8Array
+        const binaryString = atob(mergePDF);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
         const fileName = selectedMergeFiles?.form?.fileName ?? "";
-        const file = new File([safeBytes], `${fileName}.pdf`, {
+        const file = new File([bytes], `${fileName}.pdf`, {
           type: "application/pdf",
         });
         if (file) {
-          await uploadCaseDocuments(file);
+          await uploadCaseDocuments([file]);
+          await deleteFiles(selectedMergeFiles.document);
+          setMergeFile({ document: null, isOpen: false });
+          setSelectedMergeFiles({
+            document: [],
+            form: {
+              fileName: "",
+              selectedDocType: "",
+            },
+          });
         }
       }
-      // await deleteFiles(payload);
     } catch (err) {
       if (err instanceof ApiError) {
         addToast({
@@ -320,7 +344,7 @@ export function DocumentsTab({
                 }
                 onClick={() => mergeFiles()}
               >
-                Merge File
+                {submitting ? "Merging Files..." : "Merge Files"}
               </Button>
             </>
           }

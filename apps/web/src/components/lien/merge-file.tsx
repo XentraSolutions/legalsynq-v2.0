@@ -18,8 +18,6 @@ interface CaseDocument {
 
 interface MergePdfProps {
   open: boolean;
-  loadDocuments?: () => void;
-  caseId?: string;
   documents?: DocumentType[];
   documentTypes?: DropdownOption[];
   selectedDocument: DocumentType | null;
@@ -33,8 +31,6 @@ interface MergePdfProps {
 }
 
 export const MergePdf: React.FC<MergePdfProps> = ({
-  loadDocuments,
-  caseId = "",
   documents = [],
   documentTypes = [],
   selectedDocument,
@@ -43,11 +39,9 @@ export const MergePdf: React.FC<MergePdfProps> = ({
   const [fileName, setFileName] = useState<string>("");
   const [selectedDocType, setSelectedDocType] = useState<string>();
 
-  const [type, setType] = useState<string>("");
   const [checks, setChecks] = useState<string[]>([]);
   const [checkedDocuments, setCheckedDocument] = useState<DocumentType[]>([]);
   const [safeDocuments, setSafeDocuments] = useState<DocumentType[]>([]);
-  const [merging, setMerging] = useState<boolean>(false);
 
   // HTML5 Drag and Drop tracking state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -98,21 +92,19 @@ export const MergePdf: React.FC<MergePdfProps> = ({
 
     setDraggedIndex(index);
     setSafeDocuments(updatedDocs);
+
+    // Update checkedDocuments if the dragged item is checked
+    if (checks.includes(draggedItem.id)) {
+      const updatedCheckedDocs = updatedDocs.filter((doc) =>
+        checks.includes(doc.id),
+      );
+      setCheckedDocument(updatedCheckedDocs);
+    }
   };
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
   };
-
-  const getSelectedPdfUrls = (): string[] => {
-    return safeDocuments
-      .filter((doc) => checks.includes(doc.id))
-      .map((doc) => doc.url);
-  };
-
-  // const convert = (id: any): string[] => {
-  //   return documentIdToName(id || "");
-  // };
 
   const toggle = (
     e: React.ChangeEvent<HTMLInputElement>,
