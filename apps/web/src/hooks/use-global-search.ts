@@ -32,7 +32,6 @@ export function useTanStackGlobalSearch(debounceMs = 300, minChars = 2) {
       
       const response = await lienGlobalService.globalSearch(debouncedQuery);
       if (!response) throw new Error('Network response failed');
-      console.log(response)
       return response.items
     },
     enabled: debouncedQuery.length >= minChars,

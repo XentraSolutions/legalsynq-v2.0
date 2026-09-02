@@ -10,6 +10,16 @@
   --color-primary: #2563eb; /* fallback; overridden by TenantBrandingProvider */
 }
 
+/* Interim scoping while per-product theming isn't built yet: platform chrome
+   (top bar, shared across every product) defaults to brand orange regardless
+   of product. Plan is to extend the existing tenant branding API
+   (TenantBrandingProvider) to carry a per-product accent (e.g. blue for Synq
+   Liens buying) — at that point products should set --color-primary in their
+   own scope instead of inheriting this platform-chrome override. */
+.platform-chrome {
+  --color-primary: #f97316;
+}
+
 /* Keep the sonner toast close button inline with the header instead of
    overlapping the card edge (sonner's default badge-style position). */
 [data-sonner-toaster] [data-close-button] {
