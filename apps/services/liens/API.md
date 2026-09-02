@@ -373,7 +373,7 @@ Posts a message from the authenticated seller detail page into the same persiste
 buyer/seller links and authenticated funding-company portal. The lien must already have an offer/access-link thread
 with a buyer; otherwise the endpoint returns `409 message_thread_unavailable`. Seller messages use
 `senderType=seller` and notify the buyer with the same `lien.offer.message.created` email workflow used by public
-seller replies.
+seller replies. The email body displays the persisted message `createdAtUtc` timestamp converted to U.S. Pacific time.
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 
@@ -1139,7 +1139,8 @@ same chronological thread. After the message is saved, Liens emails the other pa
 use the seller account email resolved from Identity; seller-to-buyer replies use the activated or authenticated buyer
 account email, not law-firm/contact email. Accept/decline outcome emails use the same account-recipient rule for the
 seller, and the authenticated/activated buyer account email for the buyer when available. Notification failures are
-logged and do not roll back the saved message or response.
+logged and do not roll back the saved message or response. Message notification emails display the saved message
+timestamp converted from `createdAtUtc` to U.S. Pacific time.
 
 **Authentication:** None.
 

@@ -1596,6 +1596,7 @@ public static class SellingPublicEndpoints
         var subject = "New message on lien offer";
         var body = BuildPublicMessageEmailBody(message, lienCode, portalUrl);
         var htmlBody = BuildPublicMessageEmailHtmlBody(message, lienCode, portalUrl);
+        var messageSentAt = FormatPublicMessageEmailTimestamp(message.CreatedAtUtc);
         var metadata = new Dictionary<string, string>
         {
             ["tenantId"] = view.AccessLink.TenantId.ToString(),
@@ -1606,6 +1607,8 @@ public static class SellingPublicEndpoints
             ["sellerOrgId"] = view.AccessLink.SellerOrgId.ToString(),
             ["accessLinkId"] = view.AccessLink.Id.ToString(),
             ["messageId"] = message.Id.ToString(),
+            ["messageCreatedAtUtc"] = DateTime.SpecifyKind(message.CreatedAtUtc, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture),
+            ["messageSentAt"] = messageSentAt,
             ["senderType"] = message.SenderType,
             ["recipientRole"] = recipientRole,
         };
@@ -1755,12 +1758,14 @@ public static class SellingPublicEndpoints
         string lienCode,
         string? portalUrl)
     {
+        var messageSentAt = FormatPublicMessageEmailTimestamp(message.CreatedAtUtc);
         var body = new List<string>
         {
             "LegalSynq",
             "New message on lien offer",
             string.Empty,
             $"{message.SenderName} sent a message regarding lien offer {lienCode}.",
+            $"Message sent: {messageSentAt}",
             string.Empty,
             message.Message,
         };
@@ -1779,6 +1784,7 @@ public static class SellingPublicEndpoints
         string lienCode,
         string? portalUrl)
     {
+        var messageSentAt = FormatPublicMessageEmailTimestamp(message.CreatedAtUtc);
         var html = new StringBuilder();
         html.AppendLine("<!doctype html>");
         html.AppendLine("<html lang=\"en\">");
@@ -1799,6 +1805,9 @@ public static class SellingPublicEndpoints
             .Append(" sent a message regarding lien offer ")
             .Append(Html(lienCode))
             .AppendLine(".</p>");
+        html.Append("<p style=\"margin:10px 0 0 0;color:#ffffff;font-size:14px;line-height:1.45;font-weight:400;opacity:.82;\">Message sent: ")
+            .Append(Html(messageSentAt))
+            .AppendLine("</p>");
         html.AppendLine("</td></tr>");
         html.AppendLine("<tr><td bgcolor=\"#ffffff\" style=\"background-color:#ffffff;color:#111827;border:1px solid #e5e5e5;border-top:0;border-radius:0 0 10px 10px;padding:24px 24px 28px;\">");
         html.Append("<p style=\"margin:0 0 20px 0;color:#111827;font-size:15px;line-height:1.6;white-space:pre-wrap;\">")
@@ -1818,6 +1827,9 @@ public static class SellingPublicEndpoints
 
         return html.ToString();
     }
+
+    private static string FormatPublicMessageEmailTimestamp(DateTime createdAtUtc)
+        => $"{PacificTimeHelper.FormatTimestamp(createdAtUtc)} PT";
 
     private static string BuildPublicMessageNotificationIdempotencyKey(
         SellingPortalMessage message,
