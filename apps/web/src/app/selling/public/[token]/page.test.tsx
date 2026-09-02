@@ -151,10 +151,10 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getAllByText("RL Liens1").length).toBeGreaterThan(0);
     expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
     expect(screen.getByText("Anderson & Ashworth Law Firm LLC")).toBeInTheDocument();
-    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
+    expect(screen.getByText("Ralph Buyer")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "ralph.lopez+200@xentragroup.com" })).toHaveAttribute(
       "href",
-      "mailto:anderson.contact@ashworthlaw.test",
+      "mailto:ralph.lopez+200@xentragroup.com",
     );
     expect(screen.getByText("signed-lien-real.pdf")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
