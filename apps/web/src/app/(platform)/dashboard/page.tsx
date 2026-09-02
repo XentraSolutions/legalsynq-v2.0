@@ -8,8 +8,10 @@ import {
   resolveEnabledNavKeys,
 } from "@/lib/nav";
 import { getServerPortalConfig } from "@/lib/portal";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { NavItem } from "@/types";
+import { Building2, UsersRound, type LucideIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -32,49 +34,41 @@ export default async function DashboardPage() {
     ? session.userProducts
     : (session.enabledProducts ?? []);
   const enabledKeys = resolveEnabledNavKeys(productList);
-  const productEntries = Object.entries(PRODUCT_META).filter(([id]) =>
-    enabledKeys.has(id),
-  );
+
+  // Liens buying and selling are presented as one "Synq Liens" tile with
+  // Buying/Selling sub-items, rather than two separate product tiles.
+  const hasLienBuying = enabledKeys.has("lien");
+  const hasLienSelling = enabledKeys.has("selling");
+  const productEntries = Object.entries(PRODUCT_META).filter(([id]) => {
+    if (id === "selling") return false;
+    if (id === "lien") return hasLienBuying || hasLienSelling;
+    return enabledKeys.has(id);
+  });
 
   return (
-    <div className="max-w-4xl space-y-8">
+    <div className="space-y-10">
       {/* Welcome header */}
       <div>
-        <h1 className="text-xl font-bold text-[#0f1928]">
+        <h1 className="text-[32px] font-bold leading-10 text-[#0A0A0A]">
           Welcome back{session.orgName ? `, ${session.orgName}` : ""}
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-base font-normal leading-[160%] text-[#737373] mt-2">
           {orgTypeLabel(session.orgType)} · {session.email}
         </p>
       </div>
 
       {/* Product tiles */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-          Your Products
-        </p>
+        <p className="text-[20px] font-medium leading-7 text-[#A3A3A3] mb-4">Your Products</p>
         {productEntries.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {productEntries.map(([id, meta]) => (
               <ProductCard
                 key={id}
                 id={id}
                 meta={meta}
-                items={(PRODUCT_NAV[id] ?? [])
-                  .flatMap((s) => s.items)
-                  .map((item): NavItem =>
-                    item.children?.length && (!item.href || !item.label)
-                      ? {
-                          ...item,
-                          label: item.label ?? item.heading,
-                          href: item.href ?? item.children[0].href,
-                        }
-                      : item,
-                  )
-                  .filter((item): item is NavItem & { href: string } =>
-                    Boolean(item.href && item.label),
-                  )
-                  .slice(0, 3)}
+                items={id === "lien" ? buildLienItems(hasLienBuying, hasLienSelling) : []}
+                primaryHref={firstNavHref(id)}
               />
             ))}
           </div>
@@ -88,21 +82,19 @@ export default async function DashboardPage() {
       {/* Admin shortcut */}
       {(session.isTenantAdmin || session.isPlatformAdmin) && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-            Administration
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <p className="text-[20px] font-medium leading-7 text-[#A3A3A3] mb-4">Administration</p>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <AdminCard
               href="/admin/users"
-              icon="ri-group-line"
+              icon={UsersRound}
               label="Users"
-              description="Manage users and their roles"
+              description="Manage users and their roles."
             />
             <AdminCard
               href="/admin/organizations"
-              icon="ri-building-line"
+              icon={Building2}
               label="Organizations"
-              description="View and manage organizations"
+              description="View and manage organizations."
             />
           </div>
         </div>
@@ -111,64 +103,109 @@ export default async function DashboardPage() {
   );
 }
 
+// Builds the Buying/Selling sub-items for the combined "Synq Liens" tile.
+function buildLienItems(
+  hasBuying: boolean,
+  hasSelling: boolean,
+): (NavItem & { href: string })[] {
+  const items: (NavItem & { href: string })[] = [];
+  if (hasBuying) {
+    items.push({
+      href: PRODUCT_NAV.lien?.[0]?.items[0]?.href ?? "/lien/dashboard",
+      label: "Buying",
+    });
+  }
+  if (hasSelling) {
+    items.push({
+      href: PRODUCT_NAV.selling?.[0]?.items[0]?.href ?? "/selling/dashboard",
+      label: "Selling",
+    });
+  }
+  return items;
+}
+
+// Resolves the first navigable link for a product, used as the plain card's
+// single arrow-button target.
+function firstNavHref(id: string): string {
+  for (const section of PRODUCT_NAV[id] ?? []) {
+    for (const item of section.items) {
+      if (item.href) return item.href;
+      if (item.children?.[0]?.href) return item.children[0].href;
+    }
+  }
+  return "#";
+}
+
 // ── Product card ──────────────────────────────────────────────────────────────
 
 function ProductCard({
-  id,
   meta,
   items,
+  primaryHref,
 }: {
   id: string;
-  meta: { label: string; icon: string; color: string; iconSrc: string };
-  items: NavItem[];
-}) {
-  const bgMap: Record<string, string> = {
-    careconnect: "#eff6ff",
-    fund: "#f0fdf4",
-    lien: "#f5f3ff",
-    xenia: "#fffbeb",
-    insights: "#ecfeff",
+  meta: {
+    label: string;
+    icon: string;
+    color: string;
+    iconSrc: string;
+    description: string;
   };
-  const bg = bgMap[id] ?? "#f9fafb";
-  const primaryHref = items[0]?.href ?? "#";
-
+  items: (NavItem & { href: string })[];
+  primaryHref: string;
+}) {
   return (
-    <Link
-      href={primaryHref}
-      className="group block rounded-xl border border-gray-200 bg-white p-5 hover:shadow-md hover:border-gray-300 transition-all"
-    >
-      <div
-        className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-4"
-        style={{ backgroundColor: bg }}
-      >
-        {meta.iconSrc ? (
-          <img
-            src={meta.iconSrc}
-            alt=""
-            aria-hidden
-            className="w-6 h-6 object-contain"
-          />
-        ) : (
-          <i className={`${meta.icon} text-lg`} style={{ color: meta.color }} />
-        )}
-      </div>
+    <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-6 hover:shadow-md hover:border-gray-300 transition-all">
+      {meta.iconSrc ? (
+        <img
+          src={meta.iconSrc}
+          alt=""
+          aria-hidden
+          className="w-10 h-10 object-contain mb-4"
+        />
+      ) : (
+        <i
+          className={`${meta.icon} text-3xl mb-4`}
+          style={{ color: meta.color }}
+        />
+      )}
 
-      <p className="text-sm font-bold text-[#0f1928] group-hover:text-orange-600 transition-colors">
-        {meta.label}
-      </p>
+      <p className="text-[20px] font-medium leading-7 text-[#0A0A0A]">{meta.label}</p>
+      <p className="mt-1.5 text-base font-normal leading-[160%] text-[#737373]">{meta.description}</p>
 
-      <ul className="mt-3 space-y-1">
-        {items.map((item) => (
-          <li
-            key={item.href}
-            className="flex items-center gap-1.5 text-[11px] text-gray-500"
-          >
-            <i className="ri-arrow-right-s-line text-gray-300 text-sm" />
-            {item.label}
-          </li>
-        ))}
-      </ul>
-    </Link>
+      {items.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-gray-200">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="group flex items-center justify-between px-4 py-3 border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-base font-medium leading-[160%] text-[#404040]">{item.label}</span>
+              <Button
+                variant="icon-rounded"
+                tabIndex={-1}
+                className="pointer-events-none"
+              >
+                <i className="ri-arrow-right-line text-sm" />
+              </Button>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-1 items-end justify-end">
+          <Link href={primaryHref}>
+            <Button
+              variant="icon-rounded"
+              tabIndex={-1}
+              className="pointer-events-none"
+            >
+              <i className="ri-arrow-right-line text-base" />
+            </Button>
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -181,23 +218,24 @@ function AdminCard({
   description,
 }: {
   href: string;
-  icon: string;
+  icon: LucideIcon;
   label: string;
   description: string;
 }) {
+  const Icon = icon;
   return (
     <Link
       href={href}
-      className="group flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all"
+      className="group flex items-start gap-4 rounded-xl border border-gray-200 bg-white p-6 hover:shadow-md hover:border-gray-300 transition-all"
     >
-      <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 shrink-0">
-        <i className={`${icon} text-sm text-gray-400`} />
+      <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gray-100 shrink-0">
+        <Icon className="w-5 h-5 text-[#0f1928]" />
       </div>
-      <div>
-        <p className="text-sm font-semibold text-[#0f1928] group-hover:text-orange-600 transition-colors">
+      <div className="flex flex-col items-start gap-2">
+        <p className="text-[20px] font-medium leading-7 text-[#0A0A0A] group-hover:text-orange-600 transition-colors">
           {label}
         </p>
-        <p className="text-[11px] text-gray-400 mt-0.5">{description}</p>
+        <p className="text-base font-normal leading-[160%] text-[#737373]">{description}</p>
       </div>
     </Link>
   );
