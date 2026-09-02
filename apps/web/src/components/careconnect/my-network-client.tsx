@@ -2224,7 +2224,7 @@ function ProviderCard({
             <button
               onClick={onEdit}
               title="Edit provider"
-              className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              className="p-1.5 px-2 rounded-md text-gray-800 cursor-pointer hover:text-blue-600 hover:bg-blue-50 transition-colors border border-gray-100"
             >
               <i className="ri-edit-box-line text-base" />
             </button>
@@ -2232,10 +2232,10 @@ function ProviderCard({
               onClick={onRemove}
               disabled={removing}
               title="Remove from network"
-              className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
+              className="p-1.5 px-2 rounded-md text-gray-300 cursor-pointer hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors border border-gray-100"
             >
               <i
-                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-delete-bin-line"}`}
+                className={`text-red-50 ${removing ? "ri-loader-4-line animate-spin" : "ri-delete-bin-line"}`}
               />
             </button>
           </div>
@@ -2424,7 +2424,7 @@ function ProviderRow({
             <button
               onClick={onEdit}
               title="Edit provider"
-              className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              className="p-1.5 px-2 rounded-md text-gray-800 cursor-pointer hover:text-blue-600 hover:bg-blue-50 transition-colors border border-gray-100"
             >
               <i className="ri-edit-box-line text-base" />
             </button>
@@ -2432,10 +2432,10 @@ function ProviderRow({
               onClick={onRemove}
               disabled={removing}
               title="Remove from network"
-              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+              className="p-1.5 px-2 rounded-md text-gray-400 cursor-pointer hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors border border-gray-100"
             >
               <i
-                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-delete-bin-line"}`}
+                className={`text-red-500 ${removing ? "ri-loader-4-line animate-spin" : "ri-delete-bin-line"}`}
               />
             </button>
           </div>
