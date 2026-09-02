@@ -2,7 +2,6 @@ import type { FundingApplicationDetail, ApplicationStatusHistoryItem } from '@/t
 import { FundingStatusBadge } from './funding-status-badge';
 import { ApplicantSummaryCard } from './applicant-summary-card';
 import { FundingStatusTimeline } from './funding-status-timeline';
-import { ApplicationOpenInAppLink } from './application-open-in-app-link';
 
 interface FundingApplicationDetailPanelProps {
   application: FundingApplicationDetail;
@@ -69,18 +68,15 @@ export function FundingApplicationDetailPanel({ application: a }: FundingApplica
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
       {/* Header */}
-      <div className="px-6 py-5 border-b border-gray-100 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
-        <div className="min-w-0">
+      <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+        <div>
           <p className="text-xs font-mono text-gray-400">{a.applicationNumber}</p>
           <h2 className="text-lg font-semibold text-gray-900 mt-0.5">
             {a.applicantFirstName} {a.applicantLastName}
           </h2>
           {a.caseType && <p className="text-sm text-gray-500 mt-0.5">{a.caseType}</p>}
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
-          <ApplicationOpenInAppLink applicationId={a.id} />
-          <FundingStatusBadge status={a.status} size="md" />
-        </div>
+        <FundingStatusBadge status={a.status} size="md" />
       </div>
 
       <div className="px-6 py-5">

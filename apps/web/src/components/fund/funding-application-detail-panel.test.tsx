@@ -1,18 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import type { FundingApplicationDetail } from "@/types/fund";
 import { FundingApplicationDetailPanel } from "./funding-application-detail-panel";
-
-const originalBaseUrl = process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL;
-
-afterEach(() => {
-  if (originalBaseUrl === undefined) {
-    delete process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL;
-  } else {
-    process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL = originalBaseUrl;
-  }
-});
 
 const application: FundingApplicationDetail = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -29,34 +19,24 @@ const application: FundingApplicationDetail = {
   updatedAtUtc: "2026-01-02T00:00:00Z",
 };
 
-describe("FundingApplicationDetailPanel Open in App integration", () => {
-  test("places Open in App beside the existing status header", () => {
-    process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL = "https://links.example.test";
-
+describe("FundingApplicationDetailPanel", () => {
+  test("renders the Application identity and status in the restored header", () => {
     render(<FundingApplicationDetailPanel application={application} />);
 
     expect(screen.getByText("Draft")).toBeInTheDocument();
     expect(screen.getByText("APP-0001")).toBeInTheDocument();
     expect(screen.getByText("APP-0001").parentElement?.parentElement).toHaveClass(
-      "flex-col",
-      "sm:flex-row",
+      "items-start",
+      "justify-between",
     );
-    expect(screen.getByRole("link", { name: "Open in App" })).toHaveAttribute(
-      "href",
-      "https://links.example.test/applications/11111111-1111-1111-1111-111111111111",
-    );
+    expect(screen.queryByRole("link", { name: "Open in App" })).not.toBeInTheDocument();
   });
 
-  test("preserves Application details when configuration is unavailable", () => {
-    delete process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL;
-
+  test("preserves the Application details and applicant summary", () => {
     render(<FundingApplicationDetailPanel application={application} />);
 
-    expect(screen.getByText("Draft")).toBeInTheDocument();
-    expect(screen.getByText("APP-0001")).toBeInTheDocument();
     expect(screen.getAllByText("Ada Lovelace")).toHaveLength(2);
-    expect(
-      screen.queryByRole("link", { name: "Open in App" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("$10,000")).toBeInTheDocument();
+    expect(screen.getAllByText("Personal Injury")).toHaveLength(2);
   });
 });

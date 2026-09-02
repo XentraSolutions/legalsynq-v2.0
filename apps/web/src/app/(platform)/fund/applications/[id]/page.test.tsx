@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { ApiError } from "@/lib/api-client";
@@ -59,15 +59,14 @@ const application: FundingApplicationDetail = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL = "https://links.example.test";
   mocks.useSession.mockReturnValue({
     session: { productRoles: ["SYNQ_FUND:SYNQFUND_REFERRER"] },
     isLoading: false,
   });
 });
 
-describe("Application Details Open in App states", () => {
-  test("does not render a deep link while the Application identity is loading", () => {
+describe("Application Details states and workflow", () => {
+  test("preserves the loading state without rendering an Application action", () => {
     mocks.useSession.mockReturnValue({ session: null, isLoading: true });
 
     const { container } = render(<ApplicationDetailPage />);
@@ -92,18 +91,53 @@ describe("Application Details Open in App states", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("uses the loaded canonical ID and preserves the existing workflow action", async () => {
-    mocks.getById.mockResolvedValue({ data: application });
+  test("preserves access-denied behavior without rendering an Application action", async () => {
+    mocks.getById.mockRejectedValue(
+      new ApiError(403, "Application request failed", "correlation-2"),
+    );
 
     render(<ApplicationDetailPage />);
 
     expect(
-      await screen.findByRole("link", { name: "Open in App" }),
-    ).toHaveAttribute(
-      "href",
-      "https://links.example.test/applications/11111111-1111-1111-1111-111111111111",
+      await screen.findByText("You do not have access to this application."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open in App" })).not.toBeInTheDocument();
+  });
+
+  test("redirects an unauthorized session to login", async () => {
+    mocks.getById.mockRejectedValue(
+      new ApiError(401, "Application request failed", "correlation-3"),
     );
+
+    render(<ApplicationDetailPage />);
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/login"));
+    expect(screen.queryByRole("link", { name: "Open in App" })).not.toBeInTheDocument();
+  });
+
+  test("uses the route ID and preserves the referrer submit workflow", async () => {
+    mocks.getById.mockResolvedValue({ data: application });
+
+    render(<ApplicationDetailPage />);
+
+    expect(await screen.findByText("APP-0001")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open in App" })).not.toBeInTheDocument();
     expect(screen.getByText("Submit application action")).toBeInTheDocument();
     expect(mocks.getById).toHaveBeenCalledWith("route-application-id");
+  });
+
+  test("preserves the funder review workflow for an in-review Application", async () => {
+    mocks.useSession.mockReturnValue({
+      session: { productRoles: ["SYNQ_FUND:SYNQFUND_FUNDER"] },
+      isLoading: false,
+    });
+    mocks.getById.mockResolvedValue({
+      data: { ...application, status: "InReview" },
+    });
+
+    render(<ApplicationDetailPage />);
+
+    expect(await screen.findByText("Review application action")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open in App" })).not.toBeInTheDocument();
   });
 });
