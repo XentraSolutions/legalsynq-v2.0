@@ -101,12 +101,31 @@ from being treated as tenant subdomains while preserving the CareConnect public 
 `apps/web/.env.local` (gitignored):
 ```
 NEXT_PUBLIC_ENV=development
-NEXT_PUBLIC_DEEP_LINK_BASE_URL=http://localhost:5000
+NEXT_PUBLIC_DEEP_LINK_BASE_URL=https://links.example.test
 NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ
 GATEWAY_URL=http://127.0.0.1:5010
 ```
 
-`NEXT_PUBLIC_DEEP_LINK_BASE_URL` is required only when the shared deep-link URL generator is called. Approved deployed domains must be supplied by each environment; no Production default is committed. See [`shared/contracts/deep-links/README.md`](../../shared/contracts/deep-links/README.md).
+### Web-to-Mobile deep links
+
+`src/lib/deep-links.ts` is the only Web entry point for generating Mobile deep-link URLs. It reads route semantics from the authoritative [`shared/contracts/deep-links/routes.json`](../../shared/contracts/deep-links/routes.json) registry and reads the public HTTPS origin from `NEXT_PUBLIC_DEEP_LINK_BASE_URL`.
+
+Every deployed environment must supply its own approved HTTPS origin. The value may have one trailing slash, but must not contain credentials, a path, query string, or fragment. Missing or invalid configuration throws a controlled `DeepLinkError`; the builder does not fall back to QA, Production, the current browser origin, an API origin, or another environment.
+
+Feature code must use route intent and path parameters rather than manually composing a deep-link path:
+
+```ts
+import { buildDeepLink } from "@/lib/deep-links";
+
+const applicationUrl = buildDeepLink({
+  routeKey: "applicationDetails",
+  pathParams: { applicationId },
+});
+```
+
+The builder rejects unknown or disabled routes, missing/blank/unexpected path parameters, and encodes each supplied parameter as one URL path segment. It intentionally does not accept arbitrary paths, per-call hosts, or query parameters.
+
+The shared registry currently allows builder-level URL generation for Dashboard, Contact, Application, Deal, and Report routes. Deal and Report generation support does not mean their Mobile destinations are currently end-to-end ready. Follow-up feature tickets may add Open-in-App UI by calling this builder; they must not concatenate `NEXT_PUBLIC_DEEP_LINK_BASE_URL` with feature paths.
 
 ### CareConnect common portal (AUTH-CC01)
 
