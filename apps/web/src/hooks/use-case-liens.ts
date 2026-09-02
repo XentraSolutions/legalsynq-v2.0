@@ -247,11 +247,11 @@ async function fetchAllCaseLiens(
 async function fetchLienUpdates(
   caseId: string,
 ): Promise<Array<CaseLienUpdateRow>> {
-  const updates = casesService.getCaseLiensUpdates(caseId);
+  const updates = await casesService.getCaseLiensUpdates(caseId);
   return Array.isArray(updates)
     ? updates.map((item) => ({
         ...item,
-        lienId: (item as CaseLienUpdateRow).lienId ?? undefined,
+        lienId: (item as CaseLienUpdateRow).lienCode ?? undefined,
       }))
     : [];
 }

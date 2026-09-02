@@ -83,8 +83,7 @@ export function LiensTab({
   const liensData = (filteredLiens?.items ??
     liensProp) as unknown as (CaseLienItem & CaseLienItemMetadata)[];
 
-  const { data: liensUpdates = [] } = useCaseLiensUpdates(caseId);
-
+  const { data: liensUpdates } = useCaseLiensUpdates(caseId);
   /* TEMP: visual fallback data for UI review only */
   const displayLiens = liensData.map((l) => {
     return {
@@ -174,7 +173,7 @@ export function LiensTab({
       id: "lienId",
       header: "Lien ID",
       cell: ({ row }) => (
-        <span className="text-sm text-gray-600 max-w-40 block">
+        <span className="text-sm text-gray-600 max-w-40 whitespace-nowrap">
           {row.original.lienNumber}
         </span>
       ),
@@ -294,8 +293,8 @@ export function LiensTab({
       />
 
       <LienUpdatesSection
-        liensUpdates={liensUpdates}
-        entriesCount={liensUpdates.length}
+        liensUpdates={liensUpdates ?? []}
+        entriesCount={liensUpdates?.length ?? 0}
       />
     </div>
   );
