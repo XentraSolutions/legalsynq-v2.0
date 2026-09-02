@@ -6,7 +6,9 @@ import DashboardPage from "./page";
 
 const mocks = vi.hoisted(() => ({
   getServerPortalConfig: vi.fn(),
+  redirect: vi.fn(),
   requireOrg: vi.fn(),
+  resolveEnabledNavKeys: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -14,7 +16,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  redirect: vi.fn(),
+  redirect: mocks.redirect,
 }));
 
 vi.mock("next/link", () => ({
@@ -44,13 +46,13 @@ vi.mock("@/lib/nav", () => ({
     fund: [{ items: [{ href: "/fund/applications", label: "Applications" }] }],
   },
   orgTypeLabel: () => "Law Firm",
-  resolveEnabledNavKeys: () => new Set(["fund"]),
+  resolveEnabledNavKeys: mocks.resolveEnabledNavKeys,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL = "https://links.example.test";
   mocks.getServerPortalConfig.mockReturnValue(null);
+  mocks.resolveEnabledNavKeys.mockReturnValue(new Set(["fund"]));
   mocks.requireOrg.mockResolvedValue({
     email: "user@example.test",
     enabledProducts: ["SynqFund"],
@@ -63,8 +65,8 @@ beforeEach(() => {
   });
 });
 
-describe("Dashboard Open in App integration", () => {
-  test("adds the action to the responsive welcome header without replacing Dashboard actions", async () => {
+describe("Dashboard", () => {
+  test("preserves the welcome content, product card, and administration destinations", async () => {
     const page = await DashboardPage();
 
     render(page);
@@ -72,14 +74,8 @@ describe("Dashboard Open in App integration", () => {
     const heading = screen.getByRole("heading", {
       name: "Welcome back, Example Legal",
     });
-    expect(heading.parentElement?.parentElement).toHaveClass(
-      "flex-col",
-      "sm:flex-row",
-    );
-    expect(screen.getByRole("link", { name: "Open in App" })).toHaveAttribute(
-      "href",
-      "https://links.example.test/dashboard",
-    );
+    expect(heading.parentElement).not.toHaveAttribute("class");
+    expect(screen.queryByRole("link", { name: "Open in App" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /SynqFund/ })).toHaveAttribute(
       "href",
       "/fund/applications",
@@ -88,19 +84,48 @@ describe("Dashboard Open in App integration", () => {
       "href",
       "/admin/users",
     );
+    expect(screen.getByRole("link", { name: /Organizations/ })).toHaveAttribute(
+      "href",
+      "/admin/organizations",
+    );
+    expect(mocks.requireOrg).toHaveBeenCalledOnce();
   });
 
-  test("keeps Dashboard content available when deep-link configuration is missing", async () => {
-    delete process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL;
+  test("preserves product filtering and hides administration for non-admin users", async () => {
+    mocks.resolveEnabledNavKeys.mockReturnValue(new Set());
+    mocks.requireOrg.mockResolvedValue({
+      email: "user@example.test",
+      enabledProducts: [],
+      isPlatformAdmin: false,
+      isTenantAdmin: false,
+      orgId: "org-1",
+      orgName: "Example Legal",
+      orgType: "LAW_FIRM",
+      userProducts: [],
+    });
 
     render(await DashboardPage());
 
-    expect(
-      screen.getByRole("heading", { name: "Welcome back, Example Legal" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Your Products")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Open in App" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("No products assigned.")).toBeInTheDocument();
+    expect(screen.queryByText("Administration")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /SynqFund/ })).not.toBeInTheDocument();
+  });
+
+  test("preserves product-specific portal redirects after the organization guard", async () => {
+    mocks.getServerPortalConfig.mockReturnValue({
+      landingPath: "/fund/applications",
+    });
+
+    await DashboardPage();
+
+    expect(mocks.requireOrg).toHaveBeenCalledOnce();
+    expect(mocks.getServerPortalConfig).toHaveBeenCalledWith("app.example.test");
+    expect(mocks.redirect).toHaveBeenCalledWith("/fund/applications");
+    expect(mocks.requireOrg.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.getServerPortalConfig.mock.invocationCallOrder[0],
+    );
+    expect(mocks.getServerPortalConfig.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.redirect.mock.invocationCallOrder[0],
+    );
   });
 });
