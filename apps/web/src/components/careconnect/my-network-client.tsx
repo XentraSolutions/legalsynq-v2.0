@@ -264,7 +264,8 @@ export function MyNetworkClient({
       .map(networkProviderEntryId),
   );
   useEffect(() => {
-    if (showNetworkUrl) setNetworkUrl(window.location.origin + "/careconnect/network");
+    if (showNetworkUrl)
+      setNetworkUrl(window.location.origin + "/careconnect/network");
   }, [showNetworkUrl]);
 
   // ── Network bootstrap ────────────────────────────────────────────────────
@@ -279,10 +280,9 @@ export function MyNetworkClient({
       const { data } = await careConnectApi.networks.list();
       const id = data[0]?.id;
       if (!id) throw new Error("No network returned.");
-      const detailRes = await fetch(
-        `/api/careconnect/api/networks/${id}`,
-        { credentials: "include" },
-      );
+      const detailRes = await fetch(`/api/careconnect/api/networks/${id}`, {
+        credentials: "include",
+      });
       if (detailRes.ok) {
         const detail: NetworkDetail = await detailRes.json();
         setNetwork(detail);
@@ -363,7 +363,9 @@ export function MyNetworkClient({
         );
 
         setMarkers(
-          enriched.filter((m) => visibleProviderKeys.has(networkProviderEntryId(m))),
+          enriched.filter((m) =>
+            visibleProviderKeys.has(networkProviderEntryId(m)),
+          ),
         );
         setMarkersLoaded(true);
       } catch {
@@ -1029,7 +1031,9 @@ export function MyNetworkClient({
         size="2xl"
         open={panelMode !== "closed" && panelMode !== "edit"}
         onClose={closeAddPanel}
-        title={panelMode === "location" ? "Add Provider Location" : "Add Provider"}
+        title={
+          panelMode === "location" ? "Add Provider Location" : "Add Provider"
+        }
         titleSizeClassName="text-xl"
         cardClassName="rounded-[20px] shadow-xl border border-neutral-200"
         headerClassName="flex items-center justify-between px-8 pt-8 pb-6"
@@ -1080,7 +1084,9 @@ export function MyNetworkClient({
               }}
               className="text-xs text-gray-500 hover:underline cursor-pointer"
             >
-              {locationReturnsToEdit ? "← Back to provider" : "← Back to search"}
+              {locationReturnsToEdit
+                ? "← Back to provider"
+                : "← Back to search"}
             </button>
           ) : panelMode === "confirm" ? (
             <button
@@ -1660,7 +1666,12 @@ export function MyNetworkClient({
                   )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Email{panelMode === "location" ? "" : <span className="text-red-500"> *</span>}
+                      Email
+                      {panelMode === "location" ? (
+                        ""
+                      ) : (
+                        <span className="text-red-500"> *</span>
+                      )}
                     </label>
                     {panelMode === "location" ? (
                       <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
@@ -1681,7 +1692,12 @@ export function MyNetworkClient({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Phone{panelMode === "location" ? "" : <span className="text-red-500"> *</span>}
+                      Phone
+                      {panelMode === "location" ? (
+                        ""
+                      ) : (
+                        <span className="text-red-500"> *</span>
+                      )}
                     </label>
                     {panelMode === "location" ? (
                       <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
@@ -1731,7 +1747,9 @@ export function MyNetworkClient({
                   </div>
                   <div className="relative">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      {newForm.isMobile ? "Service area description" : "Address"}{" "}
+                      {newForm.isMobile
+                        ? "Service area description"
+                        : "Address"}{" "}
                       <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -1863,7 +1881,8 @@ export function MyNetworkClient({
                       {newForm.isMobile ? (
                         <>
                           <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Service radius (mi) <span className="text-red-500">*</span>
+                            Service radius (mi){" "}
+                            <span className="text-red-500">*</span>
                           </label>
                           <input
                             required
@@ -2207,7 +2226,7 @@ function ProviderCard({
               title="Edit provider"
               className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
             >
-              <i className="ri-pencil-line text-base" />
+              <i className="ri-edit-box-line text-base" />
             </button>
             <button
               onClick={onRemove}
@@ -2216,7 +2235,7 @@ function ProviderCard({
               className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
             >
               <i
-                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-close-circle-line"}`}
+                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-delete-bin-line"}`}
               />
             </button>
           </div>
@@ -2407,7 +2426,7 @@ function ProviderRow({
               title="Edit provider"
               className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
             >
-              <i className="ri-pencil-line text-base" />
+              <i className="ri-edit-box-line text-base" />
             </button>
             <button
               onClick={onRemove}
@@ -2416,7 +2435,7 @@ function ProviderRow({
               className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
             >
               <i
-                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-close-circle-line"}`}
+                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-delete-bin-line"}`}
               />
             </button>
           </div>
