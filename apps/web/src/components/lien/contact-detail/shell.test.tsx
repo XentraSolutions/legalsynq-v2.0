@@ -119,10 +119,9 @@ async function openActions() {
 describe("ContactDetailShell Actions menu", () => {
   beforeEach(() => {
     vi.mocked(contactsService.getContact).mockResolvedValue(contact);
-    process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL = "https://links.example.test";
   });
 
-  test("shows Open in App with the existing Contact actions", async () => {
+  test("preserves the Contact actions without Open in App", async () => {
     render(
       <ContactDetailShell id="contact-123" basePath="/lien/contacts">
         <div>Overview content</div>
@@ -131,17 +130,24 @@ describe("ContactDetailShell Actions menu", () => {
 
     await openActions();
 
-    expect(screen.getByRole("menuitem", { name: "Edit Contact" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Send Email" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete Contact" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Open in App" })).toHaveAttribute(
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent?.trim()),
+    ).toEqual(["Edit Contact", "Send Email", "Delete Contact"]);
+    expect(screen.getByRole("menuitem", { name: "Edit Contact" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Send Email" })).toHaveAttribute(
       "href",
-      "https://links.example.test/contacts/contact-123",
+      "mailto:ada@example.test",
     );
+    expect(screen.getByRole("separator")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete Contact" })).toBeEnabled();
+    expect(screen.queryByRole("menuitem", { name: "Open in App" })).not.toBeInTheDocument();
   });
 
-  test("keeps existing actions usable when deep-link configuration is missing", async () => {
-    delete process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL;
+  test("preserves conditional Send Email visibility without deep-link configuration", async () => {
+    vi.mocked(contactsService.getContact).mockResolvedValue({
+      ...contact,
+      email: "",
+    });
 
     render(
       <ContactDetailShell id="contact-123" basePath="/lien/contacts">
@@ -153,10 +159,8 @@ describe("ContactDetailShell Actions menu", () => {
 
     expect(screen.queryByRole("menuitem", { name: "Open in App" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Edit Contact" })).toBeEnabled();
-    expect(screen.getByRole("menuitem", { name: "Send Email" })).toHaveAttribute(
-      "href",
-      "mailto:ada@example.test",
-    );
+    expect(screen.queryByRole("menuitem", { name: "Send Email" })).not.toBeInTheDocument();
+    expect(screen.getByRole("separator")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete Contact" })).toBeEnabled();
   });
 });
