@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ContactDetailContextProvider } from "./context";
+import { OpenInAppLink } from "./open-in-app-link";
 
 // Contact types with a known case-lookup API (mirrors ContactCasesSection) —
 // the Cases tab only makes sense for these.
@@ -207,6 +208,9 @@ export function ContactDetailShell({
                         </a>
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem asChild>
+                      <OpenInAppLink contactId={contact.id} />
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => setConfirmDelete(true)}

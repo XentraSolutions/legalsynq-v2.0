@@ -1,9 +1,12 @@
 import {
+  DeepLinkError,
   deepLinkRoutes,
   generateRegisteredDeepLinkUrl,
   normalizeDeepLinkBaseUrl,
   type DeepLinkConfiguration,
 } from "../../../../shared/contracts/deep-links";
+
+export { DeepLinkError };
 
 export interface BuildDeepLinkInput {
   readonly pathParams?: Readonly<Record<string, string | null | undefined>>;
