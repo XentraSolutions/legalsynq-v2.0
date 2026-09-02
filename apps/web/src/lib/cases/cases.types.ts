@@ -338,7 +338,7 @@ export interface CaseLienItemMetadata {
 }
 export interface CaseUpdatesItem {
   id: string;
-  lienNumber: string;
+  lienCode: string;
   timestamp: string;
   action: string;
   description: string;
