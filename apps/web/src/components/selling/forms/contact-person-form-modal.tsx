@@ -6,14 +6,20 @@ import { FormModal } from "@/components/selling/modal";
 import { BaseSelect } from "@/components/ui/base-select";
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
+import { TriangleAlert } from "lucide-react";
 import {
   useCompany,
+  useCompanyTypes,
+  useContactPersons,
   useContactPersonTypes,
   useCreateContactPerson,
   useUpdateContactPerson,
 } from "@/hooks/selling/use-selling-companies";
 import { AddContactPersonRoleModal } from "@/components/selling/forms/add-contact-person-role-modal";
+import { Button } from "@/components/selling/button";
 import type { ContactPerson } from "@/lib/selling/companies.types";
+
+const FUNDING_COMPANY_TYPE_CODE = "FundingCompany";
 
 interface ContactPersonFormModalProps {
   open: boolean;
@@ -79,7 +85,12 @@ export function ContactPersonFormModal({
   allowCompanySelect,
   lockContactType,
 }: ContactPersonFormModalProps) {
-  const isEdit = Boolean(editTarget);
+  // Set locally when the user clicks "Edit Contact Person" from the
+  // funding-company blocked state below — lets this same modal pivot into
+  // editing the existing contact without the parent knowing anything changed.
+  const [switchToEdit, setSwitchToEdit] = useState<ContactPerson | null>(null);
+  const effectiveEditTarget = switchToEdit ?? editTarget ?? null;
+  const isEdit = Boolean(effectiveEditTarget);
   const [form, setForm] = useState<ContactForm>(
     editTarget ? formFromContact(editTarget, companyId) : emptyForm(companyId),
   );
@@ -111,12 +122,73 @@ export function ContactPersonFormModal({
   const nextRoleSortOrder =
     Math.max(0, ...(contactPersonTypesQuery.data ?? []).map((t) => t.sortOrder)) + 1;
 
+  // A funding company may only ever have one contact person. When the
+  // selected company already has one and we're not already editing it,
+  // block the create form and offer editing the existing one instead.
+  const companyTypesQuery = useCompanyTypes({ enabled: open });
+  const isFundingCompany =
+    companyTypesQuery.data?.find((t) => t.id === effectiveCompanyTypeId)?.code ===
+    FUNDING_COMPANY_TYPE_CODE;
+  const targetCompanyId = allowCompanySelect ? form.companyId : companyId;
+  const isCreatingNew = !editTarget && !switchToEdit;
+  const existingContactsQuery = useContactPersons(targetCompanyId || null, true, {
+    enabled: open && isCreatingNew && isFundingCompany && Boolean(targetCompanyId),
+  });
+  const existingContact =
+    isCreatingNew && isFundingCompany && !existingContactsQuery.isLoading
+      ? (existingContactsQuery.data?.[0] ?? null)
+      : null;
+  // Still figuring out whether the selected company is a funding company
+  // with an existing contact — block Create until that's settled so a fast
+  // click can't slip a second contact past the check above.
+  const checkingExistingContact =
+    isCreatingNew &&
+    Boolean(targetCompanyId) &&
+    ((allowCompanySelect && selectedCompanyQuery.isLoading) ||
+      companyTypesQuery.isLoading ||
+      (isFundingCompany && existingContactsQuery.isLoading));
+
+  // Snapshot of the most recently blocked company/contact — kept around
+  // (and shown below the form) even after the company field is cleared
+  // back out, since `existingContact` itself goes stale the moment that
+  // happens.
+  const [blockedNotice, setBlockedNotice] = useState<{
+    companyId: string;
+    companyName: string;
+    contact: ContactPerson;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!existingContact) return;
+    setBlockedNotice({
+      companyId: targetCompanyId,
+      companyName: selectedCompanyLabel,
+      contact: existingContact,
+    });
+    // The company can only be reselected when there's a picker; when it's
+    // fixed (allowCompanySelect off) there's nothing to clear back out.
+    if (allowCompanySelect) {
+      setForm((f) => ({ ...f, companyId: "", contactPersonTypeId: "" }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingContact]);
+
   useEffect(() => {
     if (!open) return;
     setForm(editTarget ? formFromContact(editTarget, companyId) : emptyForm(companyId));
     setErrors({});
+    setSwitchToEdit(null);
+    setBlockedNotice(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTarget, companyId]);
+
+  const handleEditExisting = () => {
+    if (!blockedNotice) return;
+    setSwitchToEdit(blockedNotice.contact);
+    setForm(formFromContact(blockedNotice.contact, blockedNotice.companyId));
+    setErrors({});
+    setBlockedNotice(null);
+  };
 
   useEffect(() => {
     if (!open || isEdit || !lockedType) return;
@@ -157,6 +229,12 @@ export function ContactPersonFormModal({
     return Object.keys(e).length === 0;
   };
 
+  // Keeps Create/Save disabled until the required fields are actually
+  // filled, rather than only catching it on submit.
+  const hasRequiredFields = Boolean(
+    form.companyId && form.contactPersonTypeId && form.firstName.trim() && form.lastName.trim(),
+  );
+
   const setField = <K extends keyof ContactForm>(field: K, value: string) => {
     const next = { ...form, [field]: value };
     // Role options depend on the selected company's type, so a company change
@@ -183,18 +261,18 @@ export function ContactPersonFormModal({
       contactPersonTypeId: form.contactPersonTypeId,
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
-      addressLine1: editTarget?.addressLine1 ?? undefined,
-      city: editTarget?.city ?? undefined,
-      state: editTarget?.state ?? undefined,
-      postalCode: editTarget?.postalCode ?? undefined,
+      addressLine1: effectiveEditTarget?.addressLine1 ?? undefined,
+      city: effectiveEditTarget?.city ?? undefined,
+      state: effectiveEditTarget?.state ?? undefined,
+      postalCode: effectiveEditTarget?.postalCode ?? undefined,
       phone: form.phone.trim() || undefined,
       email: form.email.trim() || undefined,
     };
     try {
       const contact = isEdit
         ? await updateContactPerson.mutateAsync({
-            companyId,
-            contactId: editTarget!.id,
+            companyId: form.companyId,
+            contactId: effectiveEditTarget!.id,
             request,
           })
         : await createContactPerson.mutateAsync({ companyId: form.companyId, request });
@@ -214,14 +292,23 @@ export function ContactPersonFormModal({
       open={open}
       onClose={onClose}
       onSubmit={handleSubmit}
-      title={title}
+      title={switchToEdit ? "Edit Contact Person" : title}
       subtitle={
         <>
-          Provide the required information to add a contact to{" "}
+          {switchToEdit ? "Update the contact information for" : "Provide the required information to add a contact to"}{" "}
           <span className="font-medium text-gray-700">{selectedCompanyLabel}</span>.
         </>
       }
-      submitLabel={submitting ? "Saving..." : isEdit ? "Save Changes" : "Create"}
+      submitLabel={
+        submitting
+          ? "Saving..."
+          : checkingExistingContact
+            ? "Checking..."
+            : isEdit
+              ? "Save Changes"
+              : "Create"
+      }
+      submitDisabled={Boolean(blockedNotice) || checkingExistingContact || !hasRequiredFields}
       loading={submitting}
     >
       <div className="space-y-4">
@@ -233,7 +320,10 @@ export function ContactPersonFormModal({
             {allowCompanySelect ? (
               <SellingEntitySelect
                 value={form.companyId}
-                onChange={(v) => setField("companyId", v)}
+                onChange={(v) => {
+                  setField("companyId", v);
+                  setBlockedNotice(null);
+                }}
                 placeholder="Select company"
                 searchPlaceholder="Search companies..."
                 error={Boolean(errors.companyId)}
@@ -329,6 +419,31 @@ export function ContactPersonFormModal({
           </div>
         </div>
       </div>
+
+      {blockedNotice && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mt-4">
+          <div className="flex items-start gap-3">
+            <TriangleAlert className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">
+                {blockedNotice.companyName} currently has a contact person
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                A funding company can only have one contact person on file —{" "}
+                {blockedNotice.contact.displayName} is currently theirs.{" "}
+                {allowCompanySelect
+                  ? "Edit the existing contact, or select a different company above."
+                  : "Edit the existing contact instead."}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3">
+            <Button type="button" variant="primary" onClick={handleEditExisting}>
+              Edit Contact Person
+            </Button>
+          </div>
+        </div>
+      )}
 
       {showAddRole && effectiveCompanyTypeId && (
         <AddContactPersonRoleModal

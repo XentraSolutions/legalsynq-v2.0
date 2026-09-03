@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  useCompanyTypes,
   useContactPersons,
   useContactPersonTypes,
   useDeactivateContactPerson,
@@ -64,6 +65,7 @@ export function CompanyContactPersonsTab() {
 
   const contactPersonsQuery = useContactPersons(companyId, true);
   const contactPersonTypesQuery = useContactPersonTypes(company.companyTypeId);
+  const companyTypesQuery = useCompanyTypes();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ContactPerson | null>(null);
@@ -84,6 +86,12 @@ export function CompanyContactPersonsTab() {
   }, [search, typeFilter, pageSize]);
 
   const allContacts = contactPersonsQuery.data ?? [];
+  // A funding company may only ever have one contact person, so hide the
+  // ability to add another once it already has one.
+  const isFundingCompany =
+    companyTypesQuery.data?.find((t) => t.id === company.companyTypeId)?.code ===
+    "FundingCompany";
+  const canAddContactPerson = canEdit && !(isFundingCompany && allContacts.length > 0);
   // REFACTOR: list endpoint has no server-side pagination or search/type query params yet.
   // Filtering + paging below is client-side as a stopgap; move to the backend once it supports
   // filtering contact persons by company type id or code and paginating results.
@@ -273,7 +281,7 @@ export function CompanyContactPersonsTab() {
             {exportMutation.isPending ? "Exporting..." : "Export"}
           </Button>
 
-          {canEdit && (
+          {canAddContactPerson && (
             <Button
               variant="primary"
               rightIcon="plus"
@@ -293,8 +301,8 @@ export function CompanyContactPersonsTab() {
             icon={Contact}
             title="No Contact Person Yet"
             description="No contact persons have been added yet to this company. Add your first contact person."
-            actionLabel={canEdit ? "Add Contact Person" : undefined}
-            onAction={canEdit ? () => setCreateOpen(true) : undefined}
+            actionLabel={canAddContactPerson ? "Add Contact Person" : undefined}
+            onAction={canAddContactPerson ? () => setCreateOpen(true) : undefined}
           />
         )}
 
