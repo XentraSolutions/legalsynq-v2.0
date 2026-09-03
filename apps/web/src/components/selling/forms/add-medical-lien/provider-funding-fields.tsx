@@ -145,6 +145,7 @@ function FundingCompanyContactSelect({
   return (
     <SellingEntitySelect
       isContactPerson
+      entityType="FundingCompany"
       companyId={companyId}
       value={value}
       onChange={(v, option) => onChange(v, option?.label ?? "")}
