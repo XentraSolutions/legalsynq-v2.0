@@ -8,6 +8,7 @@ import { CompanyFormModal } from "@/components/selling/forms/company-form-modal"
 import { ReassignCompanyModal } from "@/components/selling/forms/reassign-company-modal";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { Button } from "@/components/selling/button";
+import { usePageBreadcrumbTrail } from "@/contexts/breadcrumb-context";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import {
   useCompany,
@@ -63,12 +64,23 @@ export function CompanyDetailShell({
   >(null);
 
   const canEdit = ra.can("contact:edit");
+  const company = companyQuery.data;
+
+  // Dynamic detail route has no matching nav item for the top-bar's
+  // nav-config-driven breadcrumb to find, so supply the trail directly.
+  usePageBreadcrumbTrail(
+    company
+      ? [
+          { label: "Contacts" },
+          { label: "Companies", href: LIST_PATH },
+          { label: company.name },
+        ]
+      : null,
+  );
 
   if (companyQuery.isLoading) {
     return <CompanyDetailShellSkeleton />;
   }
-
-  const company = companyQuery.data;
 
   if (!company) {
     return (
