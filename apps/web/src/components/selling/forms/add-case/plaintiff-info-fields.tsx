@@ -1,6 +1,9 @@
 import Field from "@/components/lien/field";
 import { useSessionContext } from "@/providers/session-provider";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
+import { formatZipInput, isValidUsZipCode } from "@/lib/address";
+
+const isValidEmail = (value: string) => /^\S+@\S+\.\S+$/.test(value);
 
 export interface PlaintiffInfoFieldsValue {
   firstName: string;
@@ -43,7 +46,11 @@ export function PlaintiffInfoFields({
 }) {
   const { lookup } = useSessionContext();
   const stateList =
-    lookup?.State.map((c) => ({ key: c.id, value: c.code, label: c.name })) ?? [];
+    lookup?.State.map((c) => ({
+      key: c.id,
+      value: c.code,
+      label: `${c.name} (${c.code})`,
+    })) ?? [];
 
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -75,6 +82,11 @@ export function PlaintiffInfoFields({
         value={value.email}
         placeholder="e.g. example@gmail.com"
         onChange={(v) => onChange({ email: v.toString() })}
+        error={
+          value.email && !isValidEmail(value.email)
+            ? "Invalid email format"
+            : undefined
+        }
       />
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -103,6 +115,7 @@ export function PlaintiffInfoFields({
         value={value.sex}
         options={SEX_OPTIONS}
         placeholder="Select sex"
+        clearable
         onChange={(v: string) => onChange({ sex: v.toString() })}
       />
       <Field
@@ -123,13 +136,19 @@ export function PlaintiffInfoFields({
         value={value.state}
         options={stateList}
         placeholder="Select state"
+        clearable
         onChange={(v: string) => onChange({ state: v.toString() })}
       />
       <Field
         label="Zip Code"
         value={value.zipcode}
         placeholder="Enter zip code"
-        onChange={(v) => onChange({ zipcode: v.toString() })}
+        onChange={(v) => onChange({ zipcode: formatZipInput(v.toString()) })}
+        error={
+          value.zipcode && !isValidUsZipCode(value.zipcode)
+            ? "Zip code must be 5 or 9 digits (XXXXX or XXXXX-XXXX)"
+            : undefined
+        }
       />
     </div>
   );
