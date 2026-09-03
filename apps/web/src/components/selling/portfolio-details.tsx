@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clipboard, Copy } from "lucide-react";
+import { ArrowLeft, Clipboard, Copy, HelpCircle, X } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
+import { liensService } from "@/lib/selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
 import { ProviderFundingDetailsPanel } from "./lien-detail/provider-funding-details-panel";
 import { MedicalCodesInformationPanel } from "./lien-detail/medical-codes-information-panel";
@@ -98,6 +99,31 @@ export function PortfolioDetailPanel({
   const sellerStatus = lien.lienInformation.sellerStatus;
   const canEdit = ["Draft", "Pending", "Internal"].includes(sellerStatus);
 
+  const canKeep = lien.availableActions.includes("keep");
+  const canPrepareSale = lien.availableActions.includes("prepare-sale");
+  const [showDecisionBanner, setShowDecisionBanner] = useState(
+    canKeep && canPrepareSale,
+  );
+  const [keepLoading, setKeepLoading] = useState(false);
+  const [showKeepConfirm, setShowKeepConfirm] = useState(false);
+
+  const keepAsInternalAsset = async () => {
+    setKeepLoading(true);
+    try {
+      await liensService.moveToManagement(lien.lienId, {
+        reason: "Retained internally",
+      });
+      toast.success("Lien kept as internal asset.");
+      setShowKeepConfirm(false);
+      setShowDecisionBanner(false);
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setKeepLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
@@ -123,7 +149,6 @@ export function PortfolioDetailPanel({
             lienId={lien.lienId}
             availableActions={lien.availableActions}
             onActionComplete={onRefresh}
-            autoOpenDecision={sellerStatus === "Pending"}
             trigger={
               <Button variant="primary" rightIcon="chevronDown">
                 Manage Lien
@@ -132,6 +157,49 @@ export function PortfolioDetailPanel({
           />
         </div>
       </div>
+
+      {showDecisionBanner && (
+        <div className="flex items-center gap-3 bg-orange-50 rounded-lg px-4 py-2.5">
+          <HelpCircle className="h-5 w-5 text-[#EE7132] shrink-0" />
+          <p className="flex-1 text-sm text-[#EE7132]">
+            This lien is ready to move forward. Keep it as an internal asset, or offer it for sale.
+          </p>
+          <Button
+            variant="secondary"
+            loading={keepLoading}
+            onClick={() => setShowKeepConfirm(true)}
+          >
+            {keepLoading ? "Keeping..." : "Keep"}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={keepLoading}
+            onClick={() => router.push(`/selling/portfolio/lien/${lien.lienId}/sell`)}
+          >
+            Sell
+          </Button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            disabled={keepLoading}
+            onClick={() => setShowDecisionBanner(false)}
+            className="p-1 text-[#EE7132] hover:opacity-70 transition-opacity"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={showKeepConfirm}
+        onClose={() => setShowKeepConfirm(false)}
+        onConfirm={keepAsInternalAsset}
+        loading={keepLoading}
+        title="Keep as Internal Asset?"
+        description="This lien will be kept as a private internal asset instead of being offered for sale."
+        confirmLabel="Keep"
+        confirmVariant="primary"
+      />
 
       <div className="basis-2/4">
         <Tabs

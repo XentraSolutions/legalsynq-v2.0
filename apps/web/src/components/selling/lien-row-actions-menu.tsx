@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Tag,
@@ -11,22 +11,18 @@ import {
   RotateCcw,
   type LucideIcon,
 } from "lucide-react";
-import { Modal, ConfirmDialog } from "@/components/selling/modal";
+import { ConfirmDialog } from "@/components/selling/modal";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
-import { Button } from "@/components/selling/button";
-import { LienDetail, LienListItem, liensService } from "@/lib/selling";
+import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 
 interface LienRowActionsMenuProps {
   lienId: string;
-  lien?: LienListItem;
   availableActions: string[];
   onActionComplete: () => void;
   align?: "left" | "right";
   /** Custom trigger element; defaults to a bare ellipsis icon button. */
   trigger?: ReactNode;
-  /** Show the Keep/Sell decision modal automatically when this lien loads. */
-  autoOpenDecision?: boolean;
 }
 
 const ACTION_LABELS: Record<
@@ -41,36 +37,39 @@ const ACTION_LABELS: Record<
   restore: { label: "Restore Lien", icon: RotateCcw },
 };
 
-// The liens list endpoint doesn't populate `availableActions` (only the
-// single-lien detail endpoint does), so pending/internal rows fall back to
-// this static Keep/Sell/Archive set to mirror what the details view offers.
-const PENDING_FALLBACK_ACTIONS = ["prepare-sale", "keep", "archive"];
+// The full set of lien actions this UI knows how to render. Exported so
+// other lien-action surfaces (e.g. the portfolio table's row menu) can
+// detect an action the frontend doesn't recognize yet, instead of silently
+// dropping it.
+export const KNOWN_LIEN_ACTIONS = Object.keys(ACTION_LABELS);
 
 export function LienRowActionsMenu({
   lienId,
-  lien,
   availableActions,
   onActionComplete,
   align = "right",
   trigger,
-  autoOpenDecision = false,
 }: LienRowActionsMenuProps) {
   const router = useRouter();
-  const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
+
   const [confirmAction, setConfirmAction] = useState<
     "withdraw-sale" | "archive" | "restore" | "keep" | null
   >(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [keepLoading, setKeepLoading] = useState(false);
 
-  const status = lien?.sellerStatus ?? lien?.status;
-  const resolvedActions =
-    availableActions.length === 0 &&
-    (status === "Pending" || status === "Internal")
-      ? PENDING_FALLBACK_ACTIONS
-      : availableActions;
+  const unsupportedActions = availableActions.filter(
+    (action) => !ACTION_LABELS[action],
+  );
+  useEffect(() => {
+    if (unsupportedActions.length > 0) {
+      console.warn(
+        `LienRowActionsMenu: lien ${lienId} has unsupported action(s): ${unsupportedActions.join(", ")}`,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unsupportedActions.join(",")]);
 
-  if (resolvedActions.length === 0) return null;
+  if (availableActions.length === 0) return null;
 
   const handleAction = (action: string) => {
     if (action === "prepare-sale" || action === "confirm-sale") {
@@ -83,7 +82,7 @@ export function LienRowActionsMenu({
     }
   };
 
-  const items: ActionMenuItem[] = resolvedActions
+  const items: ActionMenuItem[] = availableActions
     .filter((action) => ACTION_LABELS[action])
     .map((action) => {
       const meta = ACTION_LABELS[action];
@@ -94,22 +93,6 @@ export function LienRowActionsMenu({
         onClick: () => handleAction(action),
       };
     });
-
-  const keepAsInternalAsset = async () => {
-    setKeepLoading(true);
-    try {
-      await liensService.moveToManagement(lienId, {
-        reason: "Retained internally",
-      });
-      toast.success("Lien kept as internal asset.");
-      setShowDecisionModal(false);
-      onActionComplete();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Action failed");
-    } finally {
-      setKeepLoading(false);
-    }
-  };
 
   const runConfirmAction = async () => {
     if (!confirmAction) return;
@@ -131,7 +114,6 @@ export function LienRowActionsMenu({
         toast.success("Lien kept as internal asset.");
       }
       setConfirmAction(null);
-      setShowDecisionModal(false);
       onActionComplete();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Action failed");
@@ -147,39 +129,6 @@ export function LienRowActionsMenu({
         trigger={trigger}
         align={align === "right" ? "end" : "start"}
       />
-
-      <Modal
-        open={showDecisionModal}
-        onClose={() => setShowDecisionModal(false)}
-        title="What Would You Like to Do With This Lien?"
-        size="sm"
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              loading={keepLoading}
-              onClick={keepAsInternalAsset}
-            >
-              {keepLoading ? "Keeping..." : "Keep"}
-            </Button>
-            <Button
-              variant="primary"
-              disabled={keepLoading}
-              onClick={() => {
-                setShowDecisionModal(false);
-                router.push(`/selling/portfolio/lien/${lienId}/sell`);
-              }}
-            >
-              Sell
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-gray-600">
-          Choose whether to keep this lien in your portfolio or proceed with
-          selling it to a funding company.
-        </p>
-      </Modal>
 
       <ConfirmDialog
         open={confirmAction !== null}
@@ -202,7 +151,7 @@ export function LienRowActionsMenu({
               ? "This lien will be hidden from active portfolio lists, but its record and history will be retained."
               : confirmAction === "restore"
                 ? "This lien will be restored to the Pending list for active portfolio tracking."
-              : "This lien will be kept as a private internal asset instead of being listed for sale."
+              : "This lien will be kept as a private internal asset instead of being offered for sale."
         }
         confirmLabel={
           confirmAction === "withdraw-sale"

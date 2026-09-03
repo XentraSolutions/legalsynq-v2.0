@@ -29,11 +29,12 @@ interface ActionMenuProps {
   /** Custom trigger element (e.g. a labeled Button); defaults to a bare ellipsis icon button. */
   trigger?: ReactNode;
   align?: 'start' | 'end';
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function ActionMenu({ items, triggerIcon: TriggerIcon = MoreVertical, trigger, align = 'end' }: ActionMenuProps) {
+export function ActionMenu({ items, triggerIcon: TriggerIcon = MoreVertical, trigger, align = 'end', onOpenChange }: ActionMenuProps) {
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       {trigger ? (
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
           {trigger}

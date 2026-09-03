@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
-import { Archive, Eye, RotateCcw, SquarePen } from "lucide-react";
+import { Archive, Eye, Inbox, Loader2, RotateCcw, Send, SquarePen, Tag, Undo2 } from "lucide-react";
 import { DateDisplay } from "@/components/ui/date-display";
 import { LIEN_TYPE_LABELS } from "@/types/lien";
 import { LienStatusBadge } from "../lien/lien-status-badge";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
 import { BaseTable } from "../ui/base-table";
 import { PaginationMeta } from "@/lib/contacts";
@@ -16,6 +16,7 @@ import {
 import { LienListItem, liensService } from "@/lib/selling";
 import { useRouter } from "next/navigation";
 import { ActionMenu } from "@/components/selling/action-menu";
+import { KNOWN_LIEN_ACTIONS } from "@/components/selling/lien-row-actions-menu";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { toast } from "sonner";
 import {
@@ -32,21 +33,67 @@ interface PortfolioRowActionsProps {
 
 function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProps) {
   const router = useRouter();
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    "archive" | "restore" | "keep" | "withdraw-sale" | null
+  >(null);
   const [loading, setLoading] = useState(false);
-  const isArchived = lien.status === "Archived" || lien.sellerStatus === "Archived";
 
-  const handleArchiveToggle = async () => {
+  // The liens list endpoint doesn't reliably populate `availableActions`, so
+  // fetch the single-lien detail (which does) the first time the menu opens,
+  // and render the sale-lifecycle actions from that instead of guessing.
+  const [availableActions, setAvailableActions] = useState<string[] | null>(null);
+  const [actionsLoading, setActionsLoading] = useState(false);
+
+  const handleMenuOpenChange = (open: boolean) => {
+    if (open && availableActions === null && !actionsLoading) {
+      setActionsLoading(true);
+      liensService
+        .getLienById(lien.lienId)
+        .then((detail) => setAvailableActions(detail.availableActions ?? []))
+        .catch(() => setAvailableActions([]))
+        .finally(() => setActionsLoading(false));
+    }
+  };
+
+  const canPrepareSale = availableActions?.includes("prepare-sale") ?? false;
+  const canConfirmSale = availableActions?.includes("confirm-sale") ?? false;
+  const canKeep = availableActions?.includes("keep") ?? false;
+  const canWithdrawSale = availableActions?.includes("withdraw-sale") ?? false;
+  const canArchive = availableActions?.includes("archive") ?? false;
+  const canRestore = availableActions?.includes("restore") ?? false;
+
+  useEffect(() => {
+    const unsupported = (availableActions ?? []).filter(
+      (action) => !KNOWN_LIEN_ACTIONS.includes(action),
+    );
+    if (unsupported.length > 0) {
+      console.warn(
+        `PortfolioRowActions: lien ${lien.lienId} has unsupported action(s): ${unsupported.join(", ")}`,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableActions?.join(",")]);
+
+  const runConfirmAction = async () => {
+    if (!confirmAction) return;
     setLoading(true);
     try {
-      if (isArchived) {
+      if (confirmAction === "restore") {
         await liensService.restoreLien(lien.lienId);
         toast.success("Lien restored.");
-      } else {
+      } else if (confirmAction === "archive") {
         await liensService.archiveLien(lien.lienId);
         toast.success("Lien archived.");
+      } else if (confirmAction === "withdraw-sale") {
+        await liensService.withdrawSale(lien.lienId);
+        toast.success("Lien withdrawn from sale and returned to Pending.");
+      } else {
+        await liensService.moveToManagement(lien.lienId, {
+          reason: "Retained internally",
+        });
+        toast.success("Lien kept as internal asset.");
       }
-      setConfirmOpen(false);
+      setConfirmAction(null);
       onActionComplete?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Action failed");
@@ -60,6 +107,7 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
   return (
     <>
       <ActionMenu
+        onOpenChange={handleMenuOpenChange}
         items={[
           {
             label: "View",
@@ -76,33 +124,110 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
                 },
               ]
             : []),
-          isArchived
-            ? {
-                label: "Restore",
-                icon: RotateCcw,
-                onClick: () => setConfirmOpen(true),
-              }
-            : {
-                label: "Archive",
-                icon: Archive,
-                variant: "danger",
-                onClick: () => setConfirmOpen(true),
-              },
+          ...(actionsLoading
+            ? [
+                {
+                  label: "Loading actions…",
+                  icon: Loader2,
+                  disabled: true,
+                  onClick: () => {},
+                },
+              ]
+            : []),
+          ...(canPrepareSale
+            ? [
+                {
+                  label: "Sell Lien",
+                  icon: Tag,
+                  onClick: () =>
+                    router.push(`/selling/portfolio/lien/${lien.lienId}/sell`),
+                },
+              ]
+            : []),
+          ...(canConfirmSale
+            ? [
+                {
+                  label: "Continue Sale",
+                  icon: Send,
+                  onClick: () =>
+                    router.push(`/selling/portfolio/lien/${lien.lienId}/sell`),
+                },
+              ]
+            : []),
+          ...(canKeep
+            ? [
+                {
+                  label: "Keep",
+                  icon: Inbox,
+                  onClick: () => setConfirmAction("keep"),
+                },
+              ]
+            : []),
+          ...(canWithdrawSale
+            ? [
+                {
+                  label: "Withdraw from Sale",
+                  icon: Undo2,
+                  onClick: () => setConfirmAction("withdraw-sale"),
+                },
+              ]
+            : []),
+          ...(canRestore
+            ? [
+                {
+                  label: "Restore",
+                  icon: RotateCcw,
+                  onClick: () => setConfirmAction("restore"),
+                },
+              ]
+            : []),
+          ...(canArchive
+            ? [
+                {
+                  label: "Archive",
+                  icon: Archive,
+                  variant: "danger" as const,
+                  onClick: () => setConfirmAction("archive"),
+                },
+              ]
+            : []),
         ]}
       />
       <ConfirmDialog
-        open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={handleArchiveToggle}
+        open={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={runConfirmAction}
         loading={loading}
-        title={isArchived ? "Restore This Lien?" : "Archive This Lien?"}
-        description={
-          isArchived
-            ? "This lien will be restored to the Pending list for active portfolio tracking."
-            : "This lien will be hidden from active portfolio lists, but its record and history will be retained."
+        title={
+          confirmAction === "restore"
+            ? "Restore This Lien?"
+            : confirmAction === "archive"
+              ? "Archive This Lien?"
+              : confirmAction === "withdraw-sale"
+                ? "Withdraw From Sale?"
+                : "Keep as Internal Asset?"
         }
-        confirmLabel={isArchived ? "Restore" : "Archive"}
-        confirmVariant={isArchived ? "primary" : "danger"}
+        description={
+          confirmAction === "restore"
+            ? "This lien will be restored to the Pending list for active portfolio tracking."
+            : confirmAction === "archive"
+              ? "This lien will be hidden from active portfolio lists, but its record and history will be retained."
+              : confirmAction === "withdraw-sale"
+                ? "This lien will no longer be visible to the buyer and will need to be re-submitted for sale."
+                : "This lien will be kept as a private internal asset instead of being offered for sale."
+        }
+        confirmLabel={
+          confirmAction === "restore"
+            ? "Restore"
+            : confirmAction === "archive"
+              ? "Archive"
+              : confirmAction === "withdraw-sale"
+                ? "Withdraw"
+                : "Keep"
+        }
+        confirmVariant={
+          confirmAction === "archive" || confirmAction === "withdraw-sale" ? "danger" : "primary"
+        }
       />
     </>
   );
