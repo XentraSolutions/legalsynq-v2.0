@@ -416,7 +416,12 @@ function CompaniesListView() {
           companyTypeId={contactPersonTarget.companyTypeId}
           onClose={() => setContactPersonTarget(null)}
           onSaved={() => {
-            setContactAddedFor(contactPersonTarget);
+            // A funding company can only ever have one contact person, so
+            // the "add another" prompt below doesn't apply to it.
+            const isFundingCompany =
+              companyTypes.find((t) => t.id === contactPersonTarget.companyTypeId)
+                ?.code === "FundingCompany";
+            if (!isFundingCompany) setContactAddedFor(contactPersonTarget);
             setContactPersonTarget(null);
           }}
         />
