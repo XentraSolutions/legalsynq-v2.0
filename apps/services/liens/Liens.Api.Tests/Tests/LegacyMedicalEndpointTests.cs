@@ -67,6 +67,24 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         data["isBulk"]!.GetValue<string>().Should().Be("Yes");
         data["isServicing"]!.GetValue<string>().Should().Be("Yes");
         data["fundingCompanyId"]!.GetValue<string>().Should().BeEmpty();
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new { caseId = SeedHelper.CaseId, page = 1, limit = 50 });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var updates = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var fieldUpdate = updates["data"]!.AsArray().Single(item =>
+            item!["description"]!.GetValue<string>().StartsWith("Lien updated.", StringComparison.Ordinal));
+        var description = fieldUpdate!["description"]!.GetValue<string>();
+        fieldUpdate["lienCode"]!.GetValue<string>().Should().Be("LIEN-TEST-001");
+        description.Should().Contain("Purchase Date: blank → 06/22/2026");
+        description.Should().Contain("Initial Service Date: blank → 07/07/2026");
+        description.Should().Contain("End Service Date: blank → 07/03/2026");
+        description.Should().Contain("Bulk: blank → Yes");
+        description.Should().Contain("Servicing: blank → Yes");
+        description.Should().Contain("Description: blank → test");
     }
 
     [Fact]
@@ -112,7 +130,12 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
 
         update!["action"]!.GetValue<string>().Should().Be("Lien Update");
         update["lienId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
+        update["lienCode"]!.GetValue<string>().Should().Be("LIEN-TEST-001");
         update["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
+
+        body["data"]!.AsArray()
+            .Count(item => item!["description"]!.GetValue<string>().StartsWith("Lien updated.", StringComparison.Ordinal))
+            .Should().Be(1);
     }
 
     [Fact]

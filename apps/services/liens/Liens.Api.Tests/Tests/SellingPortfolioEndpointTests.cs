@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using BuildingBlocks.Notifications;
+using Liens.Api.Serialization;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
@@ -2689,6 +2690,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         buyerMessage.GetProperty("senderType").GetString().Should().Be("buyer");
         buyerMessage.GetProperty("senderName").GetString().Should().Be("Buyer Reviewer");
         buyerMessage.GetProperty("message").GetString().Should().Be("Can you confirm the signed LOP is final?");
+        var buyerMessageSentAt = $"{PacificTimeHelper.FormatTimestamp(buyerMessage.GetProperty("createdAtUtc").GetDateTime())} PT";
 
         var sellerView = await anonClient.GetAsync($"/api/liens/selling/public/{sellerToken}");
         sellerView.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -2708,14 +2710,17 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerEmail.RecipientEmail.Should().Be("seller.processor@rl-liens.test");
             sellerEmail.Subject.Should().Be("New message on lien offer");
             sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
+            sellerEmail.Body.Should().Contain($"Message sent: {buyerMessageSentAt}");
             sellerEmail.Body.Should().Contain("Can you confirm the signed LOP is final?");
             var sellerNotificationUrl = ExtractPublicPortalUrlFromEmailBody(sellerEmail.Body);
             sellerNotificationUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
             sellerEmail.Metadata["recipientRole"].Should().Be("seller");
             sellerEmail.Metadata["senderType"].Should().Be("buyer");
             sellerEmail.Metadata["messageId"].Should().Be(buyerMessage.GetProperty("id").GetGuid().ToString());
+            sellerEmail.Metadata["messageSentAt"].Should().Be(buyerMessageSentAt);
             sellerEmail.Options.Should().NotBeNull();
             sellerEmail.Options!.DisableClickTracking.Should().BeTrue();
+            sellerEmail.Options.HtmlBody.Should().Contain($"Message sent: {buyerMessageSentAt}");
             sellerEmail.Options.HtmlBody.Should().Contain("View Lien");
             sellerEmail.Options.HtmlBody.Should().Contain($"href=\"{sellerNotificationUrl}\"");
             sellerEmail.Options.HtmlBody.Should().NotContain("View &amp; Reply");
@@ -2739,6 +2744,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var sellerMessage = await sellerPost.Content.ReadFromJsonAsync<JsonElement>();
         sellerMessage.GetProperty("senderType").GetString().Should().Be("seller");
         sellerMessage.GetProperty("senderName").GetString().Should().Be("Seller Processor");
+        var sellerMessageSentAt = $"{PacificTimeHelper.FormatTimestamp(sellerMessage.GetProperty("createdAtUtc").GetDateTime())} PT";
 
         var buyerView = await anonClient.GetAsync($"/api/liens/selling/public/{buyerToken}");
         buyerView.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -2763,15 +2769,18 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             buyerEmail.RecipientEmail.Should().Be("buyer.messages.account@capital.test");
             buyerEmail.Subject.Should().Be("New message on lien offer");
             buyerEmail.Body.Should().Contain("Seller Processor sent a message");
+            buyerEmail.Body.Should().Contain($"Message sent: {sellerMessageSentAt}");
             buyerEmail.Body.Should().Contain("The LOP is final and attached to the package.");
             var buyerNotificationUrl = ExtractPublicPortalUrlFromEmailBody(buyerEmail.Body);
             buyerNotificationUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
             buyerEmail.Metadata["recipientRole"].Should().Be("buyer");
             buyerEmail.Metadata["senderType"].Should().Be("seller");
             buyerEmail.Metadata["messageId"].Should().Be(sellerMessage.GetProperty("id").GetGuid().ToString());
+            buyerEmail.Metadata["messageSentAt"].Should().Be(sellerMessageSentAt);
 
             buyerEmail.Options.Should().NotBeNull();
             buyerEmail.Options!.HtmlBody.Should().Contain("View Lien");
+            buyerEmail.Options.HtmlBody.Should().Contain($"Message sent: {sellerMessageSentAt}");
             buyerEmail.Options.HtmlBody.Should().Contain($"href=\"{buyerNotificationUrl}\"");
 
             var buyerNotificationView = await anonClient.GetAsync($"/api/liens/selling/public/{ExtractBuyerAccessToken(buyerNotificationUrl)}");
@@ -3272,7 +3281,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.BuyingOrgId.Should().BeNull();
         db.LienStatusHistories.Should().Contain(item =>
             item.LienId == lienId &&
-            item.Description == "Lien Status: Accepted. Buyer response recorded as Accepted.");
+            item.Description.StartsWith(
+                "Lien Status: Accepted. Buyer response recorded as Accepted. Changes:",
+                StringComparison.Ordinal));
 
         var sellerDetailResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
         sellerDetailResponse.StatusCode.Should().Be(HttpStatusCode.OK,

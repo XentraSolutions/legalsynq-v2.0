@@ -10,7 +10,11 @@ import {
   type CaseLienItem,
 } from "@/lib/cases";
 import type { LiensQuery } from "@/lib/liens";
-import { useCaseLiens, useDeleteLien } from "@/hooks/use-case-liens";
+import {
+  useCaseLiens,
+  useCaseLiensUpdates,
+  useDeleteLien,
+} from "@/hooks/use-case-liens";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import { ConfirmDialog } from "@/components/lien/modal";
@@ -61,7 +65,6 @@ export function LiensTab({
   } | null>(null);
   const deleteLien = useDeleteLien(caseId);
 
-  const [liensUpdates, setLiensUpdates] = useState<CaseLienUpdateRow[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>(liensPagination);
 
   const serverQuery = useMemo<LiensQuery>(
@@ -80,22 +83,7 @@ export function LiensTab({
   const liensData = (filteredLiens?.items ??
     liensProp) as unknown as (CaseLienItem & CaseLienItemMetadata)[];
 
-  const fetchData = useCallback(async () => {
-    const updates = await casesService.getCaseLiensUpdates(caseId);
-    setLiensUpdates(
-      Array.isArray(updates)
-        ? updates.map((item) => ({
-            ...item,
-            lienId: (item as CaseLienUpdateRow).lienId ?? undefined,
-          }))
-        : [],
-    );
-  }, [caseId]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
+  const { data: liensUpdates } = useCaseLiensUpdates(caseId);
   /* TEMP: visual fallback data for UI review only */
   const displayLiens = liensData.map((l) => {
     return {
@@ -185,7 +173,7 @@ export function LiensTab({
       id: "lienId",
       header: "Lien ID",
       cell: ({ row }) => (
-        <span className="text-sm text-gray-600 max-w-40 block">
+        <span className="text-sm text-gray-600 max-w-40 whitespace-nowrap">
           {row.original.lienNumber}
         </span>
       ),
@@ -305,8 +293,8 @@ export function LiensTab({
       />
 
       <LienUpdatesSection
-        liensUpdates={liensUpdates}
-        entriesCount={liensData.length}
+        liensUpdates={liensUpdates ?? []}
+        entriesCount={liensUpdates?.length ?? 0}
       />
     </div>
   );

@@ -373,7 +373,7 @@ Posts a message from the authenticated seller detail page into the same persiste
 buyer/seller links and authenticated funding-company portal. The lien must already have an offer/access-link thread
 with a buyer; otherwise the endpoint returns `409 message_thread_unavailable`. Seller messages use
 `senderType=seller` and notify the buyer with the same `lien.offer.message.created` email workflow used by public
-seller replies.
+seller replies. The email body displays the persisted message `createdAtUtc` timestamp converted to U.S. Pacific time.
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 
@@ -1139,7 +1139,8 @@ same chronological thread. After the message is saved, Liens emails the other pa
 use the seller account email resolved from Identity; seller-to-buyer replies use the activated or authenticated buyer
 account email, not law-firm/contact email. Accept/decline outcome emails use the same account-recipient rule for the
 seller, and the authenticated/activated buyer account email for the buyer when available. Notification failures are
-logged and do not roll back the saved message or response.
+logged and do not roll back the saved message or response. Message notification emails display the saved message
+timestamp converted from `createdAtUtc` to U.S. Pacific time.
 
 **Authentication:** None.
 
@@ -1557,7 +1558,12 @@ also merges imported Program 1 case-update events and
 The lien-update timeline excludes case-level `Case Details Update` history that has
 no lien association. Those records remain available from `case-updates/v3`; every
 row returned by `liens-updates/v3` represents a specific lien and includes its
-`lienId` and `action`.
+`lienId`, current tenant-scoped `lienCode`, and `action`. Native lien mutations compare
+the persisted previous values with the resulting values and record every changed
+business field as `previous → new`; unchanged submissions do not create a change row.
+Summaries that exceed the 500-character history storage limit continue in additional
+rows so changed fields are not silently omitted. Selling handlers that directly mutate
+a tracked lien use the same comparison, including archive, restore, and public buyer-response transitions.
 Changing `note` through `POST /api/liens/cases/liens/update-medical` appends one
 lien-scoped `Lien Update` row. Its description is the submitted note, its
 `lienId` is the updated lien, and `updatedBy` resolves from the authenticated

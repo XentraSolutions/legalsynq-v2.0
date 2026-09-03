@@ -2,7 +2,6 @@ import { ApiResponse } from "@/types";
 import { liensGlobalSearch } from "./global-search.api";
 
 export function mapToListItem(dto: any): any {
-  console.log(dto);
   return [
     {
       title: "Plaintiff Name",

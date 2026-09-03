@@ -134,6 +134,9 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     },
   ],
 
+  // NOTE: `lien` and `selling` (below) are two separate products/nav trees that
+  // should really be one Lien product with two submodules (servicing + selling).
+  // Treat them as a single product conceptually until they're consolidated.
   lien: [
     {
       heading: "MY TASKS",
@@ -283,6 +286,8 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     },
   ],
 
+  // NOTE: workaround around `lien` and `selling` being modeled as 2 separate
+  // products — see the comment above `lien` above.
   selling: [
     {
       heading: "Lien Portfolio",
@@ -436,43 +441,61 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
 
 export const PRODUCT_META: Record<
   string,
-  { label: string; icon: string; color: string; iconSrc: string }
+  {
+    label: string;
+    icon: string;
+    color: string;
+    iconSrc: string;
+    description: string;
+  }
 > = {
   careconnect: {
     label: "Synq CareConnect",
     icon: "ri-shield-cross-line",
     color: "#2563eb",
     iconSrc: "/product-icons/synqconnect.png",
+    description:
+      "Streamlines medical referrals, incoming patient requests, and care partner networks.",
   },
   fund: {
     label: "Synq Funds",
     icon: "ri-bank-line",
     color: "#16a34a",
     iconSrc: "/product-icons/synqfund.png",
+    description:
+      "Manages funding requests, disbursements, and repayment tracking for lien-backed cases.",
   },
   lien: {
     label: "Synq Liens",
     icon: "ri-stack-line",
     color: "#7c3aed",
     iconSrc: "/product-icons/synqlien.png",
+    description:
+      "End-to-end platform for tracking, evaluating, and trading medical lien portfolios.",
   },
   xenia: {
     label: "Xenia",
     icon: "ri-robot-line",
     color: "#d97706",
     iconSrc: "/product-icons/synqai.png",
+    description:
+      "AI assistant that automates portal inquiries, searches case data, and speeds up admin tasks.",
   },
   selling: {
     label: "Synq Lien Selling",
     icon: "ri-stack-line",
     color: "#7c3aed",
     iconSrc: "/product-icons/synqlien.png",
+    description:
+      "End-to-end platform for tracking, evaluating, and trading medical lien portfolios.",
   },
   insights: {
     label: "Synq Insights",
     icon: "ri-bar-chart-2-line",
     color: "#0891b2",
     iconSrc: "/product-icons/synqinsight.png",
+    description:
+      "Surfaces portfolio analytics and reporting across your lien and case data.",
   },
 };
 
@@ -659,6 +682,29 @@ export function filterNavByAccess(
       ),
     }))
     .filter((s) => s.items.length > 0);
+}
+
+// ── Default landing page per product ──────────────────────────────────────────
+
+/**
+ * Resolves the href a product switcher entry should navigate to: the
+ * product's own "/dashboard" route when it has one, otherwise the first
+ * navigable link found in its nav tree (section order, then item order,
+ * recursing into dropdown children).
+ */
+export function getProductDefaultHref(productKey: string): string {
+  const hrefs = collectNavHrefs(PRODUCT_NAV[productKey] ?? []);
+  return hrefs.find((href) => href.endsWith("/dashboard")) ?? hrefs[0] ?? "/";
+}
+
+function collectNavHrefs(sections: NavSection[]): string[] {
+  const hrefs: string[] = [];
+  const visit = (item: NavItem) => {
+    if (item.href) hrefs.push(item.href);
+    item.children?.forEach(visit);
+  };
+  sections.forEach((section) => section.items.forEach(visit));
+  return hrefs;
 }
 
 // ── Infer product from pathname ───────────────────────────────────────────────

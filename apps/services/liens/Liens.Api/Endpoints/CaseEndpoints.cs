@@ -4651,7 +4651,7 @@ public static class CaseEndpoints
                     .Where(history =>
                         history.TenantId == tenantId &&
                         candidateLienIds.Contains(history.LienId) &&
-                        history.Description == DeletedLienHistoryDescription)
+                        history.Description.StartsWith(DeletedLienHistoryDescription))
                     .Select(history => history.LienId)
                     .Distinct()
                     .ToListAsync(ct))
@@ -5802,12 +5802,18 @@ public static class CaseEndpoints
             httpContext.Request.Headers.Authorization.ToString(),
             identityOptions.Value,
             ct);
+        var lienCodes = await db.Liens.AsNoTracking()
+            .Where(lien => lien.TenantId == tenantId && lien.CaseId == caseId)
+            .ToDictionaryAsync(lien => lien.Id, lien => lien.LienNumber, ct);
         var data = selected
             .Select(i => new
             {
                 id = i.Id,
                 caseId = i.CaseId,
                 lienId = i.LienId,
+                lienCode = Guid.TryParse(i.LienId, out var lienId) && lienCodes.TryGetValue(lienId, out var lienCode)
+                    ? lienCode
+                    : string.Empty,
                 action = i.Action,
                 description = i.Description,
                 updatedBy = i.UpdatedByUserId.HasValue

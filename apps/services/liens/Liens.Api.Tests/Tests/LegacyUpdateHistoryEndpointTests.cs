@@ -193,6 +193,7 @@ public sealed class LegacyUpdateHistoryEndpointTests
         rows.Should().ContainSingle();
         rows[0].GetProperty("caseId").GetString().Should().Be(SeedHelper.CaseId.ToString());
         rows[0].GetProperty("lienId").GetString().Should().Be(SeedHelper.LienId.ToString());
+        rows[0].GetProperty("lienCode").GetString().Should().Be("LIEN-TEST-001");
         rows[0].GetProperty("action").GetString().Should().Be("Lien Update");
         rows[0].GetProperty("description").GetString().Should().Be("Payee → Created ?");
         rows[0].GetProperty("updatedBy").GetString().Should().Be("Legacy Actor");

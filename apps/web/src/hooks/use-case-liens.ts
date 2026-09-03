@@ -32,6 +32,7 @@ import {
 } from "@/lib/servicing";
 import { dateConverter } from "@/lib/cases/cases.mapper";
 import { CreateMedicalCodeLiensDto } from "@/lib/cases/cases.types";
+import { CaseLienUpdateRow } from "@/app/(platform)/lien/cases/[id]/tabs/liens/sections/lien-updates-section";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -243,6 +244,18 @@ async function fetchAllCaseLiens(
   };
 }
 
+async function fetchLienUpdates(
+  caseId: string,
+): Promise<Array<CaseLienUpdateRow>> {
+  const updates = await casesService.getCaseLiensUpdates(caseId);
+  return Array.isArray(updates)
+    ? updates.map((item) => ({
+        ...item,
+        lienId: (item as CaseLienUpdateRow).lienCode ?? undefined,
+      }))
+    : [];
+}
+
 export function useCaseLiens(
   caseId: string,
   query: LiensQuery,
@@ -295,10 +308,28 @@ export function useUpdateServicingDetails() {
   });
 }
 
+export function useCaseLiensUpdates(caseId: string) {
+  return useQuery({
+    queryKey: ["lien-updates", caseId],
+    queryFn: () => fetchLienUpdates(caseId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useCases(query: CasesQuery) {
   return useQuery({
     queryKey: ["cases", query],
     queryFn: () => casesService.getCases(query),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCasesUpdates(caseId: string) {
+  return useQuery({
+    queryKey: ["case-updates", caseId],
+    queryFn: () => casesService.getCaseUpdates(caseId),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });

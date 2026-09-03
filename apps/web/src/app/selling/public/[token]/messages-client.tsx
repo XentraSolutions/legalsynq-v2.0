@@ -304,16 +304,22 @@ function EmptyState({ icon, message }: { icon: string; message: string }) {
 }
 
 function formatMessageTime(value: string) {
-  const date = new Date(value);
+  const date = new Date(normalizeUtcTimestamp(value));
   if (Number.isNaN(date.getTime())) return "";
 
   return new Intl.DateTimeFormat("en-US", {
-    month: "2-digit",
-    day: "2-digit",
+    month: "long",
+    day: "numeric",
     year: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function normalizeUtcTimestamp(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed) ? trimmed : `${trimmed}Z`;
 }
 
 function formatFileSize(bytes: number) {

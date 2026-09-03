@@ -470,7 +470,11 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             .ToList();
 
         descriptions.Should().Contain("Lien Status: Pending. Selling lien created with status Pending.");
-        descriptions.Should().Contain("Lien Status: Internal. Selling lien information updated.");
+        descriptions.Should().Contain(description =>
+            description != null &&
+            description.StartsWith("Lien Status: Internal. Selling lien information updated. Changes:", StringComparison.Ordinal) &&
+            description.Contains("Seller Status: Pending → Internal", StringComparison.Ordinal) &&
+            description.Contains("Notes: blank → Status history test", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1717,7 +1721,22 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         persisted!.SellerStatus.Should().Be(SellingLienStatus.Pending);
         persisted.ArchivedAtUtc.Should().BeNull();
         persisted.ArchivedReason.Should().BeNull();
-        db.LienStatusHistories.Count(item => item.LienId == lienId).Should().BeGreaterThanOrEqualTo(2);
+        var historyDescriptions = db.LienStatusHistories
+            .Where(item => item.LienId == lienId)
+            .Select(item => item.Description)
+            .ToList();
+        historyDescriptions.Should().HaveCountGreaterThanOrEqualTo(2);
+        historyDescriptions.Should().Contain(description =>
+            description.StartsWith("Lien Status: Archived. Lien archived. Changes:", StringComparison.Ordinal) &&
+            description.Contains("Seller Status: Pending → Archived", StringComparison.Ordinal) &&
+            description.Contains("Archived At UTC: blank →", StringComparison.Ordinal) &&
+            description.Contains("Archived Reason: blank → No longer active", StringComparison.Ordinal));
+        historyDescriptions.Should().Contain(description =>
+            description.StartsWith("Lien Status: Pending. Lien restored from archive. Changes:", StringComparison.Ordinal) &&
+            description.Contains("Seller Status: Archived → Pending", StringComparison.Ordinal) &&
+            description.Contains("Archived At UTC:", StringComparison.Ordinal) &&
+            description.Contains("→ blank", StringComparison.Ordinal) &&
+            description.Contains("Archived Reason: No longer active → blank", StringComparison.Ordinal));
     }
 
     [Fact]

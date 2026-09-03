@@ -17,6 +17,7 @@ import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import {
   useCaseDetail,
   useCaseLiens,
+  useCasesUpdates,
   useDeleteCase,
   useSettlementPaymentDetails,
 } from "@/hooks/use-case-liens";
@@ -52,8 +53,6 @@ export function CaseDetailShell({
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
 
-  const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
-
   const [documentTypes, setDocumentTypes] = useState<DropdownOption[]>([]);
 
   const {
@@ -75,6 +74,8 @@ export function CaseDetailShell({
   } = useSettlementPaymentDetails(id);
   // const [loading, setLoading] = useState(true);
 
+  const { data: caseUpdates } = useCasesUpdates(id);
+
   const [error, setError] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
   const [confirmAction, setConfirmAction] = useState<{
@@ -90,15 +91,6 @@ export function CaseDetailShell({
     isOpen: false,
     url: "",
   });
-
-  const fetchCaseUpdates = useCallback(async () => {
-    // setLoading(true);
-    setError(null);
-    try {
-      const updates = await casesService.getCaseUpdates(id);
-      setCaseUpdates(updates ?? []);
-    } catch (err) {}
-  }, [id]);
 
   const fetchDocumentTypes = useCallback(async () => {
     // setLoading(true);
@@ -124,7 +116,6 @@ export function CaseDetailShell({
 
   useEffect(() => {
     fetchDocumentTypes();
-    fetchCaseUpdates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

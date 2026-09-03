@@ -712,6 +712,7 @@ public static class ServiceLegacyEndpoints
             if (string.IsNullOrWhiteSpace(typeId))
                 typeId = "other";
             var statusId = usesLegacyPaymentFields ? storedTypeId : storedStatusId;
+            var isNoRecovery = IsNoRecoveryPaymentStatus(paymentLookups, statusId);
             var amountToSettle = payment.Amount != 0m
                 ? payment.Amount
                 : settlement is { Amount: not 0m }
@@ -728,8 +729,12 @@ public static class ServiceLegacyEndpoints
                 lienStatus = legacyLienStatus,
                 lienStatusId = legacyLienStatus,
                 amount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
-                checkAmount = checkAmount.ToString("0.00", CultureInfo.InvariantCulture),
-                checkDate = payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
+                checkAmount = isNoRecovery
+                    ? string.Empty
+                    : checkAmount.ToString("0.00", CultureInfo.InvariantCulture),
+                checkDate = isNoRecovery
+                    ? string.Empty
+                    : payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 checkNumber = payment.CheckNumber ?? string.Empty,
                 typeId,
                 type = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementStatus, typeId),
@@ -831,6 +836,35 @@ public static class ServiceLegacyEndpoints
             (string.Equals(lookup.Id.ToString(), value, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(lookup.Code, value, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(lookup.Name, value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool IsNoRecoveryPaymentStatus(
+        IReadOnlyCollection<LookupValue> lookups,
+        string value)
+    {
+        if (IsNoRecoveryValue(value))
+            return true;
+
+        var lookup = lookups.FirstOrDefault(item =>
+            string.Equals(item.Id.ToString(), value, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.Code, value, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.Name, value, StringComparison.OrdinalIgnoreCase));
+
+        return lookup is not null &&
+               (IsNoRecoveryValue(lookup.Code) || IsNoRecoveryValue(lookup.Name));
+    }
+
+    private static bool IsNoRecoveryValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Trim()
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        return normalized == "4" ||
+               string.Equals(normalized, "NoRecovery", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string HumanizeLegacyCode(string value)
