@@ -19,6 +19,8 @@ public class UserProductAccessConfiguration : IEntityTypeConfiguration<UserProdu
                .HasConversion<string>()
                .HasMaxLength(20);
         builder.Property(e => e.OrganizationId);
+        builder.Property<Guid>("OrganizationScopeId")
+               .HasComputedColumnSql("COALESCE(`OrganizationId`, '00000000-0000-0000-0000-000000000000')", stored: true);
         builder.Property(e => e.SourceType).IsRequired().HasMaxLength(20).HasDefaultValue("Direct");
         builder.Property(e => e.GrantedAtUtc);
         builder.Property(e => e.RevokedAtUtc);
@@ -27,8 +29,8 @@ public class UserProductAccessConfiguration : IEntityTypeConfiguration<UserProdu
         builder.Property(e => e.CreatedByUserId);
         builder.Property(e => e.UpdatedByUserId);
 
-        builder.HasIndex(e => new { e.TenantId, e.UserId, e.ProductCode })
+        builder.HasIndex("TenantId", "OrganizationScopeId", "UserId", "ProductCode")
                .IsUnique()
-               .HasDatabaseName("IX_UserProductAccess_TenantId_UserId_ProductCode");
+               .HasDatabaseName("IX_UserProductAccess_TenantId_OrganizationId_UserId_ProductCode");
     }
 }

@@ -153,7 +153,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     private sealed record AssociationData(Guid AssociationId);
 
     [Fact]
-    public async Task CreateLien_defaults_lien_number_from_case_number_and_next_sequence()
+    public async Task CreateLien_defaults_lien_number_without_reusing_a_detached_historical_number()
     {
         var caseId = Guid.CreateVersion7();
 
@@ -170,6 +170,15 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
 
             var caseEntity = db.Cases.Local.Single(c => c.CaseNumber == "26-000001");
             typeof(Case).GetProperty(nameof(Case.Id))!.SetValue(caseEntity, caseId);
+            var historicalLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "26-000001-01",
+                LienType.MedicalLien,
+                50m,
+                SeedHelper.UserId);
+            historicalLien.SetLegacyMedicalStatus(LienStatus.Cancelled, SeedHelper.UserId);
+            db.Liens.Add(historicalLien);
             await db.SaveChangesAsync();
         }
 
@@ -184,7 +193,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         first.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await first.Content.ReadAsStringAsync()}");
         var firstBody = await first.Content.ReadFromJsonAsync<LienResponseBody>();
-        firstBody!.LienNumber.Should().Be("26-000001-01");
+        firstBody!.LienNumber.Should().Be("26-000001-02");
 
         var second = await _client.PostAsJsonAsync("/api/liens/liens", new
         {
@@ -197,7 +206,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         second.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await second.Content.ReadAsStringAsync()}");
         var secondBody = await second.Content.ReadFromJsonAsync<LienResponseBody>();
-        secondBody!.LienNumber.Should().Be("26-000001-02");
+        secondBody!.LienNumber.Should().Be("26-000001-03");
     }
 
     [Fact]

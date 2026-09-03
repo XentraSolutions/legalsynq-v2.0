@@ -1120,7 +1120,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task RunReport_and_export_exclude_deleted_cancelled_liens()
+    public async Task RunReport_and_export_exclude_rejected_and_cancelled_liens()
     {
         var prefix = $"LIEN-DIY-EXCLUDED-{Guid.CreateVersion7():N}"[..36];
         var openLienNumber = $"{prefix}-OPEN";
@@ -1165,9 +1165,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var previewLienNumbers = runPayload.RootElement.GetProperty("data").EnumerateArray()
             .Select(row => row.GetProperty("lien_id").GetString())
             .ToList();
-        previewLienNumbers.Should().BeEquivalentTo(
-            openLienNumber,
-            rejectedLienNumber);
+        previewLienNumbers.Should().BeEquivalentTo(openLienNumber);
+        previewLienNumbers.Should().NotContain(rejectedLienNumber);
         previewLienNumbers.Should().NotContain(cancelledLienNumber);
 
         var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
@@ -1178,7 +1177,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
         var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
         csv.Should().Contain(openLienNumber);
-        csv.Should().Contain(rejectedLienNumber).And.NotContain(cancelledLienNumber);
+        csv.Should().NotContain(rejectedLienNumber).And.NotContain(cancelledLienNumber);
 
         var rejectedResponse = await _client.PostAsJsonAsync("/report/diy", new
         {
@@ -1197,7 +1196,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var rejectedLienNumbers = rejectedPayload.RootElement.GetProperty("data").EnumerateArray()
             .Select(row => row.GetProperty("lien_id").GetString())
             .ToList();
-        rejectedLienNumbers.Should().BeEquivalentTo(rejectedLienNumber);
+        rejectedLienNumbers.Should().BeEmpty();
         rejectedLienNumbers.Should().NotContain(cancelledLienNumber);
         rejectedLienNumbers.Should().NotContain(openLienNumber);
     }
@@ -1570,6 +1569,196 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunReport_accepts_scalar_lien_status_lookup_id_from_frontend()
+    {
+        var prefix = $"LIEN-DIY-SCALAR-STATUS-{Guid.CreateVersion7():N}"[..34];
+        var draftLienNumber = $"{prefix}-DRAFT";
+        var activeLienNumber = $"{prefix}-ACTIVE";
+        var settledLienNumber = $"{prefix}-SETTLED";
+
+        var lookupResponse = await _client.GetAsync("/lookup/liens/status");
+        lookupResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await lookupResponse.Content.ReadAsStringAsync()}");
+        using var lookupPayload = JsonDocument.Parse(await lookupResponse.Content.ReadAsStringAsync());
+        var openStatusLookupId = lookupPayload.RootElement.EnumerateArray()
+            .Single(item => item.GetProperty("code").GetString() == "Open")
+            .GetProperty("id")
+            .GetGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var draftLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                draftLienNumber,
+                LienType.MedicalLien,
+                50m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            var activeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                activeLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            activeLien.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            var settledLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                settledLienNumber,
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            settledLien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+
+            db.Liens.AddRange(draftLien, activeLien, settledLien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            search = prefix,
+            isBulk = "N",
+            lienStatusIds = openStatusLookupId,
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var lienNumbers = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .ToList();
+        lienNumbers.Should().BeEquivalentTo([draftLienNumber, activeLienNumber]);
+        lienNumbers.Should().NotContain(settledLienNumber);
+    }
+
+    [Fact]
+    public async Task RunReport_returns_closed_liens_when_frontend_selects_closed_status()
+    {
+        var prefix = $"LIEN-DIY-CLOSED-STATUS-{Guid.CreateVersion7():N}"[..34];
+        var activeLienNumber = $"{prefix}-ACTIVE";
+        var settledLienNumber = $"{prefix}-SETTLED";
+
+        var lookupResponse = await _client.GetAsync("/lookup/liens/status");
+        lookupResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await lookupResponse.Content.ReadAsStringAsync()}");
+        using var lookupPayload = JsonDocument.Parse(await lookupResponse.Content.ReadAsStringAsync());
+        var closedStatusLookupId = lookupPayload.RootElement.EnumerateArray()
+            .Single(item => item.GetProperty("code").GetString() == "Closed")
+            .GetProperty("id")
+            .GetGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var activeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                activeLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            activeLien.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            var settledLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                settledLienNumber,
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            settledLien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+
+            db.Liens.AddRange(activeLien, settledLien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            search = prefix,
+            isBulk = "N",
+            lienStatusIds = closedStatusLookupId,
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var lienNumbers = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .ToList();
+        lienNumbers.Should().ContainSingle().Which.Should().Be(settledLienNumber);
+        lienNumbers.Should().NotContain(activeLienNumber);
+    }
+
+    [Fact]
+    public async Task RunReport_excludes_rejected_liens_from_legacy_saved_status_filter()
+    {
+        var prefix = $"LIEN-DIY-REJECTED-STATUS-{Guid.CreateVersion7():N}"[..34];
+        var activeLienNumber = $"{prefix}-ACTIVE";
+        var declinedLienNumber = $"{prefix}-DECLINED";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var activeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                activeLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            activeLien.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            var declinedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                declinedLienNumber,
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                isBulk: "N");
+            declinedLien.SetLegacyMedicalStatus(LienStatus.Declined, SeedHelper.UserId);
+
+            db.Liens.AddRange(activeLien, declinedLien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            search = prefix,
+            isBulk = "N",
+            statusView = "REJECTED",
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var lienNumbers = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .ToList();
+        lienNumbers.Should().BeEmpty();
+        lienNumbers.Should().NotContain(declinedLienNumber);
+        lienNumbers.Should().NotContain(activeLienNumber);
+    }
+
+    [Fact]
     public async Task Newly_created_case_without_liens_appears_in_case_report_preview_and_export()
     {
         var createResponse = await _client.PostAsJsonAsync("/api/liens/cases", new
@@ -1926,9 +2115,23 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
                 "Unlinked Case Activity",
                 CaseNoteCategory.CaseCreated,
                 new DateTime(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc));
+            var latestNativeActivity = CaseUpdateHistory.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                "Case Details Update",
+                "Native case activity",
+                SeedHelper.UserId,
+                new DateTime(2099, 8, 17, 16, 43, 0, DateTimeKind.Utc));
+            var latestUnlinkedNativeActivity = CaseUpdateHistory.Create(
+                SeedHelper.TenantId,
+                unlinkedCase.Id,
+                "Case Details Update",
+                "Native unlinked case activity",
+                SeedHelper.UserId,
+                new DateTime(2099, 8, 18, 17, 0, 0, DateTimeKind.Utc));
 
             caseId = caseEntity.Id;
-            latestActivityId = latestActivity.Id;
+            latestActivityId = latestNativeActivity.Id;
             caseNumber = caseEntity.CaseNumber;
             lienNumber = lien.LienNumber;
             unlinkedCaseNumber = unlinkedCase.CaseNumber;
@@ -1942,6 +2145,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
                 deletedActivity,
                 otherTenantActivity,
                 unlinkedActivity);
+            db.CaseUpdateHistories.AddRange(latestNativeActivity, latestUnlinkedNativeActivity);
             await db.SaveChangesAsync();
         }
 
@@ -1956,8 +2160,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         using var caseUpdatesPayload = JsonDocument.Parse(await caseUpdatesResponse.Content.ReadAsStringAsync());
         var newestCaseUpdate = caseUpdatesPayload.RootElement.GetProperty("data").EnumerateArray().First();
         newestCaseUpdate.GetProperty("id").GetString().Should().Be(latestActivityId.ToString());
-        newestCaseUpdate.GetProperty("description").GetString().Should().Be("Case Tracking Note Update");
-        newestCaseUpdate.GetProperty("timestamp").GetString().Should().Be("08/17/2026 09:43 AM");
+        newestCaseUpdate.GetProperty("description").GetString().Should().Be("Native case activity");
+        newestCaseUpdate.GetProperty("timestamp").GetString().Should().Be("08/17/2099 09:43 AM");
 
         foreach (var reportType in new[] { "LIENS", "COMBINED", "CASES" })
         {
@@ -1965,16 +2169,16 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
                 reportType,
                 lienNumber,
                 caseNumber,
-                "Case Tracking Note Update",
-                "08/17/2026 09:43 AM");
+                "Native case activity",
+                "08/17/2099 09:43 AM");
         }
 
         await AssertLastActivityAsync(
             "CASES",
             unlinkedCaseNumber,
             unlinkedCaseNumber,
-            "Unlinked Case Activity",
-            "08/18/2026 10:00 AM");
+            "Native unlinked case activity",
+            "08/18/2099 10:00 AM");
 
         async Task AssertLastActivityAsync(
             string reportType,

@@ -320,6 +320,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 .RequireAuthorization(Policies.AuthenticatedUser);
 
 app.MapSynqLienInternalEndpoints();
+app.MapSynqLienUserManagementEndpoints();
 app.MapLienEndpoints();
 app.MapLegacyDocumentLinkEndpoints();
 app.MapAssistantToolEndpoints();

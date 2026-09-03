@@ -31,12 +31,19 @@ public class EffectiveAccessService : IEffectiveAccessService
     }
 
     public static string BuildCacheKey(Guid tenantId, Guid userId, int accessVersion) =>
-        $"ea:{tenantId}:{userId}:{accessVersion}";
+        BuildCacheKey(tenantId, userId, null, accessVersion);
+
+    public static string BuildCacheKey(Guid tenantId, Guid userId, Guid? organizationId, int accessVersion) =>
+        $"ea:{tenantId}:{organizationId?.ToString() ?? "tenant"}:{userId}:{accessVersion}";
 
     public static (long Hits, long Misses) GetCacheStats() => (_cacheHits, _cacheMisses);
 
     public async Task<EffectiveAccessResult> GetEffectiveAccessAsync(
         Guid tenantId, Guid userId, CancellationToken ct = default)
+        => await GetEffectiveAccessAsync(tenantId, userId, null, ct);
+
+    public async Task<EffectiveAccessResult> GetEffectiveAccessAsync(
+        Guid tenantId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
 
@@ -45,7 +52,7 @@ public class EffectiveAccessService : IEffectiveAccessService
             .Select(u => u.AccessVersion)
             .FirstOrDefaultAsync(ct);
 
-        var cacheKey = BuildCacheKey(tenantId, userId, accessVersion);
+        var cacheKey = BuildCacheKey(tenantId, userId, organizationId, accessVersion);
 
         if (_cache.TryGetValue(cacheKey, out EffectiveAccessResult? cached) && cached != null)
         {
@@ -59,7 +66,7 @@ public class EffectiveAccessService : IEffectiveAccessService
 
         Interlocked.Increment(ref _cacheMisses);
 
-        var result = await ComputeEffectiveAccessAsync(tenantId, userId, ct);
+        var result = await ComputeEffectiveAccessAsync(tenantId, userId, organizationId, ct);
 
         _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
         {
@@ -77,7 +84,7 @@ public class EffectiveAccessService : IEffectiveAccessService
     }
 
     private async Task<EffectiveAccessResult> ComputeEffectiveAccessAsync(
-        Guid tenantId, Guid userId, CancellationToken ct)
+        Guid tenantId, Guid userId, Guid? organizationId, CancellationToken ct)
     {
         var activeEntitlements = await _db.TenantProducts
             .Where(tp => tp.TenantId == tenantId && tp.IsEnabled)
@@ -92,14 +99,28 @@ public class EffectiveAccessService : IEffectiveAccessService
 
         var entitlementSet = new HashSet<string>(activeEntitlements, StringComparer.OrdinalIgnoreCase);
 
+        // During rollout, a legacy NULL-scoped SynqLien grant is safe only for a
+        // user who belongs to exactly one active organization in this tenant.
+        // The migration materializes exact grants; multi-organization users never
+        // receive a cross-organization fallback.
+        var allowLegacyUnscopedSynqLien = organizationId.HasValue &&
+            await _db.UserOrganizationMemberships.CountAsync(m =>
+                m.UserId == userId && m.IsActive && m.Organization.TenantId == tenantId, ct) == 1 &&
+            await _db.UserOrganizationMemberships.AnyAsync(m =>
+                m.UserId == userId && m.OrganizationId == organizationId.Value && m.IsActive, ct);
+
         var isTenantAdmin = await _db.ScopedRoleAssignments
             .AnyAsync(s => s.UserId == userId
                 && s.IsActive
                 && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
-                && s.Role.Name == "TenantAdmin", ct);
+                && s.Role.Name == "TenantAdmin"
+                && s.Role.TenantId == tenantId, ct);
 
         var directProducts = await _db.UserProductAccessRecords
-            .Where(a => a.TenantId == tenantId && a.UserId == userId && a.AccessStatus == AccessStatus.Granted)
+            .Where(a => a.TenantId == tenantId && a.UserId == userId && a.AccessStatus == AccessStatus.Granted &&
+                (organizationId == null || a.OrganizationId == organizationId ||
+                    (a.OrganizationId == null &&
+                        (a.ProductCode != ProductCodes.SynqLiens || allowLegacyUnscopedSynqLien))))
             .Select(a => a.ProductCode)
             .ToListAsync(ct);
 
@@ -143,6 +164,7 @@ public class EffectiveAccessService : IEffectiveAccessService
 
         foreach (var ip in inheritedProducts)
         {
+            if (organizationId.HasValue && ip.ProductCode == ProductCodes.SynqLiens) continue;
             if (!entitlementSet.Contains(ip.ProductCode)) continue;
             if (effectiveProductSet.Add(ip.ProductCode))
             {
@@ -156,7 +178,10 @@ public class EffectiveAccessService : IEffectiveAccessService
             .ToList();
 
         var directRoles = await _db.UserRoleAssignments
-            .Where(a => a.TenantId == tenantId && a.UserId == userId && a.AssignmentStatus == AssignmentStatus.Active)
+            .Where(a => a.TenantId == tenantId && a.UserId == userId && a.AssignmentStatus == AssignmentStatus.Active &&
+                (organizationId == null || a.OrganizationId == organizationId ||
+                    (a.OrganizationId == null &&
+                        (a.ProductCode != ProductCodes.SynqLiens || allowLegacyUnscopedSynqLien))))
             .ToListAsync(ct);
 
         var inheritedRoles = validGroupIds.Count > 0
@@ -219,6 +244,7 @@ public class EffectiveAccessService : IEffectiveAccessService
 
         foreach (var r in inheritedRoles)
         {
+            if (organizationId.HasValue && r.ProductCode == ProductCodes.SynqLiens) continue;
             activeGroups.TryGetValue(r.GroupId, out var gn);
             AddRole(r.RoleCode, r.ProductCode, "Inherited", r.GroupId, gn);
         }
@@ -246,6 +272,39 @@ public class EffectiveAccessService : IEffectiveAccessService
 
         var (permissions, permissionSources) = await ResolvePermissionsAsync(
             tenantId, userId, effectiveProductSet, directRoles, inheritedRoles, activeGroups, tenantAdminRoleCodes, ct);
+
+        if (organizationId.HasValue && effectiveProductSet.Contains(ProductCodes.SynqLiens))
+        {
+            var hasManagementRole = await _db.SynqLienUserAccessRoleAssignments
+                .AnyAsync(x => x.TenantId == tenantId && x.OrganizationId == organizationId.Value &&
+                    x.UserId == userId && x.IsActive && x.Role.IsActive, ct);
+            var managementPermissions = await _db.SynqLienUserAccessRoleAssignments
+                .Where(x => x.TenantId == tenantId && x.OrganizationId == organizationId.Value &&
+                    x.UserId == userId && x.IsActive && x.Role.IsActive)
+                .SelectMany(x => x.Role.Permissions.Where(p => p.Permission.IsActive)
+                    .Select(p => new { p.Permission.Code, RoleName = x.Role.Name }))
+                .ToListAsync(ct);
+            if (hasManagementRole && !isTenantAdmin)
+            {
+                var ceiling = managementPermissions.Select(x => x.Code)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                permissions.RemoveAll(code =>
+                    code.StartsWith(ProductCodes.SynqLiens + ".", StringComparison.OrdinalIgnoreCase) &&
+                    !ceiling.Contains(code));
+                permissionSources.RemoveAll(source =>
+                    source.ProductCode.Equals(ProductCodes.SynqLiens, StringComparison.OrdinalIgnoreCase) &&
+                    !ceiling.Contains(source.PermissionCode));
+            }
+            foreach (var permission in managementPermissions)
+            {
+                if (!permissions.Contains(permission.Code, StringComparer.OrdinalIgnoreCase))
+                    permissions.Add(permission.Code);
+                if (!permissionSources.Any(x => x.PermissionCode == permission.Code && x.Source == "SynqLienAccessRole"))
+                    permissionSources.Add(new EffectivePermissionEntry(
+                        permission.Code, ProductCodes.SynqLiens, "SynqLienAccessRole", permission.RoleName));
+            }
+            permissions.Sort(StringComparer.OrdinalIgnoreCase);
+        }
 
         _logger.LogDebug(
             "Effective access for user {UserId} in tenant {TenantId}: {ProductCount} products ({DirectCount} direct, {InheritedCount} inherited), {RoleCount} product roles, {TenantRoleCount} tenant roles, {PermissionCount} permissions.",

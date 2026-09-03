@@ -72,7 +72,8 @@ public static class CaseEndpoints
         DateTime CreatedAt,
         string CreatedBy,
         DateTime? UpdatedAt,
-        string UpdatedBy);
+        string UpdatedBy,
+        Guid? UpdatedByUserId);
 
     private sealed record LegacyLienTimelineItem(
         string Id,
@@ -80,6 +81,7 @@ public static class CaseEndpoints
         string LienId,
         string Action,
         string Description,
+        bool EnrichReferences,
         string UpdatedBy,
         Guid? UpdatedByUserId,
         DateTime SortAt,
@@ -1040,7 +1042,12 @@ public static class CaseEndpoints
 
         try
         {
-            var updated = await lienService.UpdateAsync(tenantId, lienId, userId, mappedRequest, ct);
+            var updated = await lienService.UpdateLegacyMedicalFacilityAsync(
+                tenantId,
+                lienId,
+                userId,
+                mappedRequest,
+                ct);
 
             var infoResult = await servicingItemService.SearchAsync(
                 tenantId,
@@ -1084,7 +1091,7 @@ public static class CaseEndpoints
 
                 await servicingItemService.CreateAsync(tenantId, orgId, userId, create, ct);
             }
-            else
+            else if (!string.Equals(info.Notes?.Trim(), notes.Trim(), StringComparison.Ordinal))
             {
                 var update = new UpdateServicingItemRequest
                 {
@@ -1317,12 +1324,12 @@ public static class CaseEndpoints
     private static async Task<IResult> LiensMedicaUpdateLegacy(
         LegacyLiensMedicalRequest request,
         ILienService lienService,
-        IServicingItemService servicingItemService,
+        IUnitOfWork unitOfWork,
+        IAuditPublisher auditPublisher,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
-        var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
 
         if (!Guid.TryParse(request.id, out var lienId))
@@ -1344,10 +1351,6 @@ public static class CaseEndpoints
             });
         }
 
-        var submittedNote = request.note?.Trim() ?? string.Empty;
-        var noteChanged = request.note is not null &&
-            !string.Equals(submittedNote, existing.Description?.Trim() ?? string.Empty, StringComparison.Ordinal);
-
         var mappedUpdate = new UpdateLienRequest
         {
             ExternalReference = request.fundingCompanyId ?? existing.ExternalReference,
@@ -1365,34 +1368,23 @@ public static class CaseEndpoints
             EndServiceDate = ParseLegacyDate(request.endServiceDate) ?? existing.EndServiceDate,
             IsBulk = request.isBulk ?? existing.IsBulk,
             IsServicing = request.isServicing ?? existing.IsServicing,
-            Description = request.note ?? existing.Description,
+            Description = request.note ?? existing.Notes ?? existing.Description,
         };
 
+        using var auditBuffer = auditPublisher.BeginBuffer();
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         try
         {
-            var updated = await lienService.UpdateAsync(tenantId, lienId, userId, mappedUpdate, ct);
-            if (!string.IsNullOrWhiteSpace(request.status))
-                await lienService.SetLegacyMedicalStatusAsync(tenantId, lienId, userId, request.status, ct);
+            await lienService.UpdateLegacyMedicalAsync(
+                tenantId,
+                lienId,
+                userId,
+                mappedUpdate,
+                request.status,
+                ct);
 
-            if (noteChanged)
-            {
-                await servicingItemService.CreateAsync(
-                    tenantId,
-                    orgId,
-                    userId,
-                    new CreateServicingItemRequest
-                    {
-                        TaskNumber = $"LMU-{Guid.CreateVersion7():N}",
-                        TaskType = "Lien Update",
-                        Description = string.IsNullOrEmpty(submittedNote)
-                            ? "Medical note cleared."
-                            : submittedNote,
-                        AssignedTo = "system",
-                        CaseId = updated.CaseId,
-                        LienId = lienId,
-                    },
-                    ct);
-            }
+            await transaction.CommitAsync(ct);
+            auditBuffer.Commit();
 
             return Results.Ok(new
             {
@@ -1402,6 +1394,7 @@ public static class CaseEndpoints
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync(CancellationToken.None);
             return Results.NotFound(new
             {
                 isSuccess = false,
@@ -2518,6 +2511,7 @@ public static class CaseEndpoints
             db.LienReductions.RemoveRange(db.LienReductions.Where(r => r.TenantId == tenantId && r.CaseId == id));
             db.LienSettlements.RemoveRange(db.LienSettlements.Where(s => s.TenantId == tenantId && s.CaseId == id));
             db.SettlementPaymentDetails.RemoveRange(db.SettlementPaymentDetails.Where(p => p.TenantId == tenantId && p.CaseId == id));
+            item.MarkForDeletion(userId);
             db.Cases.Remove(item);
             await db.SaveChangesAsync(ct);
 
@@ -2692,6 +2686,7 @@ public static class CaseEndpoints
         foreach (var note in notes)
             typeof(Liens.Domain.Entities.LienCaseNote).GetProperty("CaseId")?.SetValue(note, caseIdA);
 
+        secondaryCase.MarkForDeletion(userId);
         db.Cases.Remove(secondaryCase);
         await db.SaveChangesAsync(ct);
 
@@ -5325,7 +5320,6 @@ public static class CaseEndpoints
     private static async Task<IResult> CreateCase(
         CreateCaseRequest request,
         ICaseService caseService,
-        ILienCaseNoteService caseNoteService,
         ICurrentRequestContext ctx,
         HttpRequest httpRequest,
         CancellationToken ct = default)
@@ -5338,7 +5332,6 @@ public static class CaseEndpoints
             !string.IsNullOrWhiteSpace(idempotencyKey))
             request = request with { ExternalReference = idempotencyKey };
         var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
-        await CreateCaseHistoryEntryAsync(result, caseNoteService, tenantId, userId, ctx, ct);
         return Results.Created($"/api/liens/cases/{result.Id}", result);
     }
 
@@ -5361,35 +5354,6 @@ public static class CaseEndpoints
             ct);
 
         return Results.Ok(result);
-    }
-
-    private static Task CreateCaseHistoryEntryAsync(
-        CaseResponse caseDetails,
-        ILienCaseNoteService caseNoteService,
-        Guid tenantId,
-        Guid userId,
-        ICurrentRequestContext ctx,
-        CancellationToken ct)
-    {
-        var createdBy = FirstNonEmpty(ctx.Email, ctx.Name, userId.ToString())!;
-        var status = FirstNonEmpty(caseDetails.StatusLabel, caseDetails.Status, "N/A")!;
-        var lawFirm = FirstNonEmpty(caseDetails.LawFirm, "N/A")!;
-        var caseManager = FirstNonEmpty(caseDetails.CaseManager, "N/A")!;
-        var description =
-            $"Case created. Code: {caseDetails.CaseNumber}; Client: {caseDetails.ClientDisplayName}; " +
-            $"Status: {status}; Law Firm: {lawFirm}; Manager: {caseManager}; Created By: {createdBy}.";
-
-        return caseNoteService.CreateNoteAsync(
-            tenantId,
-            caseDetails.Id,
-            userId,
-            new CreateCaseNoteRequest
-            {
-                Content = description,
-                Category = CaseNoteCategory.CaseCreated,
-                CreatedByName = createdBy,
-            },
-            ct);
     }
 
     private static async Task<IResult> GetLawFirmV3Legacy(
@@ -5562,6 +5526,9 @@ public static class CaseEndpoints
         LegacyCaseUpdatesV3Request req,
         LiensDbContext db,
         IOptions<LegacyUpdateHistoryOptions> historyOptions,
+        IOptions<IdentityServiceOptions> identityOptions,
+        IHttpClientFactory httpClientFactory,
+        HttpContext httpContext,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -5592,6 +5559,16 @@ public static class CaseEndpoints
             .Take(fetchCount)
             .ToListAsync(ct);
 
+        var nativeHistoryQuery = db.CaseUpdateHistories
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.CaseId == caseId);
+        var nativeHistoryCount = await nativeHistoryQuery.CountAsync(ct);
+        var nativeHistory = await nativeHistoryQuery
+            .OrderByDescending(item => item.OccurredAtUtc)
+            .ThenByDescending(item => item.Id)
+            .Take(fetchCount)
+            .ToListAsync(ct);
+
         var timeline = nativeNotes.Select(note =>
         {
             var description = LegacyCaseUpdateCompatibility.NormalizeDescription(note.Content, note.Category);
@@ -5612,8 +5589,27 @@ public static class CaseEndpoints
                 note.CreatedAtUtc,
                 note.CreatedByName,
                 note.UpdatedAtUtc,
-                note.CreatedByName);
+                note.CreatedByName,
+                note.CreatedByUserId);
         }).ToList();
+
+        timeline.AddRange(nativeHistory.Select(item => new LegacyCaseTimelineItem(
+            item.Id.ToString(),
+            item.CaseId.ToString(),
+            item.Action,
+            item.Description,
+            item.OccurredAtUtc,
+            0,
+            0,
+            item.Description,
+            "history",
+            false,
+            false,
+            item.OccurredAtUtc,
+            string.Empty,
+            item.OccurredAtUtc,
+            string.Empty,
+            item.ActorUserId)));
 
         var importedCount = 0;
         if (historyOptions.Value.Enabled)
@@ -5644,31 +5640,49 @@ public static class CaseEndpoints
                 update.OccurredAtUtc,
                 update.ActorDisplayName ?? string.Empty,
                 null,
-                update.ActorDisplayName ?? string.Empty)));
+                update.ActorDisplayName ?? string.Empty,
+                null)));
         }
 
-        var data = timeline
+        var selected = timeline
             .OrderByDescending(item => item.SortAt)
             .ThenBy(item => item.SourceRank)
             .ThenByDescending(item => item.LegacySequence)
             .ThenByDescending(item => item.Id, StringComparer.Ordinal)
             .Skip(offset)
             .Take(limit)
-            .Select(item => new
+            .ToList();
+        var updatedByNames = await ResolveLienHistoryUserNamesAsync(
+            selected.Where(item => item.UpdatedByUserId.HasValue).Select(item => item.UpdatedByUserId!.Value),
+            tenantId,
+            ctx.OrgId,
+            httpClientFactory,
+            httpContext.Request.Headers.Authorization.ToString(),
+            identityOptions.Value,
+            ct);
+        var data = selected
+            .Select(item =>
             {
-                id = item.Id,
-                caseId = item.CaseId,
-                action = item.Action,
-                description = item.Description,
-                timestamp = FormatLegacyTimestamp(item.SortAt),
-                note = item.Note,
-                category = item.Category,
-                isPinned = item.IsPinned,
-                isEdited = item.IsEdited,
-                created = FormatLegacyTimestamp(item.CreatedAt),
-                createdBy = item.CreatedBy,
-                updated = item.UpdatedAt.HasValue ? FormatLegacyTimestamp(item.UpdatedAt.Value) : string.Empty,
-                updatedBy = item.UpdatedBy,
+                var actorName = item.UpdatedByUserId.HasValue
+                    ? ResolveLienHistoryUserName(item.UpdatedByUserId.Value, updatedByNames, ctx)
+                    : null;
+                var description = NormalizeCaseCreatedActor(item.Description, item.Action, actorName);
+                return new
+                {
+                    id = item.Id,
+                    caseId = item.CaseId,
+                    action = item.Action,
+                    description,
+                    timestamp = FormatLegacyTimestamp(item.SortAt),
+                    note = description,
+                    category = item.Category,
+                    isPinned = item.IsPinned,
+                    isEdited = item.IsEdited,
+                    created = FormatLegacyTimestamp(item.CreatedAt),
+                    createdBy = actorName ?? item.CreatedBy,
+                    updated = item.UpdatedAt.HasValue ? FormatLegacyTimestamp(item.UpdatedAt.Value) : string.Empty,
+                    updatedBy = actorName ?? item.UpdatedBy,
+                };
             })
             .ToList();
 
@@ -5677,7 +5691,7 @@ public static class CaseEndpoints
             isSuccess = true,
             message = "Case updates retrieved successfully.",
             data,
-            totalCount = nativeCount + importedCount,
+            totalCount = nativeCount + nativeHistoryCount + importedCount,
             page,
             limit,
         });
@@ -5689,6 +5703,7 @@ public static class CaseEndpoints
         IOptions<LegacyUpdateHistoryOptions> historyOptions,
         IOptions<IdentityServiceOptions> identityOptions,
         IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
         HttpContext httpContext,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
@@ -5712,7 +5727,10 @@ public static class CaseEndpoints
             .Where(item => item.TenantId == tenantId && item.CaseId == caseId);
         var servicingQuery = db.ServicingItems
             .AsNoTracking()
-            .Where(item => item.TenantId == tenantId && item.CaseId == caseId && item.LienId != null);
+            .Where(item => item.TenantId == tenantId &&
+                           item.CaseId == caseId &&
+                           item.LienId != null &&
+                           item.TaskType != "Lien Update");
         var statusCount = await statusQuery.CountAsync(ct);
         var servicingCount = await servicingQuery.CountAsync(ct);
         var statusHistory = await statusQuery
@@ -5729,8 +5747,9 @@ public static class CaseEndpoints
                 item.Id.ToString(),
                 caseId.ToString(),
                 item.LienId.ToString(),
-                "LienStatus",
+                ResolveLienHistoryAction(item.Description),
                 item.Description,
+                true,
                 string.Empty,
                 item.ChangedByUserId,
                 item.ChangedAtUtc,
@@ -5742,6 +5761,7 @@ public static class CaseEndpoints
                 item.LienId!.Value.ToString(),
                 item.TaskType,
                 string.IsNullOrWhiteSpace(item.Resolution) ? item.Description : item.Resolution,
+                false,
                 string.Empty,
                 item.UpdatedByUserId ?? item.CreatedByUserId,
                 item.UpdatedAtUtc,
@@ -5769,6 +5789,7 @@ public static class CaseEndpoints
                 update.LienId!.Value.ToString(),
                 update.Action,
                 NormalizeLegacyUpdateDescription(update.Description),
+                false,
                 update.ActorDisplayName ?? string.Empty,
                 null,
                 update.OccurredAtUtc,
@@ -5802,24 +5823,43 @@ public static class CaseEndpoints
             httpContext.Request.Headers.Authorization.ToString(),
             identityOptions.Value,
             ct);
+        var selectedLienIds = selected
+            .Select(item => Guid.TryParse(item.LienId, out var lienId) ? lienId : Guid.Empty)
+            .Where(lienId => lienId != Guid.Empty)
+            .Distinct()
+            .ToList();
         var lienCodes = await db.Liens.AsNoTracking()
-            .Where(lien => lien.TenantId == tenantId && lien.CaseId == caseId)
+            .Where(lien => lien.TenantId == tenantId && selectedLienIds.Contains(lien.Id))
             .ToDictionaryAsync(lien => lien.Id, lien => lien.LienNumber, ct);
+        var historyReferenceDescriptions = await LienHistoryDescriptionEnricher.ResolveAsync(
+            db,
+            tenantId,
+            selected.Where(item => item.EnrichReferences).Select(item => item.Description),
+            httpClientFactory,
+            identityOptions.Value,
+            loggerFactory.CreateLogger(nameof(LienHistoryDescriptionEnricher)),
+            ct);
         var data = selected
-            .Select(i => new
+            .Select(i =>
             {
-                id = i.Id,
-                caseId = i.CaseId,
-                lienId = i.LienId,
-                lienCode = Guid.TryParse(i.LienId, out var lienId) && lienCodes.TryGetValue(lienId, out var lienCode)
-                    ? lienCode
-                    : string.Empty,
-                action = i.Action,
-                description = i.Description,
-                updatedBy = i.UpdatedByUserId.HasValue
-                    ? ResolveLienHistoryUserName(i.UpdatedByUserId.Value, updatedByNames, ctx)
-                    : i.UpdatedBy,
-                timestamp = FormatLegacyTimestamp(i.SortAt),
+                var description = i.EnrichReferences
+                    ? LienHistoryDescriptionEnricher.Enrich(i.Description, historyReferenceDescriptions)
+                    : i.Description;
+                return new
+                {
+                    id = i.Id,
+                    caseId = i.CaseId,
+                    lienId = i.LienId,
+                    lienCode = Guid.TryParse(i.LienId, out var lienId) && lienCodes.TryGetValue(lienId, out var lienCode)
+                        ? lienCode
+                        : string.Empty,
+                    action = i.Action,
+                    description,
+                    updatedBy = i.UpdatedByUserId.HasValue
+                        ? ResolveLienHistoryUserName(i.UpdatedByUserId.Value, updatedByNames, ctx)
+                        : i.UpdatedBy,
+                    timestamp = FormatLegacyTimestamp(i.SortAt),
+                };
             })
             .ToList();
 
@@ -5865,6 +5905,34 @@ public static class CaseEndpoints
 
     private static string NormalizeLegacyUpdateDescription(string? description) =>
         (description ?? string.Empty).Replace("ÔåÆ", "→", StringComparison.Ordinal);
+
+    private static string NormalizeCaseCreatedActor(string description, string action, string? actorName)
+    {
+        if (string.IsNullOrWhiteSpace(actorName) ||
+            !string.Equals(action, "Case Created", StringComparison.Ordinal))
+        {
+            return description;
+        }
+
+        const string marker = "Created By:";
+        var markerIndex = description.LastIndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+        {
+            var prefix = description.TrimEnd();
+            return prefix.Length == 0
+                ? $"{marker} {actorName}."
+                : $"{prefix} {marker} {actorName}.";
+        }
+
+        var suffixIndex = description.IndexOf(". ", markerIndex, StringComparison.Ordinal);
+        var suffix = suffixIndex >= 0 ? description[(suffixIndex + 1)..] : string.Empty;
+        return $"{description[..markerIndex]}{marker} {actorName}.{suffix}";
+    }
+
+    private static string ResolveLienHistoryAction(string description) =>
+        description.StartsWith("Lien Created.", StringComparison.Ordinal) ? "Lien Created" :
+        description.StartsWith("Lien Deleted.", StringComparison.Ordinal) ? "Lien Deleted" :
+        "Liens Details";
 
     private static async Task<IReadOnlyDictionary<Guid, string>> ResolveLienHistoryUserNamesAsync(
         IEnumerable<Guid> userIds,
@@ -6062,7 +6130,6 @@ public static class CaseEndpoints
     private static async Task<IResult> CreateCaseLegacy(
         LegacyCreateCaseRequest request,
         ICaseService caseService,
-        ILienCaseNoteService caseNoteService,
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
@@ -6137,8 +6204,6 @@ public static class CaseEndpoints
 
             result = await caseService.UpdateAsync(tenantId, result.Id, userId, updateRequest, ct);
         }
-
-        await CreateCaseHistoryEntryAsync(result, caseNoteService, tenantId, userId, ctx, ct);
 
         return Results.Ok(new
         {
@@ -6423,9 +6488,18 @@ public static class CaseEndpoints
             return Results.NotFound(new { isSuccess = false, message = "Case not found." });
 
         DateOnly? dob = DateOnly.TryParse(req.Dob, out var d) ? d : existing.ClientDob;
-        var address = string.IsNullOrWhiteSpace(req.Address)
-            ? existing.ClientAddress
-            : $"{req.Address}, {req.City}, {req.State} {req.Zipcode}".Trim(',', ' ');
+        var streetAddress = req.Address ?? existing.ClientStreetAddress;
+        var city = req.City ?? existing.ClientCity;
+        var state = req.State ?? existing.ClientState;
+        var zipcode = req.Zipcode ?? existing.ClientZipcode;
+        var addressChanged = req.Address is not null || req.City is not null ||
+            req.State is not null || req.Zipcode is not null;
+        var stateAndZip = string.Join(' ', new[] { state, zipcode }
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+        var address = addressChanged
+            ? string.Join(", ", new[] { streetAddress, city, stateAndZip }
+                .Where(value => !string.IsNullOrWhiteSpace(value)))
+            : existing.ClientAddress;
 
         var request = new UpdateCaseRequest
         {
@@ -6435,6 +6509,10 @@ public static class CaseEndpoints
             ClientPhone      = req.Phone ?? existing.ClientPhone,
             ClientEmail      = req.Email ?? existing.ClientEmail,
             ClientAddress    = address,
+            ClientStreetAddress = streetAddress,
+            ClientCity       = city,
+            ClientState      = state,
+            ClientZipcode    = zipcode,
             ExternalReference= existing.ExternalReference,
             Title            = existing.Title,
             DateOfIncident   = existing.DateOfIncident,
@@ -6521,15 +6599,6 @@ public static class CaseEndpoints
                 existing.Notes?.Trim() ?? string.Empty,
                 detailsNote ?? string.Empty,
                 StringComparison.Ordinal);
-        var updateSummary = BuildCaseUpdateSummary(
-            existing,
-            req,
-            normalizedStatus,
-            dateOfLoss,
-            trackingFollowUp,
-            detailsNoteChanged,
-            detailsNote);
-
         var request = new UpdateCaseRequest
         {
             ClientFirstName  = existing.ClientFirstName,
@@ -6579,21 +6648,6 @@ public static class CaseEndpoints
                         Content = detailsNote!,
                         Category = CaseNoteCategory.General,
                         CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
-                    },
-                    ct);
-            }
-
-            if (!string.IsNullOrWhiteSpace(updateSummary))
-            {
-                await caseNoteService.CreateNoteAsync(
-                    tenantId,
-                    req.CaseId,
-                    userId,
-                    new CreateCaseNoteRequest
-                    {
-                        Content = updateSummary,
-                        Category = CaseNoteCategory.Internal,
-                        CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
                     },
                     ct);
             }

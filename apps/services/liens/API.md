@@ -16,6 +16,7 @@
 - [Settlement Payments](#settlement-payment-endpoints)
 - [Servicing](#servicing-endpoints)
 - [Reports](#reports-endpoints)
+- [User Management](#user-management)
 
 ---
 
@@ -36,6 +37,10 @@ Every endpoint requires:
 3. **Endpoint-specific permission** — each endpoint requires a specific permission as listed in the tables below.
 
 Requests missing authentication receive a `401 Unauthorized` response.
+
+## User Management
+
+`/api/liens/user-management/{**path}` is the public SynqLien facade for the current law-firm organization. It forwards Users, Invitations, Options, and Roles operations to Identity using an audience-bound service token. Tenant/actor/organization scope is never accepted from the browser body; Identity remains authoritative and returns RFC 7807 errors with stable `synqlien.*` codes for forbidden, conflict, and validation cases. Every state-changing request requires an `Idempotency-Key`; Liens stores the request digest and completed upstream response in its durable idempotency table so safe retries cannot repeat the Identity mutation or invitation email. If Identity does not return a response, Liens records `synqlien.identity_outcome_unknown`; abandoned in-progress records later return `idempotency_outcome_unknown`, and callers must inspect current state before starting a new operation with a new key.
 
 ---
 
@@ -1459,7 +1464,7 @@ Create a new case.
 **Response:** `201 Created` — `CaseResponse`
 
 Returns the created case with a `Location` header pointing to `/api/liens/cases/{id}`.
-Creation also adds a `Case Created` entry to the legacy case-update history endpoint (`POST /api/liens/cases/case-updates/v3`), including the case code, client, status, law firm, manager, and creator.
+Creation atomically adds a `Case Created` entry to `POST /api/liens/cases/case-updates/v3`. The entry contains the persisted business values and is retained even if the Case is later deleted.
 Potential duplicate cases are rejected before save when DOB and date of loss exactly match an existing case and first/last names closely or partially match. Clients can call `POST /api/liens/cases/duplicate-check` before create to display the existing case link.
 
 ### POST `/api/liens/cases/duplicate-check`
@@ -1544,7 +1549,7 @@ Update an existing case.
 
 Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
 
-Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update`. A nonblank input uses description `Case Tracking Note Update: <submitted note>`; clearing the input uses `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, that description is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Status aliases such as `Negotiations`, `InNegotiation`, and `In Negotiation` are compared by their canonical value so resubmitting the displayed status does not create a false status-change entry. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
+Every persisted root Case change creates one atomic `Case Details Update` entry listing all changed business fields as `previous → new`. `PATCH /api/liens/cases/personal-update` forwards every plaintiff name, birthdate, contact, gender, and structured address field so each actual plaintiff change appears in that entry. Case metadata stored in `notes` is expanded into readable logical fields, and the user-authored note is logged separately from its storage metadata. Normalized no-ops and audit-timestamp-only saves create no entry. The authenticated actor is resolved at read time with the existing tenant-scoped Identity fallback.
 
 **Permission:** `SYNQ_LIENS.case:read`
 
@@ -1558,17 +1563,25 @@ also merges imported Program 1 case-update events and
 The lien-update timeline excludes case-level `Case Details Update` history that has
 no lien association. Those records remain available from `case-updates/v3`; every
 row returned by `liens-updates/v3` represents a specific lien and includes its
-`lienId`, current tenant-scoped `lienCode`, and `action`. Native lien mutations compare
+`lienId`, tenant-scoped `lienCode`, and `action`. Lien codes are resolved by the history row's lien ID, including after the lien has moved to another case. Native lien mutations compare
 the persisted previous values with the resulting values and record every changed
 business field as `previous → new`; unchanged submissions do not create a change row.
-Summaries that exceed the 500-character history storage limit continue in additional
-rows so changed fields are not silently omitted. Selling handlers that directly mutate
-a tracked lien use the same comparison, including archive, restore, and public buyer-response transitions.
-Changing `note` through `POST /api/liens/cases/liens/update-medical` appends one
-lien-scoped `Lien Update` row. Its description is the submitted note, its
-`lienId` is the updated lien, and `updatedBy` resolves from the authenticated
-user. Resubmitting the same trimmed note does not create a duplicate row;
-clearing an existing note is recorded as `Medical note cleared.`.
+All fields are retained in one text-backed activity row. Selling handlers and other direct EF mutations use the same save-boundary comparison, including creation, archive, restore, deletion, and public buyer-response transitions. A move between cases writes the same activity projection to both the former and resulting case timelines.
+Native lien-change rows use the `Liens Details` action label. Obsolete `Lien Update`
+servicing compatibility rows are omitted from the timeline to avoid duplicate entries.
+`POST /api/liens/cases/liens/update-medical` accepts servicing corrections for
+`Settled` liens while continuing to reject edits to declined, withdrawn, and
+cancelled liens. When any submitted value changes, the endpoint appends exactly one
+lien-scoped `Liens Details` row that combines every changed case, funding-company,
+status, purchase/service-date, note, bulk, and servicing field as `previous → new`.
+The row uses the resulting case association and updated lien ID, and `updatedBy`
+resolves from the authenticated user's first and last name. Case-update history, including historical native Case Created notes, uses
+the same name resolution for `createdBy`, `updatedBy`, and embedded `Created By` text instead of returning the user's email. Clearing a note records its previous value as
+changing to `blank`; resubmitting unchanged normalized values creates no row. The
+lien mutation and history write commit atomically. `POST /api/liens/cases/liens/update-facility`
+updates its medical-information compatibility row only when the normalized facility,
+contact, provider, email, or phone values changed; an unchanged resubmission preserves
+the existing row and timestamp.
 Global ordering is timestamp descending, native before imported on an exact
 timestamp tie, then stable source sequence/ID descending. Counts and pagination
 cover all enabled sources. Timeline requests are limited to 200 rows per page
@@ -2871,6 +2884,8 @@ The configurable raw CSV limit is enforced before Base64 encoding. `AutoGenerate
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.
 
 DIY lien reports use canonical lien reductions before preserved SL-CORE settlement metadata. When a legacy reduction has no explicit source reduction date, `reduction_date` and `days_since_reduction_approval` are null; a settlement date is never substituted for a reduction approval date.
+
+`GET /lookup/liens/status`, `GET /api/liens/lookups/LienStatus`, and the `LienStatus` section of `GET /lookup/all` expose only the DIY-supported `Open` and `Closed` filters. DIY preview and export exclude rejected lifecycle states (`Declined`, `Withdrawn`, `Cancelled`, and historical `Rejected`) regardless of legacy saved filter input.
 
 `POST /report/diy/filter-options` returns medical-facility option IDs from the canonical facility records referenced by `Lien.FacilityId`. Supplying those IDs in `medicalFacilityIds` therefore uses the same facility relationship as DIY execution and export.
 

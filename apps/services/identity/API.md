@@ -12,6 +12,7 @@
 - [Error Responses](#error-responses)
 - [Auth Endpoints](#auth-endpoints)
 - [User Endpoints](#user-endpoints)
+- [SynqLien User Management](#synqlien-user-management)
 - [Tenant Endpoints](#tenant-endpoints)
 - [Product Endpoints](#product-endpoints)
 - [Group Endpoints](#group-endpoints)
@@ -2796,3 +2797,41 @@ Operator-facing snapshot of the identity → notifications cache invalidation co
 | `lastFailureReason` | `string`   | Description of the last failure (null if none)     |
 
 A healthy configuration shows `succeeded` incrementing and `failed` staying at 0. If `succeeded` stays 0 while `failed` climbs, check `NotificationsService:BaseUrl` and the shared token configuration.
+
+---
+
+## SynqLien User Management
+
+All routes are internal at `/api/internal/synqlien/user-management` and require a Liens service token with `aud=identity-service` and `svc=liens-service`. Tenant and actor are token-derived; organization is supplied by Liens in `X-Organization-Id`. Identity independently verifies the law-firm scope and the actor's organization access role. PlatformAdmin/TenantAdmin access is audited as break-glass use.
+
+| Method | Path | Permission |
+|---|---|---|
+| `GET` | `/users`, `/users/{userId}`, `/options` | `SYNQ_LIENS.users:view` |
+| `POST` | `/invitations` | `SYNQ_LIENS.invitations:manage` |
+| `POST`/`DELETE` | `/users/{userId}/invitations/...` | `SYNQ_LIENS.invitations:manage` |
+| `PATCH`/`PUT`/`POST` | `/users/{userId}/organization-profile`, `/role`, `/activate`, `/deactivate` | `SYNQ_LIENS.users:manage` |
+| `GET` | `/roles` | `SYNQ_LIENS.roles:view` |
+| `POST`/`PUT`/`DELETE` | `/roles[/{roleId}]` | `SYNQ_LIENS.roles:manage` |
+
+The list query supports `search`, `status=ACTIVE|INACTIVE|INVITED|LOCKED`, `roleId`, `department`, `page`, `pageSize` (clamped to 100), and `sort=NAME_ASC|NAME_DESC|LAST_LOGIN_DESC`.
+
+Invitation request:
+
+```json
+{
+  "email": "user@example.com",
+  "firstName": "First",
+  "lastName": "Last",
+  "department": "Operations",
+  "jobTitle": "Case Manager",
+  "roleId": "0198f9d2-0000-7000-8000-000000000001"
+}
+```
+
+Only an active account already belonging to the same organization receives immediate access. A new account receives a pending grant; organization membership, product access, Seller persona, and management role are applied atomically when the invitation is accepted. An existing inactive Identity account is rejected and must be restored by an Identity administrator. Acceptance revalidates the tenant entitlement, organization, role, and inviter authority. `deliveryStatus` is `SUBMITTED`, `FAILED`, or `NOT_REQUIRED`.
+
+A second invite while a non-expired invitation is pending returns `409` with code `synqlien.invitation_pending`; use the resend operation to rotate the token and submit another email.
+
+Role replacement changes only the organization management role; Seller, Buyer, and Holder personas remain untouched. Management-role permissions form the ceiling for SynqLien capabilities in the selected organization, and managers cannot delegate capabilities outside their own role. Protected starter roles cannot be edited/deleted, custom roles cannot be deleted while assigned, and the last Administrator plus self-demotion/deactivation are guarded.
+
+The anonymous `GET /api/auth/invite-requirements?token=...` endpoint reports whether a client must collect a new password. Existing active accounts accept product access with their current credentials; only newly created accounts set a password during `POST /api/auth/accept-invite`.

@@ -16,6 +16,7 @@ internal static class SellingIdempotency
 {
     private const int MaxKeyLength = 280;
     private const string JsonContentType = "application/json";
+    private static readonly TimeSpan InProgressLease = TimeSpan.FromSeconds(30);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static bool TryGetKey(HttpRequest request, out string? key, out IResult? error)
@@ -75,9 +76,20 @@ internal static class SellingIdempotency
         }
 
         if (!string.Equals(record.ProcessingState, SellingIdempotencyRecord.Completed, StringComparison.Ordinal) ||
-            !record.ResponseStatusCode.HasValue ||
-            record.ResponseBody is null)
+            !record.ResponseStatusCode.HasValue)
         {
+            if (record.CreatedAtUtc <= DateTime.UtcNow - InProgressLease)
+            {
+                return Results.Conflict(new
+                {
+                    error = new
+                    {
+                        code = "idempotency_outcome_unknown",
+                        message = "The original request did not produce a durable response. Check the current resource state before starting a new operation.",
+                    },
+                });
+            }
+
             return Results.Conflict(new
             {
                 error = new
@@ -88,7 +100,7 @@ internal static class SellingIdempotency
             });
         }
 
-        return Results.Content(record.ResponseBody, record.ResponseContentType ?? JsonContentType, statusCode: record.ResponseStatusCode.Value);
+        return Results.Content(record.ResponseBody ?? string.Empty, record.ResponseContentType ?? JsonContentType, statusCode: record.ResponseStatusCode.Value);
     }
 
     public static async Task<IdempotencyStart> TryBeginAsync(
@@ -155,6 +167,20 @@ internal static class SellingIdempotency
         record.Complete(statusCode, body, JsonContentType, updatedByUserId);
         await db.SaveChangesAsync(ct);
         return Results.Content(body, JsonContentType, statusCode: statusCode);
+    }
+
+    public static async Task<IResult> CompleteRawAsync(
+        LiensDbContext db,
+        SellingIdempotencyRecord record,
+        Guid updatedByUserId,
+        int statusCode,
+        string? responseBody,
+        string? responseContentType,
+        CancellationToken ct)
+    {
+        record.Complete(statusCode, responseBody ?? string.Empty, responseContentType, updatedByUserId);
+        await db.SaveChangesAsync(ct);
+        return Results.Content(responseBody ?? string.Empty, responseContentType ?? JsonContentType, statusCode: statusCode);
     }
 
     public static string ComputeRequestHash(object? request)

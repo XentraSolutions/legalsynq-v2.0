@@ -53,6 +53,26 @@ public class CaseRepository : ICaseRepository
             .ToListAsync(ct);
     }
 
+    public Task<bool> IsCaseNumberReservedAsync(Guid tenantId, string caseNumber, CancellationToken ct = default)
+    {
+        return _db.CaseNumberReservations.AnyAsync(
+            reservation => reservation.TenantId == tenantId && reservation.CaseNumber == caseNumber,
+            ct);
+    }
+
+    public Task<List<string>> GetReservedCaseNumbersByPrefixAsync(
+        Guid tenantId,
+        string caseNumberPrefix,
+        CancellationToken ct = default)
+    {
+        return _db.CaseNumberReservations
+            .Where(reservation =>
+                reservation.TenantId == tenantId &&
+                reservation.CaseNumber.StartsWith(caseNumberPrefix))
+            .Select(reservation => reservation.CaseNumber)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<Case>> GetPotentialDuplicateCandidatesAsync(
         Guid tenantId,
         DateOnly clientDob,

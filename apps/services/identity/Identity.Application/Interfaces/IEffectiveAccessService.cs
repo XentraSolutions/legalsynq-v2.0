@@ -17,4 +17,5 @@ public record EffectiveAccessResult(
 public interface IEffectiveAccessService
 {
     Task<EffectiveAccessResult> GetEffectiveAccessAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+    Task<EffectiveAccessResult> GetEffectiveAccessAsync(Guid tenantId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

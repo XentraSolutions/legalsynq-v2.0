@@ -10,6 +10,8 @@ public class UserOrganizationMembership
     public bool IsActive { get; private set; }
     public DateTime JoinedAtUtc { get; private set; }
     public Guid? GrantedByUserId { get; private set; }
+    public string? Department { get; private set; }
+    public string? JobTitle { get; private set; }
 
     public User User { get; private set; } = null!;
     public Organization Organization { get; private set; } = null!;
@@ -20,7 +22,9 @@ public class UserOrganizationMembership
         Guid userId,
         Guid organizationId,
         string memberRole,
-        Guid? grantedByUserId = null)
+        Guid? grantedByUserId = null,
+        string? department = null,
+        string? jobTitle = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(memberRole);
 
@@ -35,11 +39,21 @@ public class UserOrganizationMembership
             MemberRole = memberRole,
             IsActive = true,
             JoinedAtUtc = DateTime.UtcNow,
-            GrantedByUserId = grantedByUserId
+            GrantedByUserId = grantedByUserId,
+            Department = NormalizeOptional(department),
+            JobTitle = NormalizeOptional(jobTitle)
         };
     }
 
     public void Deactivate() => IsActive = false;
+
+    public void Activate() => IsActive = true;
+
+    public void UpdateOrganizationProfile(string? department, string? jobTitle)
+    {
+        Department = NormalizeOptional(department);
+        JobTitle = NormalizeOptional(jobTitle);
+    }
 
     public void SetPrimary() => IsPrimary = true;
 
@@ -52,4 +66,7 @@ public class UserOrganizationMembership
 
         MemberRole = memberRole;
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -12,7 +12,6 @@ namespace Liens.Application.Services;
 public sealed class LienService : ILienService
 {
     private readonly ILienRepository           _lienRepo;
-    private readonly ILienStatusHistoryRepository _lienStatusHistoryRepo;
     private readonly ICaseRepository           _caseRepo;
     private readonly IContactRepository        _contactRepo;
     private readonly IFacilityRepository       _facilityRepo;
@@ -22,7 +21,6 @@ public sealed class LienService : ILienService
 
     public LienService(
         ILienRepository lienRepo,
-        ILienStatusHistoryRepository lienStatusHistoryRepo,
         ICaseRepository caseRepo,
         IContactRepository contactRepo,
         IFacilityRepository facilityRepo,
@@ -31,7 +29,6 @@ public sealed class LienService : ILienService
         ILogger<LienService> logger)
     {
         _lienRepo          = lienRepo;
-        _lienStatusHistoryRepo = lienStatusHistoryRepo;
         _caseRepo          = caseRepo;
         _contactRepo       = contactRepo;
         _facilityRepo      = facilityRepo;
@@ -281,8 +278,11 @@ public sealed class LienService : ILienService
     {
         var prefix = caseEntity.CaseNumber.Trim();
         var existingLiens = await _lienRepo.GetByCaseIdAsync(tenantId, caseEntity.Id, ct);
+        var reservedLienNumbers = await _lienRepo.GetLienNumbersByPrefixAsync(tenantId, $"{prefix}-", ct);
         var maxSequence = existingLiens
-            .Select(l => TryGetLienSequence(l.LienNumber, prefix))
+            .Select(l => l.LienNumber)
+            .Concat(reservedLienNumbers)
+            .Select(lienNumber => TryGetLienSequence(lienNumber, prefix))
             .Where(sequence => sequence.HasValue)
             .Select(sequence => sequence!.Value)
             .DefaultIfEmpty(0)
@@ -303,11 +303,75 @@ public sealed class LienService : ILienService
 
     public async Task<LienResponse> UpdateAsync(
         Guid tenantId, Guid id, Guid actingUserId,
-        UpdateLienRequest request, CancellationToken ct = default)
+        UpdateLienRequest request, CancellationToken ct = default) =>
+        await UpdateCoreAsync(
+            tenantId,
+            id,
+            actingUserId,
+            request,
+            allowSettledServicingCorrection: false,
+            ct);
+
+    public async Task<LienResponse> UpdateLegacyMedicalAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        UpdateLienRequest request, string? status,
+        CancellationToken ct = default)
     {
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
+        await ApplyUpdateRequestAsync(
+            tenantId, entity, actingUserId, request, allowSettledServicingCorrection: true, ct);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            entity.SetLegacyMedicalStatus(status.Trim(), actingUserId);
+
+        await _lienRepo.UpdateAsync(entity, ct);
+        PublishLienUpdatedAudit(entity, tenantId, actingUserId);
+        return await MapToResponseAsync(tenantId, entity, ct);
+    }
+
+    public async Task<LienResponse> UpdateLegacyMedicalFacilityAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        UpdateLienRequest request, CancellationToken ct = default) =>
+        await UpdateCoreAsync(
+            tenantId,
+            id,
+            actingUserId,
+            request,
+            allowSettledServicingCorrection: true,
+            ct);
+
+    private async Task<LienResponse> UpdateCoreAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        UpdateLienRequest request,
+        bool allowSettledServicingCorrection,
+        CancellationToken ct)
+    {
+        var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
+
+        await ApplyUpdateRequestAsync(
+            tenantId, entity, actingUserId, request, allowSettledServicingCorrection, ct);
+
+        await _lienRepo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Lien updated: {LienId} Tenant={TenantId}", entity.Id, tenantId);
+
+        PublishLienUpdatedAudit(entity, tenantId, actingUserId);
+
+        return await MapToResponseAsync(tenantId, entity, ct);
+    }
+
+    private async Task ApplyUpdateRequestAsync(
+        Guid tenantId,
+        Lien entity,
+        Guid actingUserId,
+        UpdateLienRequest request,
+        bool allowSettledServicingCorrection,
+        CancellationToken ct)
+    {
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(request.LienType))
             errors.Add("lienType", ["Lien type is required."]);
@@ -336,8 +400,6 @@ public sealed class LienService : ILienService
                 new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
         }
 
-        var changes = BuildLienFieldChanges(entity, request, resolvedFacilityId);
-
         entity.Update(
             lienType: request.LienType,
             originalAmount: request.OriginalAmount,
@@ -353,25 +415,17 @@ public sealed class LienService : ILienService
             isBulk: request.IsBulk ?? entity.IsBulk,
             isServicing: request.IsServicing ?? entity.IsServicing,
             description: request.Description,
-            purchaseDate: request.PurchaseDate ?? entity.PurchaseDate);
+            purchaseDate: request.PurchaseDate ?? entity.PurchaseDate,
+            allowSettledServicingCorrection: allowSettledServicingCorrection);
 
         if (request.CaseId.HasValue)
             entity.AttachCase(request.CaseId.Value, actingUserId);
 
         if (resolvedFacilityId.HasValue && resolvedFacilityId != entity.FacilityId)
             entity.AttachFacility(resolvedFacilityId.Value, actingUserId);
+    }
 
-        await _lienRepo.UpdateAsync(entity, ct);
-
-        if (changes.Count > 0)
-        {
-            foreach (var description in LienUpdateHistoryFormatter.BuildDescriptions("Lien updated", changes).Reverse())
-                await RecordStatusHistoryAsync(entity, actingUserId, description, ct);
-        }
-
-        _logger.LogInformation(
-            "Lien updated: {LienId} Tenant={TenantId}", entity.Id, tenantId);
-
+    private void PublishLienUpdatedAudit(Lien entity, Guid tenantId, Guid actingUserId) =>
         _audit.Publish(
             eventType: "liens.lien.updated",
             action: "update",
@@ -381,32 +435,27 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        return await MapToResponseAsync(tenantId, entity, ct);
-    }
-
     public async Task<LienResponse> SetLegacyMedicalStatusAsync(
         Guid tenantId, Guid id, Guid actingUserId,
-        string status, CancellationToken ct = default)
+        string status, CancellationToken ct = default) =>
+        await SetLegacyMedicalStatusCoreAsync(
+            tenantId,
+            id,
+            actingUserId,
+            status,
+            ct);
+
+    private async Task<LienResponse> SetLegacyMedicalStatusCoreAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        string status,
+        CancellationToken ct)
     {
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
-        var previousStatus = entity.Status;
         entity.SetLegacyMedicalStatus(status.Trim(), actingUserId);
 
         await _lienRepo.UpdateAsync(entity, ct);
-        if (!string.Equals(previousStatus, entity.Status, StringComparison.Ordinal))
-        {
-            var displayStatus = MapBusinessStatusLabel(entity.Status);
-            var descriptions = LienUpdateHistoryFormatter.BuildDescriptions(
-                $"Lien status updated to {displayStatus}",
-                [new LienFieldChange(
-                    "Status",
-                    MapBusinessStatusLabel(previousStatus),
-                    displayStatus)]);
-            foreach (var description in descriptions.Reverse())
-                await RecordStatusHistoryAsync(entity, actingUserId, description, ct);
-        }
 
         _logger.LogInformation(
             "Legacy medical lien status updated: {LienId} Status={Status} Tenant={TenantId}",
@@ -766,7 +815,6 @@ public sealed class LienService : ILienService
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
-        var previousStatus = entity.Status;
         if (LienStatus.Terminal.Contains(entity.Status))
         {
             // A closed lien can still be removed from the case. Use the same
@@ -784,11 +832,6 @@ public sealed class LienService : ILienService
         }
 
         await _lienRepo.UpdateAsync(entity, ct);
-        var descriptions = LienUpdateHistoryFormatter.BuildDescriptions(
-            "Lien status updated to Delete",
-            [new LienFieldChange("Status", MapBusinessStatusLabel(previousStatus), "Delete")]);
-        foreach (var description in descriptions.Reverse())
-            await RecordStatusHistoryAsync(entity, actingUserId, description, ct);
 
         _logger.LogInformation(
             "Lien deleted (status={Status}): {LienId} Tenant={TenantId}", entity.Status, entity.Id, tenantId);
@@ -801,6 +844,36 @@ public sealed class LienService : ILienService
             actorUserId: actingUserId,
             entityType: "Lien",
             entityId: entity.Id.ToString());
+    }
+
+    private static IReadOnlyList<LienFieldChange> BuildLegacyMedicalFieldChanges(
+        LienResponse previous,
+        LienResponse updated)
+    {
+        var changes = new List<LienFieldChange>();
+
+        AddChange(changes, "Funding Company ID", previous.ExternalReference, updated.ExternalReference);
+        AddChange(changes, "Case ID", previous.CaseId, updated.CaseId);
+        if (!string.Equals(previous.Status, updated.Status, StringComparison.Ordinal))
+        {
+            var previousStatus = MapBusinessStatusLabel(previous.Status);
+            var updatedStatus = MapBusinessStatusLabel(updated.Status);
+            changes.Add(string.Equals(previousStatus, updatedStatus, StringComparison.Ordinal)
+                ? new LienFieldChange("Status", previous.Status, updated.Status)
+                : new LienFieldChange("Status", previousStatus, updatedStatus));
+        }
+        AddChange(changes, "Purchase Date", previous.PurchaseDate, updated.PurchaseDate);
+        AddChange(changes, "Initial Service Date", previous.InitialServiceDate, updated.InitialServiceDate);
+        AddChange(changes, "End Service Date", previous.EndServiceDate, updated.EndServiceDate);
+        AddChange(
+            changes,
+            "Note",
+            previous.Notes ?? previous.Description,
+            updated.Notes ?? updated.Description);
+        AddChange(changes, "Bulk", previous.IsBulk, updated.IsBulk);
+        AddChange(changes, "Servicing", previous.IsServicing, updated.IsServicing);
+
+        return changes;
     }
 
     private static IReadOnlyList<LienFieldChange> BuildLienFieldChanges(
@@ -859,12 +932,4 @@ public sealed class LienService : ILienService
         changes.Add(new LienFieldChange(field, previousValue, newValue));
     }
 
-    private Task RecordStatusHistoryAsync(
-        Lien entity,
-        Guid actingUserId,
-        string description,
-        CancellationToken ct) =>
-        _lienStatusHistoryRepo.AddAsync(
-            LienStatusHistory.Create(entity.TenantId, entity.Id, entity.CaseId, description, actingUserId),
-            ct);
 }

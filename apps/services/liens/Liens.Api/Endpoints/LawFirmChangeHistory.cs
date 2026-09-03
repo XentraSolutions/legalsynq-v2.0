@@ -174,7 +174,7 @@ internal static class LawFirmChangeHistory
         DateOnly today,
         CancellationToken ct)
     {
-        var candidates = await db.Cases.AsNoTracking()
+        var candidates = await db.Cases
             .Where(item =>
                 item.Notes != null &&
                 item.Notes.Contains("pendingLawFirmId=") &&
@@ -198,57 +198,26 @@ internal static class LawFirmChangeHistory
             metadata.Remove("lawFirm");
             metadata.Remove("pendingLawFirmId");
             metadata.Remove("switchedDate");
-            var originalNotes = caseEntity.Notes;
             var promotedNotes = SerializeCaseNotes(noteBody, metadata);
             var actorUserId = caseEntity.UpdatedByUserId ?? caseEntity.CreatedByUserId ?? ScheduledSwitchActorUserId;
-
-            if (db.Database.IsRelational())
+            caseEntity.ApplyScheduledLawFirmSwitch(promotedNotes, actorUserId);
+            try
             {
-                var updatedAtUtc = DateTime.UtcNow;
-                applied += await db.Cases
-                    .Where(item =>
-                        item.TenantId == caseEntity.TenantId &&
-                        item.Id == caseEntity.Id &&
-                        item.Notes == originalNotes)
-                    .ExecuteUpdateAsync(
-                        setters => setters
-                            .SetProperty(item => item.Notes, promotedNotes)
-                            .SetProperty(item => item.UpdatedByUserId, actorUserId)
-                            .SetProperty(item => item.UpdatedAtUtc, updatedAtUtc),
-                        ct);
-                continue;
+                await db.SaveChangesAsync(ct);
+                applied++;
             }
+            catch (DbUpdateConcurrencyException)
+            {
+                foreach (var historyEntry in db.ChangeTracker.Entries<CaseUpdateHistory>()
+                             .Where(entry => entry.State == EntityState.Added && entry.Entity.CaseId == caseEntity.Id)
+                             .ToList())
+                {
+                    historyEntry.State = EntityState.Detached;
+                }
 
-            var currentCase = await db.Cases.SingleOrDefaultAsync(
-                item =>
-                    item.TenantId == caseEntity.TenantId &&
-                    item.Id == caseEntity.Id &&
-                    item.Notes == originalNotes,
-                ct);
-            if (currentCase is null)
-                continue;
-
-            currentCase.Update(
-                currentCase.ClientFirstName,
-                currentCase.ClientLastName,
-                actorUserId,
-                currentCase.Title,
-                currentCase.ExternalReference,
-                currentCase.ClientDob,
-                currentCase.ClientPhone,
-                currentCase.ClientEmail,
-                currentCase.ClientAddress,
-                currentCase.DateOfIncident,
-                currentCase.InsuranceCarrier,
-                currentCase.PolicyNumber,
-                currentCase.ClaimNumber,
-                currentCase.Description,
-                promotedNotes);
-            applied++;
+                await db.Entry(caseEntity).ReloadAsync(ct);
+            }
         }
-
-        if (applied > 0)
-            await db.SaveChangesAsync(ct);
 
         return applied;
     }

@@ -340,7 +340,8 @@ public class DeviceSessionService : IDeviceSessionService
             var userWithRoles = await _userRepository.GetByIdWithRolesAsync(activeUser.Id, ct);
             if (userWithRoles is null) return DeviceSessionRefreshResult.Failure(AuthErrorCodes.AccountDisabled);
             var organization = (await _userRepository.GetPrimaryOrgMembershipAsync(activeUser.Id, tenant.Id, ct))?.Organization;
-            var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, activeUser.Id, ct);
+            var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(
+                tenant.Id, activeUser.Id, organization?.Id, ct);
             var memberships = await _userRepository.GetActiveTenantMembershipsAsync(activeUser.Id, ct);
             var roles = userWithRoles.ScopedRoleAssignments
                 .Where(s => s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global

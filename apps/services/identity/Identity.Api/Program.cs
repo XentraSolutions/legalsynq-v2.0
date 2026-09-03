@@ -109,9 +109,22 @@ builder.Services
             RoleClaimType            = "role",
             NameClaimType            = System.Security.Claims.ClaimTypes.NameIdentifier,
         };
-    });
+    })
+    .AddServiceTokenBearer(
+        builder.Configuration,
+        audience: "identity-service",
+        failFastIfMissingSecret: false);
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("SynqLienUserManagementInternal", policy =>
+    {
+        policy.AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme);
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole);
+        policy.RequireClaim("svc", "liens-service");
+    });
+});
 
 // Resolves the real client IP from X-Forwarded-For (set by the gateway/proxy)
 // before falling back to the direct TCP remote address. This prevents all
@@ -1385,6 +1398,7 @@ app.MapAdminEndpoints();
 app.MapTenantProvisioningEndpoints();
 app.MapUserMembershipEndpoints();      // BLK-ID-02
 app.MapLawFirmUserManagementEndpoints(); // LSV3-1083
+app.MapSynqLienUserManagementEndpoints();
 app.MapAccessSourceEndpoints();
 app.MapGroupEndpoints();
 app.MapPermissionCatalogEndpoints();

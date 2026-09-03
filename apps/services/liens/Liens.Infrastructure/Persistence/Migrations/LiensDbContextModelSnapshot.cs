@@ -475,6 +475,7 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Notes")
+                        .IsConcurrencyToken()
                         .HasMaxLength(4000)
                         .HasColumnType("varchar(4000)");
 
@@ -534,6 +535,72 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Cases_TenantId_OrgId_Status");
 
                     b.ToTable("liens_Cases", (string)null);
+                });
+
+            modelBuilder.Entity("Liens.Domain.Entities.CaseUpdateHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CaseId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_CaseUpdateHistory_TenantId_CaseId_OccurredAtUtc");
+
+                    b.ToTable("liens_CaseUpdateHistory", (string)null);
+                });
+
+            modelBuilder.Entity("Liens.Domain.Entities.CaseNumberReservation", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("CaseNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("ReservedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("TenantId", "CaseNumber");
+
+                    b.ToTable("liens_CaseNumberReservations", (string)null);
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.Company", b =>
@@ -2587,8 +2654,7 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("LienId")
                         .HasColumnType("char(36)");

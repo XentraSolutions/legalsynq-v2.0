@@ -42,4 +42,10 @@ public sealed class LienStatusHistory : AuditableEntity
             UpdatedAtUtc = now,
         };
     }
+
+    public void ReplacePendingDescription(string description)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        Description = description.Trim();
+    }
 }

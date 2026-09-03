@@ -55,9 +55,43 @@ Identity.Api.Tests/      Integration and unit tests
 | `GET` | `/api/tenants/current/branding` | Anonymous branding by tenant code |
 | `GET`/`POST` | `/api/internal/organizations/{organizationId}/users[/invite\|/{userId}/resend-invite\|/{userId}/activate\|/{userId}/deactivate\|/{userId}/product-roles]` | Internal (provisioning token, not public JWT): list/invite/resend pending invite/activate/deactivate a law-firm organization's users and assign/revoke their `CARECONNECT_REFERRER`/`CARECONNECT_REFERRER_ADMIN` roles (LSV3-1083). Users with pending invitations are listed as `Invited` even though their account is not active yet. Called by CareConnect's `/api/law-firm-users` on behalf of a caller already verified to hold `CARECONNECT_REFERRER_ADMIN` for that org; every route re-derives org membership itself, treating the caller's own ownership check as advisory only. |
 
+### SynqLien user management
+
+Identity exposes this surface only to the Liens service at `/api/internal/synqlien/user-management`. Calls require an audience-bound service token (`aud=identity-service`, `svc=liens-service`); tenant and actor come from that token and organization comes from the trusted `X-Organization-Id` header. The public API surface is owned by Liens.
+
+| Method | Path | Permission |
+|---|---|---|
+| `GET` | `/api/internal/synqlien/user-management/users[/{userId}]` | `SYNQ_LIENS.users:view` |
+| `GET` | `/api/internal/synqlien/user-management/options` | `SYNQ_LIENS.users:view` |
+| `POST` | `/api/internal/synqlien/user-management/invitations` | `SYNQ_LIENS.invitations:manage` |
+| `POST`/`DELETE` | `/api/internal/synqlien/user-management/users/{userId}/invitations/...` | `SYNQ_LIENS.invitations:manage` |
+| `PATCH`/`PUT`/`POST` | `/api/internal/synqlien/user-management/users/{userId}/...` | `SYNQ_LIENS.users:manage` |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/internal/synqlien/user-management/roles[/{roleId}]` | `SYNQ_LIENS.roles:view/manage` |
+
+The list accepts `search`, `status`, `roleId`, `department`, `page`, `pageSize` (maximum 100), and `sort=NAME_ASC|NAME_DESC|LAST_LOGIN_DESC`. Status precedence is `LOCKED`, `INVITED`, `INACTIVE`, then `ACTIVE`.
+
+Management roles are organization-scoped and separate from commercial Seller/Buyer/Holder personas. A Seller persona alone grants no user-management authority. New law firms receive protected starter roles on first user-management access: Administrator, Quality Assurance, and View Only; custom roles can be added, but a manager cannot delegate permissions they do not hold. Pending invitations store the intended role/profile but activate no membership, product access, or role until acceptance. Inactive Identity accounts must be restored by an Identity administrator rather than reactivated by a product invitation. Self-deactivation, self-role changes, deletion of protected/in-use roles, and removal of the last Administrator are rejected.
+
 ## Database
 
 `IdentityDb` (MySQL) — all tables prefixed `idt_`.
+
+For environments where EF migrations cannot run, apply the SynqLien
+organization user-management migration manually while Identity and Liens are
+stopped:
+
+```bash
+mysql --host=<host> --user=<user> --password <identity_database> \
+  < scripts/apply-identity-synqlien-user-management.sql
+```
+
+The script is idempotent and can repair the missing immediate predecessor
+`20260824124500_AddCareConnectReferrerAdminReferralCapabilities` when
+`20260824120000_MigrateCareConnectLawFirmReferrerToAdmin` is already recorded.
+It records `20260903020000_AddSynqLienUserManagement` in
+`__EFMigrationsHistory` only when its schema, backfill, capabilities, starter
+roles, and owner assignments are valid. Its final status must be `READY`
+before restarting either service.
 
 Run `scripts/add-synq-selling-product.sql` against `IdentityDb` to idempotently
 add or reactivate the `SYNQ_SELLING` catalog product before enabling it for tenants.
@@ -88,6 +122,8 @@ admin users' `AccessVersion` so refreshed JWT permission claims include the new 
 `SYNQ_LIENS.lien:sell` to `SYNQLIEN_SELLER`. This is the explicit Flow
 capability for seller workflow access; it supplements the lien-sale API
 permissions seeded by `20260627000002_SeedSynqLienSalePermissions`.
+
+`20260903020000_AddSynqLienUserManagement` adds organization profile fields, pending invitation grants, organization-aware product/role indexes, dedicated access-role tables, management capabilities, the three starter roles, and owner bootstrap. Legacy tenant-scoped SynqLien grants are converted into explicit grants for each active organization membership and the ambiguous grants are removed. Existing Sellers are not mass-promoted to management roles. SynqLien activation/deactivation changes only product access in the current organization.
 
 ## External Integrations
 

@@ -130,8 +130,7 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
 
         items.Should().Equal(
             ("Open", "Open"),
-            ("Closed", "Closed"),
-            ("Rejected", "Rejected"));
+            ("Closed", "Closed"));
     }
 
     [Fact]
@@ -192,8 +191,7 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
 
         items.Should().Equal(
             ("Open", "Open"),
-            ("Closed", "Closed"),
-            ("Rejected", "Rejected"));
+            ("Closed", "Closed"));
     }
 
     [Fact]
@@ -260,8 +258,7 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
 
         items.Should().Equal(
             ("Open", "Open"),
-            ("Closed", "Closed"),
-            ("Rejected", "Rejected"));
+            ("Closed", "Closed"));
     }
 
     [Fact]

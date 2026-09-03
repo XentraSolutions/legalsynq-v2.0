@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Claims;
+using BuildingBlocks.Authorization;
 using Identity.Api.Helpers;
 using Identity.Application;
 using Identity.Application.DTOs;
@@ -342,6 +343,25 @@ public static class AuthEndpoints
         })
         .RequireAuthorization();
 
+        app.MapGet("/api/auth/invite-requirements", async (
+            string token,
+            IdentityDbContext db,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.BadRequest(new { error = "token is required." });
+            var tokenHash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(token)));
+            var invitation = await db.UserInvitations.AsNoTracking().SingleOrDefaultAsync(x =>
+                x.TokenHash == tokenHash && x.Status == Identity.Domain.UserInvitation.Statuses.Pending, ct);
+            return invitation is null || invitation.IsExpired()
+                ? Results.BadRequest(new { error = "Invalid or expired invitation token." })
+                : Results.Ok(new { invitation.RequiresAccountActivation });
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-token-exchange");
+
         // ── POST /api/auth/accept-invite ─────────────────────────────────────
         // Anonymous. Accepts an invitation token, sets a new password, and
         // activates the invited user account.
@@ -363,8 +383,6 @@ public static class AuthEndpoints
         {
             if (string.IsNullOrWhiteSpace(body.Token))
                 return Results.BadRequest(new { error = "token is required." });
-            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
-                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
 
             // Hash the raw token the same way InviteUser stored it.
             var tokenHash = Convert.ToHexString(
@@ -389,14 +407,159 @@ public static class AuthEndpoints
             if (invitation.IsExpired())
                 return Results.BadRequest(new { error = "This invitation has expired. Please request a new one." });
 
+            if (invitation.RequiresAccountActivation &&
+                (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8))
+                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
+
             var user = invitation.User;
             if (user is null)
                 return Results.Problem("User record not found for this invitation.", statusCode: 500);
 
-            // Set the new password and activate the account.
-            var passwordHash = passwordHasher.Hash(body.NewPassword);
-            user.SetPassword(passwordHash);
-            user.Activate();
+            // SynqLien invitations carry a pending organization-scoped grant. Nothing
+            // becomes active until the token is accepted, and all grant records are
+            // committed in the same transaction as the invitation status change.
+            if (invitation.ProductCode == BuildingBlocks.Authorization.ProductCodes.SynqLiens &&
+                invitation.OrganizationId.HasValue)
+            {
+                var invitationScopeIsActive = await db.Tenants.AsNoTracking().AnyAsync(x =>
+                        x.Id == invitation.TenantId && x.IsActive, ct) &&
+                    await db.Organizations.AsNoTracking().AnyAsync(x =>
+                        x.Id == invitation.OrganizationId.Value && x.TenantId == invitation.TenantId &&
+                        x.IsActive && x.OrgType == Identity.Domain.OrgType.LawFirm, ct) &&
+                    await db.TenantProducts.AsNoTracking().AnyAsync(x =>
+                        x.TenantId == invitation.TenantId && x.IsEnabled &&
+                        x.Product.Code == BuildingBlocks.Authorization.ProductCodes.SynqLiens && x.Product.IsActive, ct);
+                if (!invitationScopeIsActive)
+                    return Results.BadRequest(new { error = "This invitation's SynqLien organization is no longer active. Ask an administrator to send a new invitation." });
+
+                var inviterId = invitation.InvitedByUserId;
+                var inviterIsActive = inviterId.HasValue && await db.Users.AsNoTracking().AnyAsync(x =>
+                    x.Id == inviterId.Value && x.IsActive && !x.IsLocked, ct);
+                var inviterIsOwner = inviterId.HasValue && await db.Organizations.AsNoTracking().AnyAsync(x =>
+                    x.Id == invitation.OrganizationId.Value && x.OwnerUserId == inviterId.Value, ct);
+                var inviterHasBreakGlass = inviterId.HasValue && await db.ScopedRoleAssignments.AsNoTracking().AnyAsync(x =>
+                    x.UserId == inviterId.Value && x.IsActive && x.ScopeType == ScopedRoleAssignment.ScopeTypes.Global &&
+                    (x.Role.Name == Roles.PlatformAdmin ||
+                     (x.Role.Name == Roles.TenantAdmin && x.Role.TenantId == invitation.TenantId)), ct);
+                var inviterHasScopedAccess = inviterId.HasValue &&
+                    await db.UserTenants.AsNoTracking().AnyAsync(x => x.UserId == inviterId.Value &&
+                        x.TenantId == invitation.TenantId && x.IsActive, ct) &&
+                    await db.UserOrganizationMemberships.AsNoTracking().AnyAsync(x => x.UserId == inviterId.Value &&
+                        x.OrganizationId == invitation.OrganizationId.Value && x.IsActive, ct) &&
+                    await db.UserProductAccessRecords.AsNoTracking().AnyAsync(x => x.UserId == inviterId.Value &&
+                        x.TenantId == invitation.TenantId && x.OrganizationId == invitation.OrganizationId.Value &&
+                        x.ProductCode == BuildingBlocks.Authorization.ProductCodes.SynqLiens &&
+                        x.AccessStatus == AccessStatus.Granted, ct);
+                var inviterHasManagementRole = inviterId.HasValue &&
+                    await db.SynqLienUserAccessRoleAssignments.AsNoTracking().AnyAsync(x =>
+                        x.UserId == inviterId.Value && x.TenantId == invitation.TenantId &&
+                        x.OrganizationId == invitation.OrganizationId.Value && x.IsActive && x.Role.IsActive &&
+                        x.Role.Permissions.Any(p => p.Permission.IsActive &&
+                            p.Permission.Code == PermissionCodes.LienInvitationsManage), ct);
+                if (!inviterIsActive ||
+                    (!inviterHasBreakGlass && (!inviterHasScopedAccess || (!inviterIsOwner && !inviterHasManagementRole))))
+                    return Results.BadRequest(new { error = "The administrator who sent this invitation no longer has authority to grant SynqLien access. Ask an administrator to send a new invitation." });
+
+                if (!invitation.PendingAccessRoleId.HasValue)
+                    return Results.BadRequest(new { error = "This invitation has no SynqLien access role. Ask an administrator to resend it." });
+
+                var accessRole = await db.SynqLienAccessRoles.SingleOrDefaultAsync(x =>
+                    x.Id == invitation.PendingAccessRoleId.Value && x.TenantId == invitation.TenantId &&
+                    x.OrganizationId == invitation.OrganizationId.Value && x.IsActive, ct);
+                if (accessRole is null)
+                    return Results.BadRequest(new { error = "The SynqLien access role is no longer available. Ask an administrator to resend the invitation." });
+
+                if (!inviterIsOwner && !inviterHasBreakGlass)
+                {
+                    var invitedPermissionCodes = await db.SynqLienAccessRolePermissions.AsNoTracking()
+                        .Where(x => x.RoleId == accessRole.Id && x.Permission.IsActive)
+                        .Select(x => x.Permission.Code)
+                        .Distinct()
+                        .ToListAsync(ct);
+                    var inviterPermissionCodes = await db.SynqLienUserAccessRoleAssignments.AsNoTracking()
+                        .Where(x => x.UserId == inviterId && x.TenantId == invitation.TenantId &&
+                            x.OrganizationId == invitation.OrganizationId.Value && x.IsActive && x.Role.IsActive)
+                        .SelectMany(x => x.Role.Permissions
+                            .Where(p => p.Permission.IsActive)
+                            .Select(p => p.Permission.Code))
+                        .Distinct()
+                        .ToListAsync(ct);
+                    if (!invitedPermissionCodes.All(code =>
+                            inviterPermissionCodes.Contains(code, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        return Results.BadRequest(new
+                        {
+                            error = "The administrator who sent this invitation can no longer grant its SynqLien access role. Ask an administrator to send a new invitation.",
+                        });
+                    }
+                }
+
+                var tenantMembership = await db.UserTenants.SingleOrDefaultAsync(x =>
+                    x.UserId == user.Id && x.TenantId == invitation.TenantId, ct);
+                if (tenantMembership is null)
+                    db.UserTenants.Add(UserTenant.Create(user.Id, invitation.TenantId));
+                else
+                    tenantMembership.Activate();
+
+                var organizationMembership = await db.UserOrganizationMemberships.SingleOrDefaultAsync(x =>
+                    x.UserId == user.Id && x.OrganizationId == invitation.OrganizationId.Value, ct);
+                if (organizationMembership is null)
+                {
+                    db.UserOrganizationMemberships.Add(UserOrganizationMembership.Create(
+                        user.Id, invitation.OrganizationId.Value, MemberRole.Member,
+                        invitation.InvitedByUserId, invitation.PendingDepartment, invitation.PendingJobTitle));
+                }
+                else
+                {
+                    organizationMembership.Activate();
+                    organizationMembership.UpdateOrganizationProfile(invitation.PendingDepartment, invitation.PendingJobTitle);
+                }
+
+                var productAccess = await db.UserProductAccessRecords.SingleOrDefaultAsync(x =>
+                    x.UserId == user.Id && x.TenantId == invitation.TenantId &&
+                    x.OrganizationId == invitation.OrganizationId.Value &&
+                    x.ProductCode == BuildingBlocks.Authorization.ProductCodes.SynqLiens, ct);
+                if (productAccess is null)
+                    db.UserProductAccessRecords.Add(UserProductAccess.Create(
+                        invitation.TenantId, user.Id, BuildingBlocks.Authorization.ProductCodes.SynqLiens,
+                        invitation.OrganizationId, invitation.InvitedByUserId));
+                else
+                    productAccess.Grant(invitation.InvitedByUserId);
+
+                var oldAccessRoles = await db.SynqLienUserAccessRoleAssignments.Where(x =>
+                    x.UserId == user.Id && x.TenantId == invitation.TenantId &&
+                    x.OrganizationId == invitation.OrganizationId.Value && x.IsActive).ToListAsync(ct);
+                foreach (var assignment in oldAccessRoles) assignment.Remove(invitation.InvitedByUserId);
+                db.SynqLienUserAccessRoleAssignments.Add(SynqLienUserAccessRoleAssignment.Create(
+                    invitation.TenantId, invitation.OrganizationId.Value, user.Id,
+                    accessRole.Id, invitation.InvitedByUserId));
+
+                var hasSellerPersona = await db.UserRoleAssignments.AnyAsync(x =>
+                    x.UserId == user.Id && x.TenantId == invitation.TenantId &&
+                    x.OrganizationId == invitation.OrganizationId.Value &&
+                    x.ProductCode == BuildingBlocks.Authorization.ProductCodes.SynqLiens &&
+                    x.RoleCode == BuildingBlocks.Authorization.ProductRoleCodes.SynqLienSeller &&
+                    x.AssignmentStatus == AssignmentStatus.Active, ct);
+                if (!hasSellerPersona)
+                    db.UserRoleAssignments.Add(UserRoleAssignment.Create(
+                        invitation.TenantId, user.Id,
+                        BuildingBlocks.Authorization.ProductRoleCodes.SynqLienSeller,
+                        BuildingBlocks.Authorization.ProductCodes.SynqLiens,
+                        invitation.OrganizationId, invitation.InvitedByUserId));
+
+                user.IncrementAccessVersion();
+            }
+
+            if (invitation.RequiresAccountActivation)
+            {
+                var passwordHash = passwordHasher.Hash(body.NewPassword);
+                user.SetPassword(passwordHash);
+                user.Activate();
+            }
+            else if (!user.IsActive)
+            {
+                return Results.BadRequest(new { error = "This Identity account is inactive. Contact an Identity administrator." });
+            }
 
             // Mark the invitation accepted.
             invitation.Accept();

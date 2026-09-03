@@ -17,7 +17,7 @@ namespace Liens.Api.Tests.Tests;
 public sealed class LegacyUpdateHistoryEndpointTests
 {
     [Fact]
-    public async Task Disabled_history_preserves_existing_empty_response_behavior()
+    public async Task Disabled_imported_history_still_returns_native_root_lifecycle_history()
     {
         await using var factory = new LiensApiFactory();
         var client = await CreateAuthenticatedClientAsync(factory);
@@ -36,8 +36,9 @@ public sealed class LegacyUpdateHistoryEndpointTests
         caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
         using var caseBody = JsonDocument.Parse(await caseResponse.Content.ReadAsStringAsync());
-        caseBody.RootElement.GetProperty("data").GetArrayLength().Should().Be(0);
-        caseBody.RootElement.GetProperty("totalCount").GetInt32().Should().Be(0);
+        caseBody.RootElement.GetProperty("data").EnumerateArray().Should().ContainSingle(item =>
+            item.GetProperty("action").GetString() == "Case Created");
+        caseBody.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
 
         var lienResponse = await client.PostAsJsonAsync("/api/liens/cases/liens-updates/v3", new
         {
@@ -45,7 +46,10 @@ public sealed class LegacyUpdateHistoryEndpointTests
             page = 1,
             limit = 10,
         });
-        lienResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        lienResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var lienBody = JsonDocument.Parse(await lienResponse.Content.ReadAsStringAsync());
+        lienBody.RootElement.GetProperty("data").EnumerateArray().Should().ContainSingle(item =>
+            item.GetProperty("action").GetString() == "Lien Created");
     }
 
     [Fact]
@@ -114,12 +118,24 @@ public sealed class LegacyUpdateHistoryEndpointTests
         firstResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await firstResponse.Content.ReadAsStringAsync()}");
         using var firstBody = JsonDocument.Parse(await firstResponse.Content.ReadAsStringAsync());
-        firstBody.RootElement.GetProperty("totalCount").GetInt32().Should().Be(3);
+        firstBody.RootElement.GetProperty("totalCount").GetInt32().Should().Be(4);
         var firstPage = firstBody.RootElement.GetProperty("data").EnumerateArray().ToList();
-        firstPage.Select(item => item.GetProperty("id").GetString())
-            .Should().Equal(native.Id.ToString(), importedHigh.Id.ToString());
+        firstPage[0].GetProperty("action").GetString().Should().Be("Case Created");
+        firstPage[1].GetProperty("id").GetString().Should().Be(native.Id.ToString());
 
-        var imported = firstPage[1];
+        var secondResponse = await client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = SeedHelper.CaseId,
+            page = 2,
+            limit = 2,
+        });
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var secondBody = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
+        var secondPage = secondBody.RootElement.GetProperty("data").EnumerateArray().ToList();
+        secondPage.Select(item => item.GetProperty("id").GetString())
+            .Should().Equal(importedHigh.Id.ToString(), importedLow.Id.ToString());
+
+        var imported = secondPage[0];
         imported.GetProperty("caseId").GetString().Should().Be(SeedHelper.CaseId.ToString());
         imported.GetProperty("action").GetString().Should().Be("Case Details Update");
         imported.GetProperty("description").GetString().Should().Be("Attorney → Funding ?");
@@ -131,19 +147,47 @@ public sealed class LegacyUpdateHistoryEndpointTests
         imported.GetProperty("updatedBy").GetString().Should().BeEmpty();
         imported.GetProperty("updated").GetString().Should().BeEmpty();
 
-        var secondResponse = await client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        secondPage[1].GetProperty("description").GetString().Should().BeEmpty();
+        secondPage[1].GetProperty("updatedBy").GetString().Should().Be("Legacy User");
+    }
+
+    [Fact]
+    public async Task Native_case_created_history_resolves_updated_by_and_embedded_email_to_full_name()
+    {
+        await using var factory = new LiensApiFactory();
+        var client = await CreateAuthenticatedClientAsync(factory);
+        var (caseId, _) = await AddEmptyCaseAndLienAsync(factory);
+        var note = LienCaseNote.Create(
+            caseId,
+            SeedHelper.TenantId,
+            "Case created. Code: 26-10001; Client: Demo Plaintiff; Created By: demo@example.com.",
+            CaseNoteCategory.CaseCreated,
+            SeedHelper.UserId,
+            "demo@example.com");
+
+        using (var scope = factory.Services.CreateScope())
         {
-            CaseId = SeedHelper.CaseId,
-            page = 2,
-            limit = 2,
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.LienCaseNotes.Add(note);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
         });
-        secondResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        using var secondBody = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
-        var secondPage = secondBody.RootElement.GetProperty("data").EnumerateArray().ToList();
-        secondPage.Should().ContainSingle();
-        secondPage[0].GetProperty("id").GetString().Should().Be(importedLow.Id.ToString());
-        secondPage[0].GetProperty("description").GetString().Should().BeEmpty();
-        secondPage[0].GetProperty("updatedBy").GetString().Should().Be("Legacy User");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var item = body.RootElement.GetProperty("data").EnumerateArray()
+            .Single(update => update.GetProperty("id").GetString() == note.Id.ToString());
+        item.GetProperty("createdBy").GetString().Should().Be("Demo User");
+        item.GetProperty("updatedBy").GetString().Should().Be("Demo User");
+        item.GetProperty("description").GetString().Should().Contain("Created By: Demo User.");
+        item.GetProperty("description").GetString().Should().NotContain("demo@example.com");
     }
 
     [Fact]
@@ -202,6 +246,164 @@ public sealed class LegacyUpdateHistoryEndpointTests
     }
 
     [Fact]
+    public async Task Lien_history_replaces_identifier_changes_with_tenant_scoped_descriptions()
+    {
+        await using var factory = new LiensApiFactory();
+        var client = await CreateAuthenticatedClientAsync(factory);
+        var historyId = Guid.NewGuid();
+        var unknownFacilityId = Guid.NewGuid();
+        var description =
+            $"Lien Update. Changes: Organization ID: blank → {SeedHelper.OrgId}; " +
+            $"Case ID: blank → {SeedHelper.CaseId}; " +
+            $"Selling Case ID: blank → {SeedHelper.CaseId}; " +
+            $"Facility ID: {unknownFacilityId} → {SeedHelper.FacilityId}; " +
+            $"Subject Party ID: blank → {SeedHelper.LeadContactId}; " +
+            $"Funding Company ID: blank → {SeedHelper.FundingCompanyId}; " +
+            $"Funding Company Contact ID: blank → {SeedHelper.FundingCompanyId}; " +
+            $"Medical Provider ID: blank → {SeedHelper.MedicalProviderId}; " +
+            $"Medical Facility ID: blank → {SeedHelper.MedicalFacilityContactId}; " +
+            $"Selling Organization ID: blank → {SeedHelper.OrgId}; " +
+            $"Buying Organization ID: blank → {SeedHelper.OrgId}; " +
+            $"Holding Organization ID: blank → {SeedHelper.OrgId}.";
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var history = LienStatusHistory.Create(
+                SeedHelper.TenantId,
+                SeedHelper.LienId,
+                SeedHelper.CaseId,
+                description,
+                SeedHelper.UserId);
+            SetProperty(history, nameof(LienStatusHistory.Id), historyId);
+            db.LienStatusHistories.Add(history);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/liens/cases/liens-updates/v3", new
+        {
+            CaseId = SeedHelper.CaseId,
+            page = 1,
+            limit = 50,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = body.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == historyId.ToString());
+        var enriched = row.GetProperty("description").GetString();
+
+        enriched.Should().Contain("Organization: blank → RL Liens1");
+        enriched.Should().Contain("Case: blank → CASE-TEST-001 — John Plaintiff");
+        enriched.Should().Contain("Selling Case: blank → CASE-TEST-001 — John Plaintiff");
+        enriched.Should().Contain("Facility: Unavailable facility → Sunrise Clinic");
+        enriched.Should().Contain("Subject Party: blank → Jane Doe");
+        enriched.Should().Contain("Funding Company: blank → Capital Fund LLC");
+        enriched.Should().Contain("Funding Company Contact: blank → Capital Fund");
+        enriched.Should().Contain("Medical Provider: blank → City Medical Center");
+        enriched.Should().Contain("Medical Facility: blank → Sunrise Clinic");
+        enriched.Should().Contain("Selling Organization: blank → RL Liens1");
+        enriched.Should().Contain("Buying Organization: blank → RL Liens1");
+        enriched.Should().Contain("Holding Organization: blank → RL Liens1");
+        enriched.Should().NotContain(" ID:");
+        enriched.Should().NotContain(unknownFacilityId.ToString());
+    }
+
+    [Fact]
+    public async Task Lien_history_describes_an_actual_facility_reassignment_by_name()
+    {
+        await using var factory = new LiensApiFactory();
+        var client = await CreateAuthenticatedClientAsync(factory);
+        Guid newFacilityId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var newFacility = Facility.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "Valley Clinic",
+                SeedHelper.UserId);
+            newFacilityId = newFacility.Id;
+            db.Facilities.Add(newFacility);
+
+            var lien = await db.Liens.SingleAsync(item => item.Id == SeedHelper.LienId);
+            lien.AttachFacility(SeedHelper.FacilityId, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+            lien.AttachFacility(newFacilityId, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/liens/cases/liens-updates/v3", new
+        {
+            CaseId = SeedHelper.CaseId,
+            page = 1,
+            limit = 50,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var rows = body.RootElement.GetProperty("data").EnumerateArray().ToList();
+        var descriptions = rows
+            .Select(item => item.GetProperty("description").GetString())
+            .ToList();
+
+        rows.Should().Contain(item =>
+            item.GetProperty("action").GetString() == "Liens Details" &&
+            item.GetProperty("description").GetString()!.Contains(
+                "Facility: Sunrise Clinic → Valley Clinic",
+                StringComparison.Ordinal));
+        descriptions.Should().Contain(description =>
+            description!.Contains("Facility: Sunrise Clinic → Valley Clinic", StringComparison.Ordinal));
+        descriptions.Should().NotContain(description =>
+            description!.Contains(SeedHelper.FacilityId.ToString(), StringComparison.Ordinal) ||
+            description.Contains(newFacilityId.ToString(), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Lien_history_excludes_legacy_lien_update_servicing_rows()
+    {
+        await using var factory = new LiensApiFactory();
+        var client = await CreateAuthenticatedClientAsync(factory);
+        var (caseId, lienId) = await AddEmptyCaseAndLienAsync(factory);
+        Guid hiddenUpdateId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var hiddenUpdate = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-UPDATE-{Guid.CreateVersion7():N}"[..36],
+                "Lien Update",
+                "Duplicate compatibility update",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseId,
+                lienId: lienId);
+            hiddenUpdateId = hiddenUpdate.Id;
+            db.ServicingItems.Add(hiddenUpdate);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/liens/cases/liens-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 50,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("data").EnumerateArray().Should().NotContain(item =>
+            item.GetProperty("id").GetString() == hiddenUpdateId.ToString());
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
     public async Task Lien_history_excludes_case_detail_updates_without_a_lien()
     {
         await using var factory = new EnabledLegacyUpdateHistoryFactory();
@@ -239,8 +441,9 @@ public sealed class LegacyUpdateHistoryEndpointTests
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await response.Content.ReadAsStringAsync()}");
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
-        var update = body.RootElement.GetProperty("data").EnumerateArray().Single();
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(2);
+        var update = body.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == lienUpdate.Id.ToString());
         update.GetProperty("id").GetString().Should().Be(lienUpdate.Id.ToString());
         update.GetProperty("caseId").GetString().Should().Be(caseId.ToString());
         update.GetProperty("lienId").GetString().Should().Be(lienId.ToString());
@@ -277,11 +480,12 @@ public sealed class LegacyUpdateHistoryEndpointTests
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await response.Content.ReadAsStringAsync()}");
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(eventCount);
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(eventCount + 1);
         var page = body.RootElement.GetProperty("data").EnumerateArray().ToList();
         page.Should().HaveCount(25);
-        page[0].GetProperty("id").GetString().Should().Be(events[^1].Id.ToString());
-        page[^1].GetProperty("id").GetString().Should().Be(events[^25].Id.ToString());
+        page[0].GetProperty("action").GetString().Should().Be("Case Created");
+        page[1].GetProperty("id").GetString().Should().Be(events[^1].Id.ToString());
+        page[^1].GetProperty("id").GetString().Should().Be(events[^24].Id.ToString());
     }
 
     [Theory]

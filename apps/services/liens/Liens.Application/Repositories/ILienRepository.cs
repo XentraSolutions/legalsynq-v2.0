@@ -8,6 +8,7 @@ public interface ILienRepository
     Task<Lien?> GetByIdAnyTenantAsync(Guid id, CancellationToken ct = default);
     Task<Lien?> GetByLienNumberAsync(Guid tenantId, string lienNumber, CancellationToken ct = default);
     Task<Lien?> GetByExternalReferenceAsync(Guid tenantId, string externalReference, CancellationToken ct = default);
+    Task<List<string>> GetLienNumbersByPrefixAsync(Guid tenantId, string lienNumberPrefix, CancellationToken ct = default);
     Task<(List<Lien> Items, int TotalCount)> SearchAsync(
         Guid tenantId,
         string? search,

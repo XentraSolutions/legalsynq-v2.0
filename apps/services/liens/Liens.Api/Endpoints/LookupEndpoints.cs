@@ -55,11 +55,10 @@ public static class LookupEndpoints
         ("MedicalMalpractice", "Medical Malpractice", [], 6),
     ];
 
-    private static readonly (string Code, string Name, string[] SourceCodes, int SortOrder)[] LegacyLienStatusOptions =
+    private static readonly (Guid FallbackId, string Code, string Name, string[] SourceCodes, int SortOrder)[] LegacyLienStatusOptions =
     [
-        ("Open", "Open", [LienStatus.Draft, LienStatus.Offered, LienStatus.Accepted, LienStatus.UnderReview, LienStatus.Sold, LienStatus.Active, LienStatus.Disputed], 1),
-        ("Closed", "Closed", [LienStatus.Settled], 2),
-        ("Rejected", "Rejected", [LienStatus.Declined, LienStatus.Withdrawn, LienStatus.Cancelled], 3),
+        (LienStatus.LegacyOpenFilterId, "Open", "Open", [LienStatus.Draft, LienStatus.Offered, LienStatus.Accepted, LienStatus.UnderReview, LienStatus.Sold, LienStatus.Active, LienStatus.Disputed], 1),
+        (LienStatus.LegacyClosedFilterId, "Closed", "Closed", [LienStatus.Settled], 2),
     ];
 
     private static readonly (Guid FallbackId, string Code, string Name, string[] SourceCodes, int SortOrder)[] LegacyDocumentTypeOptions =
@@ -201,10 +200,8 @@ public static class LookupEndpoints
             result.GetValueOrDefault(LookupCategory.AccidentType, []),
             LookupCategory.AccidentType,
             LegacyAccidentTypeOptions);
-        result[LookupCategory.LienStatus] = BuildLegacyLookupOptions(
-            result.GetValueOrDefault(LookupCategory.LienStatus, []),
-            LookupCategory.LienStatus,
-            LegacyLienStatusOptions);
+        result[LookupCategory.LienStatus] = BuildLegacyLienStatusOptions(
+            result.GetValueOrDefault(LookupCategory.LienStatus, []));
         result[LookupCategory.DocumentCategory] = BuildLegacyDocumentLookupOptions(
             result.GetValueOrDefault(LookupCategory.DocumentCategory, []),
             LookupCategory.DocumentCategory);
@@ -226,7 +223,7 @@ public static class LookupEndpoints
         else if (string.Equals(category, LookupCategory.AccidentType, StringComparison.Ordinal))
             result = BuildLegacyLookupOptions(result, LookupCategory.AccidentType, LegacyAccidentTypeOptions);
         else if (string.Equals(category, LookupCategory.LienStatus, StringComparison.Ordinal))
-            result = BuildLegacyLookupOptions(result, LookupCategory.LienStatus, LegacyLienStatusOptions);
+            result = BuildLegacyLienStatusOptions(result);
         else if (string.Equals(category, LookupCategory.DocumentCategory, StringComparison.Ordinal))
             result = BuildLegacyDocumentLookupOptions(result, LookupCategory.DocumentCategory);
         return Results.Ok(result);
@@ -374,7 +371,7 @@ public static class LookupEndpoints
         CancellationToken ct)
     {
         var result = await lookupService.GetByCategoryAsync(ctx.TenantId, LookupCategory.LienStatus, ct);
-        return Results.Ok(BuildLegacyLookupOptions(result, LookupCategory.LienStatus, LegacyLienStatusOptions));
+        return Results.Ok(BuildLegacyLienStatusOptions(result));
     }
 
     private static List<LookupValueResponse> BuildLegacyLookupOptions(
@@ -395,6 +392,33 @@ public static class LookupEndpoints
                 {
                     Id = match?.Id ?? Guid.Empty,
                     Category = match?.Category ?? category,
+                    Code = option.Code,
+                    Name = option.Name,
+                    Description = match?.Description,
+                    SortOrder = option.SortOrder,
+                    IsActive = match?.IsActive ?? true,
+                    IsSystem = match?.IsSystem ?? true,
+                };
+            })
+            .ToList();
+    }
+
+    private static List<LookupValueResponse> BuildLegacyLienStatusOptions(
+        IReadOnlyList<LookupValueResponse> source)
+    {
+        var byCode = source.ToDictionary(item => item.Code, StringComparer.Ordinal);
+
+        return LegacyLienStatusOptions
+            .Select(option =>
+            {
+                var match = option.SourceCodes
+                    .Select(code => byCode.TryGetValue(code, out var item) ? item : null)
+                    .FirstOrDefault(item => item is not null);
+
+                return new LookupValueResponse
+                {
+                    Id = match?.Id ?? option.FallbackId,
+                    Category = match?.Category ?? LookupCategory.LienStatus,
                     Code = option.Code,
                     Name = option.Name,
                     Description = match?.Description,

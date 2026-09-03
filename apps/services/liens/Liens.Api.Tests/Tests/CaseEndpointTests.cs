@@ -158,7 +158,7 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             notes: $"title={title}; status={status}");
 
     [Fact]
-    public async Task CreateCase_defaults_case_number_and_records_authenticated_email_as_creator()
+    public async Task CreateCase_defaults_case_number_records_creator_and_does_not_reuse_deleted_number()
     {
         var yearPrefix = DateTime.UtcNow.ToString("yy");
         const string creatorEmail = "case.creator@example.com";
@@ -212,9 +212,23 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         creationEntry.GetProperty("description").GetString()
             .Should().Contain($"Code: {firstBody.CaseNumber}; Client: Case One;");
         creationEntry.GetProperty("description").GetString()
-            .Should().Contain($"Created By: {creatorEmail}.");
-        creationEntry.GetProperty("createdBy").GetString().Should().Be(creatorEmail);
-        creationEntry.GetProperty("updatedBy").GetString().Should().Be(creatorEmail);
+            .Should().Contain("Created By: Demo User.");
+        creationEntry.GetProperty("createdBy").GetString().Should().Be("Demo User");
+        creationEntry.GetProperty("updatedBy").GetString().Should().Be("Demo User");
+        creationEntry.GetProperty("updatedBy").GetString().Should().NotBe(creatorEmail);
+
+        var delete = await _client.DeleteAsync($"/api/liens/cases/delete/{firstBody.Id}");
+        delete.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await delete.Content.ReadAsStringAsync()}");
+
+        var reuse = await _client.PostAsJsonAsync("/api/liens/cases", new
+        {
+            caseNumber = firstBody.CaseNumber,
+            clientFirstName = "Case",
+            clientLastName = "Reuse",
+        });
+        reuse.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            $"Body: {await reuse.Content.ReadAsStringAsync()}");
 
         var second = await _client.PostAsJsonAsync("/api/liens/cases", new
         {
@@ -843,9 +857,15 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             .Select(item => item.GetProperty("description").GetString())
             .ToList();
 
-        descriptions.Should().Contain("Lien status updated to Closed. Changes: Status: Open → Closed.");
-        descriptions.Should().Contain("Lien status updated to Delete. Changes: Status: Closed → Delete.");
-        descriptions.Should().HaveCount(2);
+        descriptions.Should().Contain(description =>
+            description!.StartsWith("Lien status updated to Closed.", StringComparison.Ordinal) &&
+            description.Contains("Status: Open → Closed", StringComparison.Ordinal));
+        descriptions.Should().Contain(description =>
+            description!.StartsWith("Lien status updated to Delete.", StringComparison.Ordinal) &&
+            description.Contains("Status: Closed → Delete", StringComparison.Ordinal));
+        descriptions.Should().Contain(description =>
+            description!.StartsWith("Lien Created.", StringComparison.Ordinal));
+        descriptions.Should().HaveCount(3);
         updates.RootElement.GetProperty("data").EnumerateArray()
             .Where(item => item.GetProperty("lienId").GetString() == lienId.ToString())
             .Select(item => item.GetProperty("lienCode").GetString())

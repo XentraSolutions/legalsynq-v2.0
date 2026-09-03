@@ -23,9 +23,12 @@ public class UserOrganizationMembershipConfiguration : IEntityTypeConfiguration<
         builder.Property(m => m.IsActive).IsRequired();
         builder.Property(m => m.JoinedAtUtc).IsRequired();
         builder.Property(m => m.GrantedByUserId);
+        builder.Property(m => m.Department).HasMaxLength(150);
+        builder.Property(m => m.JobTitle).HasMaxLength(150);
 
         builder.HasIndex(m => new { m.UserId, m.OrganizationId }).IsUnique();
         builder.HasIndex(m => m.OrganizationId);
+        builder.HasIndex(m => new { m.OrganizationId, m.Department });
         builder.HasIndex(m => new { m.UserId, m.IsActive });
 
         builder.HasOne(m => m.User)

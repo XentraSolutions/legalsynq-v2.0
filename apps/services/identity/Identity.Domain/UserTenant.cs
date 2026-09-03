@@ -18,6 +18,8 @@ public class UserTenant
 
     private UserTenant() { }
 
+    public void Activate() => IsActive = true;
+
     public static UserTenant Create(Guid userId, Guid tenantId)
     {
         if (userId   == Guid.Empty) throw new ArgumentException("UserId is required.",   nameof(userId));

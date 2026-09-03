@@ -469,12 +469,16 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             .Select(item => item.GetProperty("description").GetString())
             .ToList();
 
-        descriptions.Should().Contain("Lien Status: Pending. Selling lien created with status Pending.");
+        descriptions.Should().Contain(description =>
+            description.StartsWith(
+                "Lien Created. Lien Status: Pending. Selling lien created with status Pending.",
+                StringComparison.Ordinal) &&
+            description.Contains("Changes:", StringComparison.Ordinal));
         descriptions.Should().Contain(description =>
             description != null &&
             description.StartsWith("Lien Status: Internal. Selling lien information updated. Changes:", StringComparison.Ordinal) &&
             description.Contains("Seller Status: Pending → Internal", StringComparison.Ordinal) &&
-            description.Contains("Notes: blank → Status history test", StringComparison.Ordinal));
+            description.Contains("Note: Single → Status history test", StringComparison.Ordinal));
     }
 
     [Fact]

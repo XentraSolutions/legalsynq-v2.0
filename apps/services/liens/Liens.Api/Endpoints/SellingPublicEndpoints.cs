@@ -2087,17 +2087,15 @@ public static class SellingPublicEndpoints
                     property.CurrentValue))
                 .ToList();
 
-            foreach (var description in LienUpdateHistoryFormatter.BuildDescriptions(
-                         $"Lien Status: {currentStatus}. Buyer response recorded as {responseStatus}",
-                         changes).Reverse())
-            {
-                db.LienStatusHistories.Add(LienStatusHistory.Create(
-                    lien.TenantId,
-                    lien.Id,
-                    lien.CaseId,
-                    description,
-                    updatedByUserId));
-            }
+            var description = LienUpdateHistoryFormatter.BuildSingleDescription(
+                $"Lien Status: {currentStatus}. Buyer response recorded as {responseStatus}",
+                changes);
+            db.LienStatusHistories.Add(LienStatusHistory.Create(
+                lien.TenantId,
+                lien.Id,
+                lien.CaseId,
+                description,
+                updatedByUserId));
         }
     }
 

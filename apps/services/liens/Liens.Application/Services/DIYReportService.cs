@@ -124,15 +124,17 @@ public class DIYReportService : IDIYReportService
                     caseStatuses);
             }
         }
-        if (HasReportProperty(request, "lienStatusIds", out var statusIds) && statusIds.ValueKind == JsonValueKind.Array)
+        var requestedStatuses = GetReportStringValues(request, "lienStatusIds");
+        if (requestedStatuses.Count > 0)
         {
-            var requestedStatuses = statusIds.EnumerateArray()
-                .Where(item => item.ValueKind is JsonValueKind.String or JsonValueKind.Number)
-                .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : item.GetRawText())
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Select(value => value!.Trim())
-                .ToList();
-            requestedLienStatuses.AddRange(await ResolveLienStatusesAsync(tenantId, requestedStatuses, ct));
+            var useLegacyStatusGroups =
+                HasReportProperty(request, "lienStatusIds", out var statusIds) &&
+                statusIds.ValueKind != JsonValueKind.Array;
+            requestedLienStatuses.AddRange(await ResolveLienStatusesAsync(
+                tenantId,
+                requestedStatuses,
+                useLegacyStatusGroups,
+                ct));
         }
         var lienStatuses = CombineLienStatusFilters(requestedLienStatuses, statusViewLienStatuses);
         if (HasReportProperty(request, "search", out var k) && k.ValueKind == JsonValueKind.String)
@@ -286,6 +288,7 @@ public class DIYReportService : IDIYReportService
     private async Task<IReadOnlyCollection<string>> ResolveLienStatusesAsync(
         Guid tenantId,
         IReadOnlyCollection<string> requestedStatuses,
+        bool useLegacyStatusGroups,
         CancellationToken ct)
     {
         var lookupIds = requestedStatuses
@@ -296,16 +299,48 @@ public class DIYReportService : IDIYReportService
             return requestedStatuses;
 
         var lookups = await _lookupRepo.GetByCategoryAsync(tenantId, LookupCategory.LienStatus, ct);
-        var lookupCodesById = lookups
+        var lookupsById = lookups
             .Where(lookup => lookupIds.Contains(lookup.Id))
-            .ToDictionary(lookup => lookup.Id, lookup => lookup.Code);
+            .ToDictionary(lookup => lookup.Id);
 
         return requestedStatuses
-            .Select(value => Guid.TryParse(value, out var lookupId) &&
-                             lookupCodesById.TryGetValue(lookupId, out var code)
-                ? code
-                : value)
+            .SelectMany(value => ResolveLienStatusFilterValue(value, lookupsById, useLegacyStatusGroups))
             .ToList();
+    }
+
+    private static IReadOnlyCollection<string> ResolveLienStatusFilterValue(
+        string value,
+        IReadOnlyDictionary<Guid, LookupValue> lookupsById,
+        bool useLegacyStatusGroups)
+    {
+        if (!Guid.TryParse(value, out var lookupId))
+            return [value];
+
+        if (useLegacyStatusGroups && LienStatus.TryGetLegacyFilterGroup(lookupId, out var group))
+            return [group];
+
+        if (!lookupsById.TryGetValue(lookupId, out var lookup))
+            return [value];
+
+        return useLegacyStatusGroups ? GetLienStatusLookupFilterValues(lookup) : [lookup.Code];
+    }
+
+    private static IReadOnlyCollection<string> GetLienStatusLookupFilterValues(LookupValue lookup)
+    {
+        var values = new List<string> { lookup.Code, lookup.Name };
+        if (!string.IsNullOrWhiteSpace(lookup.Description))
+            values.Add(lookup.Description);
+
+        if (LienStatus.Open.Contains(lookup.Code))
+            values.Add("Open");
+        else if (string.Equals(lookup.Code, LienStatus.Settled, StringComparison.OrdinalIgnoreCase))
+            values.Add("Closed");
+        else if (string.Equals(lookup.Code, LienStatus.Declined, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(lookup.Code, LienStatus.Withdrawn, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(lookup.Code, LienStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+            values.Add("Rejected");
+
+        return values;
     }
 
     private async Task<IReadOnlyCollection<Guid>> ResolveLienFacilityIdsAsync(
@@ -1525,6 +1560,32 @@ public class DIYReportService : IDIYReportService
         }
 
         return null;
+    }
+
+    private static IReadOnlyCollection<string> GetReportStringValues(
+        DIYReportRunRequest request,
+        string propertyName)
+    {
+        if (!HasReportProperty(request, propertyName, out var value))
+            return [];
+
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            return value.EnumerateArray()
+                .Where(item => item.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+                .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : item.GetRawText())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => item!.Trim())
+                .ToList();
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            var item = value.GetString();
+            return string.IsNullOrWhiteSpace(item) ? [] : [item.Trim()];
+        }
+
+        return value.ValueKind == JsonValueKind.Number ? [value.GetRawText()] : [];
     }
 
     private static DateOnly? GetReportDateOnly(DIYReportRunRequest request, string propertyName)

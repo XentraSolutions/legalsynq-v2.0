@@ -3984,17 +3984,15 @@ public static class SellingV2Endpoints
             .ToList();
 
         var lienStatus = string.IsNullOrWhiteSpace(lien.SellerStatus) ? lien.Status : lien.SellerStatus;
-        foreach (var activityDescription in LienUpdateHistoryFormatter.BuildDescriptions(
-                     $"Lien Status: {lienStatus}. {description}",
-                     changes).Reverse())
-        {
-            db.LienStatusHistories.Add(LienStatusHistory.Create(
-                lien.TenantId,
-                lien.Id,
-                lien.CaseId,
-                activityDescription,
-                userId));
-        }
+        var activityDescription = LienUpdateHistoryFormatter.BuildSingleDescription(
+            $"Lien Status: {lienStatus}. {description}",
+            changes);
+        db.LienStatusHistories.Add(LienStatusHistory.Create(
+            lien.TenantId,
+            lien.Id,
+            lien.CaseId,
+            activityDescription,
+            userId));
     }
     private static string DisplayName(Contact contact) => string.IsNullOrWhiteSpace(contact.Organization) ? contact.DisplayName : contact.Organization;
     private static string DisplayName(CompanyContactPerson contact) => $"{contact.FirstName} {contact.LastName}".Trim();

@@ -1790,7 +1790,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
-    public async Task CaseUpdatesV3_returns_ok_with_empty_data_when_case_has_no_notes()
+    public async Task CaseUpdatesV3_returns_case_creation_when_case_has_no_notes()
     {
         Guid caseId;
         using (var scope = _factory.Services.CreateScope())
@@ -1819,8 +1819,10 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
 
         var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
-        body.RootElement.GetProperty("data").EnumerateArray().Should().BeEmpty();
-        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(0);
+        var updates = body.RootElement.GetProperty("data").EnumerateArray().ToList();
+        updates.Should().ContainSingle();
+        updates[0].GetProperty("action").GetString().Should().Be("Case Created");
+        body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
     }
 
     [Fact]
@@ -1954,10 +1956,12 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             $"Body: {await response.Content.ReadAsStringAsync()}");
         var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         var updates = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
-        updates.Select(update => update.GetProperty("description").GetString()).Should().BeEquivalentTo(
+        updates.Where(update => update.GetProperty("action").GetString() != "Case Created")
+            .Select(update => update.GetProperty("description").GetString()).Should().BeEquivalentTo(
             "Case Tracking Note Update",
             "Case updated: status changed to Closed; Case Tracking Note Update.");
-        updates.Select(update => update.GetProperty("note").GetString()).Should().BeEquivalentTo(
+        updates.Where(update => update.GetProperty("action").GetString() != "Case Created")
+            .Select(update => update.GetProperty("note").GetString()).Should().BeEquivalentTo(
             "Case Tracking Note Update",
             "Case updated: status changed to Closed; Case Tracking Note Update.");
     }
@@ -2007,12 +2011,80 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
         body.RootElement.GetProperty("data").EnumerateArray().Should().Contain(item =>
-            item.GetProperty("description").GetString()!.Contains("Case updated:", StringComparison.Ordinal) &&
-            item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal) &&
             item.GetProperty("description").GetString()!.Contains(
-                "Case Tracking Note Update: status change from details update",
-                StringComparison.Ordinal) &&
+                "Current Medical Status: blank → Treating", StringComparison.Ordinal) &&
+            item.GetProperty("description").GetString()!.Contains(
+                "Notes: blank → status change from details update", StringComparison.Ordinal) &&
             item.GetProperty("action").GetString() == "Case Details Update");
+    }
+
+    [Fact]
+    public async Task PersonalUpdate_records_every_changed_plaintiff_field()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-PLAINTIFF-{Guid.NewGuid():N}"[..28],
+                "Old",
+                "Plaintiff",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1980, 1, 2),
+                clientPhone: "555-0100",
+                clientEmail: "old@example.com",
+                clientAddress: "1 Old St, Old City, CA 90001",
+                notes: "[legacy-meta]\ngender=Male",
+                clientAddressLine1: "1 Old St",
+                clientCity: "Old City",
+                clientState: "CA",
+                clientPostalCode: "90001");
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        var response = await _client.PatchAsJsonAsync("/api/liens/cases/personal-update", new
+        {
+            caseId,
+            firstName = "New",
+            lastName = "Claimant",
+            sex = "Female",
+            dob = "1991-02-03",
+            phone = "555-0199",
+            email = "new@example.com",
+            address = "2 New Ave",
+            city = "New City",
+            state = "NY",
+            zipcode = "10001",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var updatedCase = await verificationDb.Cases.SingleAsync(item => item.Id == caseId);
+        updatedCase.ClientAddressLine1.Should().Be("2 New Ave");
+        updatedCase.ClientCity.Should().Be("New City");
+        updatedCase.ClientState.Should().Be("NY");
+        updatedCase.ClientPostalCode.Should().Be("10001");
+
+        var history = await verificationDb.CaseUpdateHistories.SingleAsync(item =>
+            item.CaseId == caseId && item.Action == "Case Details Update");
+        history.Description.Should().Contain("Client First Name: Old → New");
+        history.Description.Should().Contain("Client Last Name: Plaintiff → Claimant");
+        history.Description.Should().Contain("Date of Birth: 01/02/1980 → 02/03/1991");
+        history.Description.Should().Contain("Phone: 555-0100 → 555-0199");
+        history.Description.Should().Contain("Email: old@example.com → new@example.com");
+        history.Description.Should().Contain("Address: 1 Old St, Old City, CA 90001 → 2 New Ave, New City, NY 10001");
+        history.Description.Should().Contain("Street Address: 1 Old St → 2 New Ave");
+        history.Description.Should().Contain("City: Old City → New City");
+        history.Description.Should().Contain("State: CA → NY");
+        history.Description.Should().Contain("Zip Code: 90001 → 10001");
+        history.Description.Should().Contain("Gender: Male → Female");
     }
 
     [Fact]
@@ -2064,13 +2136,13 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
 
         var payload = await updatesResponse.Content.ReadFromJsonAsync<JsonDocument>();
-        var updates = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        var updates = payload!.RootElement.GetProperty("data").EnumerateArray()
+            .Where(item => item.GetProperty("action").GetString() == "Case Details Update")
+            .ToList();
         updates.Should().HaveCount(2);
-        updates.Should().OnlyContain(item =>
-            item.GetProperty("action").GetString() == "Case Details Update");
         updates.Select(item => item.GetProperty("description").GetString()).Should().BeEquivalentTo(
-            "Case Tracking Note Update: Updated note",
-            "Case Tracking Note Update");
+            "Case Details Update. Changes: Notes: Original note → Updated note.",
+            "Case Details Update. Changes: Notes: Updated note → blank.");
 
         using var verificationScope = _factory.Services.CreateScope();
         var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -2078,7 +2150,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             .Where(note => note.TenantId == SeedHelper.TenantId && note.CaseId == caseId)
             .ToListAsync();
         storedNotes.Count(note => note.Category == CaseNoteCategory.General).Should().Be(1);
-        storedNotes.Count(note => note.Category == CaseNoteCategory.Internal).Should().Be(2);
+        storedNotes.Count(note => note.Category == CaseNoteCategory.Internal).Should().Be(0);
     }
 
     [Fact]
@@ -2122,11 +2194,13 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
 
         using var payload = JsonDocument.Parse(await updatesResponse.Content.ReadAsStringAsync());
-        var updates = payload.RootElement.GetProperty("data").EnumerateArray().ToList();
+        var updates = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Where(item => item.GetProperty("action").GetString() == "Case Details Update")
+            .ToList();
         updates.Should().ContainSingle();
         updates[0].GetProperty("action").GetString().Should().Be("Case Details Update");
         updates[0].GetProperty("description").GetString().Should().Be(
-            $"Case Tracking Note Update: {submittedNote}");
+            $"Case Details Update. Changes: Notes: Original note → {submittedNote}.");
         updates[0].GetProperty("description").GetString().Should().NotContain("status changed");
     }
 
@@ -2229,7 +2303,8 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         body!.RootElement.GetProperty("data").EnumerateArray()
             .Select(item => item.GetProperty("description").GetString())
-            .Should().Contain("Case updated: status changed to Closed.");
+            .Should().Contain(description =>
+                description!.Contains("Status: PreDemand → Closed", StringComparison.Ordinal));
     }
 
     [Fact]

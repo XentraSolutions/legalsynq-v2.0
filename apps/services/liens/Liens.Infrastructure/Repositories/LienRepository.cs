@@ -43,6 +43,20 @@ public class LienRepository : ILienRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public Task<List<string>> GetLienNumbersByPrefixAsync(
+        Guid tenantId,
+        string lienNumberPrefix,
+        CancellationToken ct = default)
+    {
+        return _db.Liens
+            .AsNoTracking()
+            .Where(lien =>
+                lien.TenantId == tenantId &&
+                lien.LienNumber.StartsWith(lienNumberPrefix))
+            .Select(lien => lien.LienNumber)
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<Lien> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId,
@@ -150,7 +164,10 @@ public class LienRepository : ILienRepository
             .AsNoTracking()
             .Where(l =>
                 l.TenantId == tenantId &&
-                l.Status != LienStatus.Cancelled);
+                l.Status != LienStatus.Declined &&
+                l.Status != LienStatus.Withdrawn &&
+                l.Status != LienStatus.Cancelled &&
+                l.Status != "Rejected");
 
         if (!string.IsNullOrWhiteSpace(search))
         {

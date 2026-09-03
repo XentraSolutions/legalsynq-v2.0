@@ -392,7 +392,7 @@ public class AuthService : IAuthService
 
         // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
         // All product roles come exclusively from EffectiveAccessService (direct + group-inherited).
-        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, userWithRoles.Id, ct);
+        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, userWithRoles.Id, org?.Id, ct);
 
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.
@@ -703,9 +703,13 @@ public class AuthService : IAuthService
 
             if (refreshUser is not null && refreshTenant is not null)
             {
+                var refreshOrganizationId = Guid.TryParse(principal.FindFirst("org_id")?.Value, out var parsedOrganizationId)
+                    ? parsedOrganizationId
+                    : (Guid?)null;
                 var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(
                     refreshTenant.Id,
                     refreshUser.Id,
+                    refreshOrganizationId,
                     ct);
                 productRoles = effectiveAccess.ProductRolesFlat;
                 rawUserProductCodes = effectiveAccess.Products;

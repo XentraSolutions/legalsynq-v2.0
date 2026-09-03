@@ -318,9 +318,10 @@ public sealed class CaseService : ICaseService
             : request.CaseNumber.Trim();
 
         var existing = await _caseRepo.GetByCaseNumberAsync(tenantId, caseNumber, ct);
-        if (existing is not null)
+        var isReserved = await _caseRepo.IsCaseNumberReservedAsync(tenantId, caseNumber, ct);
+        if (existing is not null || isReserved)
             throw new ConflictException(
-                $"A case with number '{caseNumber}' already exists.",
+                $"Case number '{caseNumber}' has already been used and cannot be reused.",
                 "CASE_NUMBER_DUPLICATE");
 
         var entity = Case.Create(
@@ -523,8 +524,11 @@ public sealed class CaseService : ICaseService
         var yearPrefix = DateTime.UtcNow.ToString("yy");
         var prefix = $"{yearPrefix}-";
         var existingCases = await _caseRepo.GetByCaseNumberPrefixAsync(tenantId, prefix, ct);
+        var reservedCaseNumbers = await _caseRepo.GetReservedCaseNumbersByPrefixAsync(tenantId, prefix, ct);
         var maxSequence = existingCases
-            .Select(c => TryGetCaseSequence(c.CaseNumber, prefix))
+            .Select(c => c.CaseNumber)
+            .Concat(reservedCaseNumbers)
+            .Select(caseNumber => TryGetCaseSequence(caseNumber, prefix))
             .Where(sequence => sequence.HasValue)
             .Select(sequence => sequence!.Value)
             .DefaultIfEmpty(0)

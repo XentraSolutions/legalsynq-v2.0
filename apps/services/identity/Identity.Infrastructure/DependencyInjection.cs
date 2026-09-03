@@ -171,6 +171,7 @@ public static class DependencyInjection
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
         services.AddScoped<IUserMembershipService, UserMembershipService>();   // BLK-ID-02
+        services.AddScoped<ISynqLienUserManagementService, SynqLienUserManagementService>();
         services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
         services.AddScoped<IEffectiveAccessService, EffectiveAccessService>();
         services.AddScoped<IEffectivePermissionService, EffectivePermissionService>();

@@ -295,6 +295,25 @@ public class Case : AuditableEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    public void ApplyScheduledLawFirmSwitch(string? serializedNotes, Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        Notes = string.IsNullOrWhiteSpace(serializedNotes) ? null : serializedNotes.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkForDeletion(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     private static Dictionary<string, string> ParseMetadata(string? value)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);

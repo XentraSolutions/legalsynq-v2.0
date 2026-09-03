@@ -43,6 +43,11 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OrganizationId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid>("OrganizationScopeId")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("char(36)")
+                        .HasComputedColumnSql("COALESCE(`OrganizationId`, '00000000-0000-0000-0000-000000000000')", true);
+
                     b.Property<string>("ProductCode")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
@@ -2982,6 +2987,91 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("idt_Users", (string)null);
                 });
 
+            modelBuilder.Entity("Identity.Domain.SynqLienAccessRole", b =>
+                {
+                    b.Property<string>("ActiveName").ValueGeneratedOnAddOrUpdate().HasMaxLength(100).HasColumnType("varchar(100)").HasComputedColumnSql("CASE WHEN `IsActive` = 1 THEN LOWER(`Name`) ELSE NULL END", true);
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<Guid?>("CreatedByUserId").HasColumnType("char(36)");
+                    b.Property<string>("Description").HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<bool>("IsActive").HasColumnType("tinyint(1)");
+                    b.Property<bool>("IsSystem").HasColumnType("tinyint(1)");
+                    b.Property<string>("Name").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<Guid>("OrganizationId").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
+                    b.HasKey("Id");
+                    b.HasIndex("TenantId", "OrganizationId", "ActiveName").IsUnique();
+                    b.ToTable("idt_SynqLienAccessRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Identity.Domain.SynqLienAccessRolePermission", b =>
+                {
+                    b.Property<Guid>("RoleId").HasColumnType("char(36)");
+                    b.Property<Guid>("PermissionId").HasColumnType("char(36)");
+                    b.HasKey("RoleId", "PermissionId");
+                    b.HasIndex("PermissionId");
+                    b.ToTable("idt_SynqLienAccessRolePermissions", (string)null);
+                });
+
+            modelBuilder.Entity("Identity.Domain.SynqLienUserAccessRoleAssignment", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
+                    b.Property<DateTime>("AssignedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<Guid?>("AssignedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("ActiveSlot").HasColumnType("char(36)");
+                    b.Property<bool>("IsActive").HasColumnType("tinyint(1)");
+                    b.Property<Guid>("OrganizationId").HasColumnType("char(36)");
+                    b.Property<DateTime?>("RemovedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<Guid?>("RemovedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid>("RoleId").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<Guid>("UserId").HasColumnType("char(36)");
+                    b.HasKey("Id");
+                    b.HasIndex("RoleId");
+                    b.HasIndex("UserId");
+                    b.HasIndex("TenantId", "OrganizationId", "UserId", "RoleId");
+                    b.HasIndex("TenantId", "OrganizationId", "UserId", "ActiveSlot").IsUnique();
+                    b.ToTable("idt_SynqLienUserAccessRoleAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("Identity.Domain.SynqLienAccessRolePermission", b =>
+                {
+                    b.HasOne("Identity.Domain.Permission", "Permission")
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Identity.Domain.SynqLienAccessRole", "Role")
+                        .WithMany("Permissions")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Permission");
+                    b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("Identity.Domain.SynqLienUserAccessRoleAssignment", b =>
+                {
+                    b.HasOne("Identity.Domain.SynqLienAccessRole", "Role")
+                        .WithMany("Assignments")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Identity.Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Identity.Domain.UserInvitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3000,10 +3090,33 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InvitedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("PendingAccessRoleId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("PendingDepartment")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("PendingJobTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
                     b.Property<string>("PortalOrigin")
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ProductCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<bool>("RequiresAccountActivation")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -3033,6 +3146,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId", "Status");
 
+                    b.HasIndex("TenantId", "OrganizationId", "ProductCode", "UserId", "Status")
+                        .HasDatabaseName("IX_UserInvitations_SynqLienScopeUserStatus");
+
                     b.ToTable("idt_UserInvitations", (string)null);
                 });
 
@@ -3041,6 +3157,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("Department")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
 
                     b.Property<Guid?>("GrantedByUserId")
                         .HasColumnType("char(36)");
@@ -3052,6 +3172,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
                         .HasDefaultValue(false);
+
+                    b.Property<string>("JobTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
 
                     b.Property<DateTime>("JoinedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -3070,6 +3194,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId");
+
+                    b.HasIndex("OrganizationId", "Department");
 
                     b.HasIndex("UserId", "IsActive");
 
@@ -3131,9 +3257,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "UserId", "ProductCode")
+                    b.HasIndex("TenantId", "OrganizationScopeId", "UserId", "ProductCode")
                         .IsUnique()
-                        .HasDatabaseName("IX_UserProductAccess_TenantId_UserId_ProductCode");
+                        .HasDatabaseName("IX_UserProductAccess_TenantId_OrganizationId_UserId_ProductCode");
 
                     b.ToTable("idt_UserProductAccess", (string)null);
                 });
@@ -3194,8 +3320,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "UserId", "RoleCode")
-                        .HasDatabaseName("IX_UserRoleAssignments_TenantId_UserId_RoleCode");
+                    b.HasIndex("TenantId", "OrganizationId", "UserId", "RoleCode")
+                        .HasDatabaseName("IX_UserRoleAssignments_TenantId_OrganizationId_UserId_RoleCode");
 
                     b.ToTable("idt_UserRoleAssignments", (string)null);
                 });
@@ -3256,6 +3382,12 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("OrganizationTypeRef");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Identity.Domain.SynqLienAccessRole", b =>
+                {
+                    b.Navigation("Assignments");
+                    b.Navigation("Permissions");
                 });
 
             modelBuilder.Entity("Identity.Domain.OrganizationDomain", b =>

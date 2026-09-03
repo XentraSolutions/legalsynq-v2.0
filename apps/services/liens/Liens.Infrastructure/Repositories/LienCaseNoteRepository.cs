@@ -59,7 +59,7 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
         if (caseIds.Count == 0)
             return [];
 
-        return await _db.LienCaseNotes
+        var noteUpdates = await _db.LienCaseNotes
             .AsNoTracking()
             .Where(note => note.TenantId == tenantId &&
                            caseIds.Contains(note.CaseId) &&
@@ -79,6 +79,32 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
                     note.UpdatedAtUtc))
                 .First())
             .ToListAsync(ct);
+
+        var nativeUpdates = await _db.CaseUpdateHistories
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && caseIds.Contains(item.CaseId))
+            .GroupBy(item => item.CaseId)
+            .Select(group => group
+                .OrderByDescending(item => item.OccurredAtUtc)
+                .ThenByDescending(item => item.Id)
+                .Select(item => new CaseNoteReportRow(
+                    item.Id,
+                    item.CaseId,
+                    item.Description,
+                    item.Action,
+                    item.OccurredAtUtc,
+                    item.OccurredAtUtc))
+                .First())
+            .ToListAsync(ct);
+
+        return noteUpdates
+            .Concat(nativeUpdates)
+            .GroupBy(item => item.CaseId)
+            .Select(group => group
+                .OrderByDescending(item => item.UpdatedAtUtc ?? item.CreatedAtUtc)
+                .ThenByDescending(item => item.Id)
+                .First())
+            .ToList();
     }
 
     public async Task<List<CaseNoteReportRow>> GetLatestFeedByCaseIdsAsync(

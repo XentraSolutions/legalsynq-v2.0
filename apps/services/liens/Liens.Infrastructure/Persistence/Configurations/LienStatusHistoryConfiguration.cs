@@ -14,7 +14,7 @@ public sealed class LienStatusHistoryConfiguration : IEntityTypeConfiguration<Li
         builder.Property(item => item.TenantId).IsRequired();
         builder.Property(item => item.CaseId);
         builder.Property(item => item.LienId).IsRequired();
-        builder.Property(item => item.Description).IsRequired().HasMaxLength(500);
+        builder.Property(item => item.Description).IsRequired().HasColumnType("text");
         builder.Property(item => item.ChangedByUserId).IsRequired();
         builder.Property(item => item.ChangedAtUtc).IsRequired();
         builder.Property(item => item.CreatedByUserId).IsRequired();

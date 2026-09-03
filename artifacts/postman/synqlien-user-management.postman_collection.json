@@ -1,0 +1,875 @@
+{
+  "info": {
+    "_postman_id": "d71b64d5-3cd4-4ac4-a1e8-d9e7a5529c14",
+    "name": "LegalSynq SynqLien - Organization User Management",
+    "description": "API-only Postman collection for organization-scoped SynqLien user management through the Liens-owned public facade. Identity remains the source of truth behind the facade.\n\nImport the paired local environment, set tenantCode, adminEmail, adminPassword, and targetPassword, then run Login and Get Management Options first. The token must contain tenant_id, user identity, organization context, SYNQ_LIENS access, and the required organization role permissions.\n\nPublic gateway base: http://localhost:5010/liens. Direct Liens base: http://localhost:5009. Do not point browser/client workflows at Identity's internal user-management routes.\n\nEvery non-GET facade request requires Idempotency-Key. This collection keeps a separate key per mutation so an identical request can be retried safely. Clear or regenerate that request's key before sending a different payload.\n\nInvitation tokens are delivered through email and are not returned by the user-management API. Paste the token from the activation link into inviteToken to run Accept Invitation. Mutation requests change tenant data; use explicit authorization in shared or production environments.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{bearerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01 - Authentication",
+      "item": [
+        {
+          "name": "Login as SynqLien User Administrator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.accessToken).to.be.a('string').and.not.empty;",
+                  "pm.environment.set('bearerToken', json.accessToken);",
+                  "if ((pm.environment.get('autoGenerateEmails') || 'true').toLowerCase() === 'true') {",
+                  "  const stamp = Date.now();",
+                  "  pm.environment.set('targetEmail', `postman.liens.${stamp}@example.test`);",
+                  "  pm.environment.set('cancelTargetEmail', `postman.liens.cancel.${stamp}@example.test`);",
+                  "}",
+                  "pm.environment.unset('inviteIdempotencyKey');",
+                  "pm.environment.unset('resendIdempotencyKey');",
+                  "pm.environment.unset('cancelInviteIdempotencyKey');",
+                  "pm.environment.unset('cancelIdempotencyKey');",
+                  "pm.environment.unset('profileIdempotencyKey');",
+                  "pm.environment.unset('assignRoleIdempotencyKey');",
+                  "pm.environment.unset('customAssignIdempotencyKey');",
+                  "pm.environment.unset('restoreRoleIdempotencyKey');",
+                  "pm.environment.unset('deactivateIdempotencyKey');",
+                  "pm.environment.unset('activateIdempotencyKey');",
+                  "pm.environment.unset('createRoleIdempotencyKey');",
+                  "pm.environment.unset('updateRoleIdempotencyKey');",
+                  "pm.environment.unset('deleteRoleIdempotencyKey');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"tenantCode\": \"{{tenantCode}}\",\n  \"resolveByEmail\": false,\n  \"portalProductCode\": \"SYNQ_LIENS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{identityBaseUrl}}/api/auth/login",
+            "description": "Authenticates through Identity and captures accessToken. The resulting session must include an organization-scoped SynqLien Administrator role."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 - Catalog and Directory",
+      "item": [
+        {
+          "name": "Get All Module Permissions and Management Options",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Options returned', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.roles).to.be.an('array');",
+                  "pm.expect(json.permissions).to.be.an('array');",
+                  "const targetRole = json.roles.find(r => r.name === 'View Only') || json.roles.find(r => r.isActive);",
+                  "if (targetRole) pm.environment.set('targetRoleId', targetRole.id);",
+                  "const permissionCodes = json.permissions.map(p => p.code);",
+                  "pm.expect(permissionCodes).to.include.members(['SYNQ_LIENS.users:view', 'SYNQ_LIENS.users:manage', 'SYNQ_LIENS.invitations:manage', 'SYNQ_LIENS.roles:view', 'SYNQ_LIENS.roles:manage']);",
+                  "pm.environment.set('customRolePermissions', JSON.stringify(permissionCodes));",
+                  "pm.environment.set('permissionCount', String(permissionCodes.length));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/options",
+            "description": "Returns organization roles and every grantable permission across SynqLien modules, plus departments, statuses, and sort options. Captures the complete permission list for custom-role requests. Organization owners and break-glass administrators receive the full active SynqLien catalog; delegated administrators receive only permissions they are allowed to grant."
+          },
+          "response": []
+        },
+        {
+          "name": "List Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('User page returned', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.items).to.be.an('array');",
+                  "pm.expect(json.page).to.eql(Number(pm.environment.get('page')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users?page={{page}}&pageSize={{pageSize}}&sort=NAME_ASC",
+            "description": "Optional query parameters: search, status, roleId, department, page, pageSize, and sort. Supported sorts include NAME_ASC, NAME_DESC, and LAST_LOGIN_DESC."
+          },
+          "response": []
+        },
+        {
+          "name": "List Users - Filtered",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Filtered user page returned', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().items).to.be.an('array');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users?search={{targetEmail}}&status={{userStatus}}&roleId={{targetRoleId}}&department={{targetDepartment}}&page=1&pageSize=25&sort=NAME_ASC",
+            "description": "Demonstrates all directory filters. Disable query parameters in Postman when they are not needed."
+          },
+          "response": []
+        },
+        {
+          "name": "List Roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Roles returned', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json()).to.be.an('array');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/roles",
+            "description": "Lists active system and custom roles for the current tenant and organization."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 - Invitation Lifecycle",
+      "item": [
+        {
+          "name": "Invite User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('inviteIdempotencyKey')) {",
+                  "  pm.environment.set('inviteIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Invitation created or active user granted access', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('userId', json.userId);",
+                  "if (json.invitationId) pm.environment.set('invitationId', json.invitationId);",
+                  "pm.expect(json.email).to.eql(pm.environment.get('targetEmail'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{inviteIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{targetEmail}}\",\n  \"firstName\": \"{{targetFirstName}}\",\n  \"lastName\": \"{{targetLastName}}\",\n  \"department\": \"{{targetDepartment}}\",\n  \"jobTitle\": \"{{targetJobTitle}}\",\n  \"roleId\": \"{{targetRoleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/invitations",
+            "description": "Invites a new or inactive user. An existing active organization member is granted SynqLien access immediately. Requires SYNQ_LIENS.invitations:manage."
+          },
+          "response": []
+        },
+        {
+          "name": "Resend Current Invitation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('resendIdempotencyKey')) {",
+                  "  pm.environment.set('resendIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Invitation resent', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.invitationId) pm.environment.set('invitationId', json.invitationId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{resendIdempotencyKey}}"
+              }
+            ],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/invitations/resend",
+            "description": "Revokes the current pending invitation and creates a replacement. The activation token is delivered by email."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Invitation (Manual Token)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('inviteToken') || !pm.environment.get('targetPassword')) {",
+                  "  console.warn('Set inviteToken from the delivered activation link and targetPassword before accepting.');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Invitation accepted', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{inviteToken}}\",\n  \"newPassword\": \"{{targetPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{identityBaseUrl}}/api/auth/accept-invite",
+            "description": "Identity activation endpoint. Paste the token from the invitation email into inviteToken. This request is skipped when the token or password is empty."
+          },
+          "response": []
+        },
+        {
+          "name": "Invite Cancellation Target",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('cancelInviteIdempotencyKey')) {",
+                  "  pm.environment.set('cancelInviteIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cancellation target invited', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('cancelUserId', json.userId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{cancelInviteIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{cancelTargetEmail}}\",\n  \"firstName\": \"Cancel\",\n  \"lastName\": \"Target\",\n  \"department\": \"{{targetDepartment}}\",\n  \"jobTitle\": \"{{targetJobTitle}}\",\n  \"roleId\": \"{{targetRoleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/invitations",
+            "description": "Creates a separate pending user for the cancellation scenario."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Current Invitation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('cancelIdempotencyKey')) {",
+                  "  pm.environment.set('cancelIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Invitation cancelled', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{cancelIdempotencyKey}}"
+              }
+            ],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{cancelUserId}}/invitations/current",
+            "description": "Revokes the user's current pending SynqLien invitation; it does not delete the global Identity account."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 - Organization Profile and Access",
+      "item": [
+        {
+          "name": "Get User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('User returned', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.userId).to.eql(pm.environment.get('userId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}",
+            "description": "Returns one organization-scoped SynqLien user. It does not expose global Identity administration."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Organization Profile",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('profileIdempotencyKey')) {",
+                  "  pm.environment.set('profileIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Organization profile updated', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.department).to.eql(pm.environment.get('updatedDepartment'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{profileIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department\": \"{{updatedDepartment}}\",\n  \"jobTitle\": \"{{updatedJobTitle}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/organization-profile",
+            "description": "Updates only the membership profile for the current organization. Run after invitation acceptance or use an existing active userId."
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Target Role",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('assignRoleIdempotencyKey')) {",
+                  "  pm.environment.set('assignRoleIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Role replaced', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().roleId).to.eql(pm.environment.get('targetRoleId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{assignRoleIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleId\": \"{{targetRoleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/role",
+            "description": "Replaces the user's direct organization access role. Self-role changes and removing the last Administrator are rejected."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate SynqLien Access",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('deactivateIdempotencyKey')) {",
+                  "  pm.environment.set('deactivateIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SynqLien access deactivated', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{deactivateIdempotencyKey}}"
+              }
+            ],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/deactivate",
+            "description": "Revokes organization-scoped SynqLien access without deactivating the global Identity account."
+          },
+          "response": []
+        },
+        {
+          "name": "Activate SynqLien Access",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('activateIdempotencyKey')) {",
+                  "  pm.environment.set('activateIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('SynqLien access activated', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{activateIdempotencyKey}}"
+              }
+            ],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/activate",
+            "description": "Restores organization-scoped SynqLien product access."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 - Custom Roles",
+      "item": [
+        {
+          "name": "Create Custom Role",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('createRoleIdempotencyKey')) {",
+                  "  pm.environment.set('createRoleIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Custom role created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('customRoleId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createRoleIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{customRoleName}}\",\n  \"description\": \"Role created from the SynqLien Postman collection\",\n  \"permissions\": {{customRolePermissions}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/roles",
+            "description": "Creates an organization-scoped role covering every SynqLien module permission returned by Get All Module Permissions and Management Options. customRolePermissions is substituted as a raw JSON array."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Custom Role",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('updateRoleIdempotencyKey')) {",
+                  "  pm.environment.set('updateRoleIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Custom role updated', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().id).to.eql(pm.environment.get('customRoleId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{updateRoleIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{customRoleUpdatedName}}\",\n  \"description\": \"Updated from the SynqLien Postman collection\",\n  \"permissions\": {{customRolePermissions}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/roles/{{customRoleId}}",
+            "description": "Updates a custom role. Starter/system roles cannot be edited."
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Custom Role to Target",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('customAssignIdempotencyKey')) {",
+                  "  pm.environment.set('customAssignIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Custom role assigned', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().roleId).to.eql(pm.environment.get('customRoleId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{customAssignIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleId\": \"{{customRoleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/role",
+            "description": "Assigns the custom role to an active target user."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore Target Role",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('restoreRoleIdempotencyKey')) {",
+                  "  pm.environment.set('restoreRoleIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Target role restored', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{restoreRoleIdempotencyKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roleId\": \"{{targetRoleId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{liensBaseUrl}}/api/liens/user-management/users/{{userId}}/role",
+            "description": "Reassigns the target before deleting the custom role."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Custom Role",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('deleteRoleIdempotencyKey')) {",
+                  "  pm.environment.set('deleteRoleIdempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Custom role deleted', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{deleteRoleIdempotencyKey}}"
+              }
+            ],
+            "url": "{{liensBaseUrl}}/api/liens/user-management/roles/{{customRoleId}}",
+            "description": "Soft-deactivates an unused custom role. Assigned roles and starter/system roles cannot be deleted."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,9 @@ using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -76,15 +78,16 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
 
         var updates = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
         var fieldUpdate = updates["data"]!.AsArray().Single(item =>
-            item!["description"]!.GetValue<string>().StartsWith("Lien updated.", StringComparison.Ordinal));
+            item!["description"]!.GetValue<string>().StartsWith("Lien Update.", StringComparison.Ordinal));
         var description = fieldUpdate!["description"]!.GetValue<string>();
+        fieldUpdate["action"]!.GetValue<string>().Should().Be("Liens Details");
         fieldUpdate["lienCode"]!.GetValue<string>().Should().Be("LIEN-TEST-001");
         description.Should().Contain("Purchase Date: blank → 06/22/2026");
         description.Should().Contain("Initial Service Date: blank → 07/07/2026");
         description.Should().Contain("End Service Date: blank → 07/03/2026");
         description.Should().Contain("Bulk: blank → Yes");
         description.Should().Contain("Servicing: blank → Yes");
-        description.Should().Contain("Description: blank → test");
+        description.Should().Contain("Note: blank → test");
     }
 
     [Fact]
@@ -126,16 +129,265 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
         var update = body["data"]!
             .AsArray()
-            .Single(item => item!["description"]!.GetValue<string>() == note);
+            .Single(item =>
+                item!["lienId"]!.GetValue<string>() == SeedHelper.LienId.ToString() &&
+                item["description"]!.GetValue<string>().StartsWith("Lien Update.", StringComparison.Ordinal));
 
-        update!["action"]!.GetValue<string>().Should().Be("Lien Update");
+        update!["action"]!.GetValue<string>().Should().Be("Liens Details");
+        update["description"]!.GetValue<string>().Should().Contain($"Note: blank → {note}");
         update["lienId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
         update["lienCode"]!.GetValue<string>().Should().Be("LIEN-TEST-001");
         update["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
 
         body["data"]!.AsArray()
-            .Count(item => item!["description"]!.GetValue<string>().StartsWith("Lien updated.", StringComparison.Ordinal))
+            .Count(item =>
+                item!["lienId"]!.GetValue<string>() == SeedHelper.LienId.ToString() &&
+                item["description"]!.GetValue<string>().StartsWith("Lien Update.", StringComparison.Ordinal))
             .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateMedical_logs_the_legacy_note_value_the_user_replaced()
+    {
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIEN-NOTE-{Guid.CreateVersion7():N}"[..28],
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: SeedHelper.CaseId,
+            notes: "Legacy medical note");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            new
+            {
+                id = lien.Id.ToString(),
+                caseId = SeedHelper.CaseId.ToString(),
+                note = "Updated medical note",
+            });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var medicalResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{lien.Id}");
+        medicalResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        JsonNode.Parse(await medicalResponse.Content.ReadAsStringAsync())!["data"]!["note"]!
+            .GetValue<string>()
+            .Should().Be("Updated medical note");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new { caseId = SeedHelper.CaseId, page = 1, limit = 50 });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var row = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!["data"]!
+            .AsArray()
+            .Single(item =>
+                item!["lienId"]!.GetValue<string>() == lien.Id.ToString() &&
+                item["description"]!.GetValue<string>().StartsWith("Lien Update.", StringComparison.Ordinal));
+        row!["description"]!.GetValue<string>()
+            .Should().Contain("Note: Legacy medical note → Updated medical note");
+    }
+
+    [Fact]
+    public async Task UpdateMedical_allows_settled_lien_and_logs_every_changed_field()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = db.Liens.Single(item => item.Id == SeedHelper.LienId);
+            lien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            new
+            {
+                id = SeedHelper.LienId.ToString(),
+                status = LienStatus.Settled,
+                purchaseDate = "06/22/2026",
+                initialServiceDate = "07/07/2026",
+                endServiceDate = "07/03/2026",
+                note = "Settled lien servicing correction",
+                isBulk = "Yes",
+                isServicing = "Yes",
+            });
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var getResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{SeedHelper.LienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var medical = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!["data"]!;
+        medical["status"]!.GetValue<string>().Should().Be(LienStatus.Settled);
+        medical["purchaseDate"]!.GetValue<string>().Should().Be("06/22/2026");
+        medical["initialServiceDate"]!.GetValue<string>().Should().Be("07/07/2026");
+        medical["endServiceDate"]!.GetValue<string>().Should().Be("07/03/2026");
+        medical["note"]!.GetValue<string>().Should().Be("Settled lien servicing correction");
+        medical["isBulk"]!.GetValue<string>().Should().Be("Yes");
+        medical["isServicing"]!.GetValue<string>().Should().Be("Yes");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new { caseId = SeedHelper.CaseId, page = 1, limit = 50 });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var updates = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var fieldUpdate = updates["data"]!.AsArray().Single(item =>
+            item!["description"]!.GetValue<string>().Contains("Purchase Date:", StringComparison.Ordinal));
+        var description = fieldUpdate!["description"]!.GetValue<string>();
+        fieldUpdate["action"]!.GetValue<string>().Should().Be("Liens Details");
+        fieldUpdate["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
+        description.Should().Contain("Purchase Date: blank → 06/22/2026");
+        description.Should().Contain("Initial Service Date: blank → 07/07/2026");
+        description.Should().Contain("End Service Date: blank → 07/03/2026");
+        description.Should().Contain("Bulk: blank → Yes");
+        description.Should().Contain("Servicing: blank → Yes");
+        description.Should().Contain("Note: blank → Settled lien servicing correction");
+    }
+
+    [Fact]
+    public async Task UpdateMedical_compares_every_submitted_field_and_does_not_duplicate_unchanged_logs()
+    {
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIEN-UPDATE-{Guid.CreateVersion7():N}"[..28],
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var payload = new
+        {
+            id = lien.Id.ToString(),
+            caseId = SeedHelper.CaseId.ToString(),
+            status = "Closed",
+            purchaseDate = "06/22/2026",
+            initialServiceDate = "07/07/2026",
+            endServiceDate = "07/03/2026",
+            note = "Complete medical servicing update",
+            isBulk = "Yes",
+            isServicing = "Yes",
+            fundingCompanyId = SeedHelper.FundingCompanyId.ToString(),
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            payload);
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await firstResponse.Content.ReadAsStringAsync()}");
+
+        var repeatedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            payload);
+        repeatedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await repeatedResponse.Content.ReadAsStringAsync()}");
+
+        var medicalResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{lien.Id}");
+        medicalResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var medical = JsonNode.Parse(await medicalResponse.Content.ReadAsStringAsync())!["data"]!;
+        medical["caseId"]!.GetValue<string>().Should().Be(SeedHelper.CaseId.ToString());
+        medical["status"]!.GetValue<string>().Should().Be(LienStatus.Settled);
+        medical["purchaseDate"]!.GetValue<string>().Should().Be("06/22/2026");
+        medical["initialServiceDate"]!.GetValue<string>().Should().Be("07/07/2026");
+        medical["endServiceDate"]!.GetValue<string>().Should().Be("07/03/2026");
+        medical["note"]!.GetValue<string>().Should().Be("Complete medical servicing update");
+        medical["isBulk"]!.GetValue<string>().Should().Be("Yes");
+        medical["isServicing"]!.GetValue<string>().Should().Be("Yes");
+        medical["fundingCompanyId"]!.GetValue<string>().Should().Be(SeedHelper.FundingCompanyId.ToString());
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new { caseId = SeedHelper.CaseId, page = 1, limit = 50 });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var rows = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!["data"]!
+            .AsArray()
+            .Where(item => item!["lienId"]!.GetValue<string>() == lien.Id.ToString())
+            .ToList();
+        rows.Should().ContainSingle();
+        rows.Should().OnlyContain(item => item!["updatedBy"]!.GetValue<string>() == "Demo User");
+
+        var row = rows.Single()!;
+        row["action"]!.GetValue<string>().Should().Be("Liens Details");
+        var fieldDescription = row["description"]!.GetValue<string>();
+        fieldDescription.Should().StartWith("Lien Update. Changes:");
+        fieldDescription.Should().Contain("Funding Company: blank → Capital Fund LLC");
+        fieldDescription.Should().Contain("Case: blank → CASE-TEST-001 — John Plaintiff");
+        fieldDescription.Should().NotContain(SeedHelper.FundingCompanyId.ToString());
+        fieldDescription.Should().NotContain(SeedHelper.CaseId.ToString());
+        fieldDescription.Should().Contain("Status: Open → Closed");
+        fieldDescription.Should().Contain("Purchase Date: blank → 06/22/2026");
+        fieldDescription.Should().Contain("Initial Service Date: blank → 07/07/2026");
+        fieldDescription.Should().Contain("End Service Date: blank → 07/03/2026");
+        fieldDescription.Should().Contain("Bulk: blank → Yes");
+        fieldDescription.Should().Contain("Servicing: blank → Yes");
+        fieldDescription.Should().Contain("Note: blank → Complete medical servicing update");
+    }
+
+    [Fact]
+    public async Task UpdateMedical_when_history_write_fails_rolls_back_lien_and_audit()
+    {
+        using var factory = new TransactionalLiensApiFactory();
+        using (var setupScope = factory.Services.CreateScope())
+            await SeedHelper.SeedAsync(setupScope.ServiceProvider);
+
+        factory.Services.GetRequiredService<CapturingAuditPublisher>().Clear();
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId));
+
+        var response = await client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            new
+            {
+                id = SeedHelper.LienId.ToString(),
+                caseId = SeedHelper.CaseId.ToString(),
+                note = "This change must roll back",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = factory.Services.CreateScope();
+        var db = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var storedLien = await db.Liens
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == SeedHelper.LienId);
+        storedLien.Description.Should().BeNull();
+        (await db.LienStatusHistories
+                .AsNoTracking()
+                .Where(item =>
+                    item.LienId == SeedHelper.LienId &&
+                    item.Description.Contains("This change must roll back"))
+                .ToListAsync())
+            .Should().BeEmpty();
+        verificationScope.ServiceProvider
+            .GetRequiredService<CapturingAuditPublisher>()
+            .Events.Should().BeEmpty();
     }
 
     [Fact]
@@ -220,6 +472,102 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         info.Notes.Should().Contain($"facilityContactId={facilityContactId}");
         info.Notes.Should().Contain($"medicalProviderId={SeedHelper.MedicalProviderId}");
         info.Notes.Should().Contain("medicalProvider=Dr. Anthony Ashworth, MD");
+    }
+
+    [Fact]
+    public async Task UpdateFacility_does_not_touch_medical_information_when_values_are_unchanged()
+    {
+        var payload = new
+        {
+            liensId = SeedHelper.LienId.ToString(),
+            facilityId = SeedHelper.MedicalFacilityContactId.ToString(),
+            facility = "Sunrise Clinic",
+            facilityContactId = SeedHelper.FacilityContactId.ToString(),
+            facilityContact = "Medical Facility Primary Staff",
+            email = "staff@sunrise.example",
+            phone = "555-0102",
+            medicalProviderId = SeedHelper.MedicalProviderId.ToString(),
+            medicalProvider = "Dr. Anthony Ashworth, MD",
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-facility",
+            payload);
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await firstResponse.Content.ReadAsStringAsync()}");
+
+        Guid infoId;
+        DateTime firstUpdatedAtUtc;
+        using (var firstScope = _factory.Services.CreateScope())
+        {
+            var db = firstScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var info = await db.ServicingItems.AsNoTracking().SingleAsync(item =>
+                item.LienId == SeedHelper.LienId &&
+                item.TaskType == "LegacyMedicalFacilityInfo");
+            infoId = info.Id;
+            firstUpdatedAtUtc = info.UpdatedAtUtc;
+        }
+
+        var secondResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-facility",
+            payload);
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await secondResponse.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var storedRows = await verificationDb.ServicingItems.AsNoTracking()
+            .Where(item => item.LienId == SeedHelper.LienId &&
+                           item.TaskType == "LegacyMedicalFacilityInfo")
+            .ToListAsync();
+
+        storedRows.Should().ContainSingle();
+        storedRows[0].Id.Should().Be(infoId);
+        storedRows[0].UpdatedAtUtc.Should().Be(firstUpdatedAtUtc);
+    }
+
+    [Fact]
+    public async Task UpdateFacility_allows_servicing_corrections_for_settled_lien()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = db.Liens.Single(item => item.Id == SeedHelper.LienId);
+            lien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var payload = new
+        {
+            liensId = SeedHelper.LienId.ToString(),
+            facilityId = SeedHelper.MedicalFacilityContactId.ToString(),
+            facility = "Sunrise Clinic",
+            facilityContactId = SeedHelper.FacilityContactId.ToString(),
+            facilityContact = "Medical Facility Primary Staff",
+            email = "staff@sunrise.example",
+            phone = "555-0102",
+            medicalProviderId = SeedHelper.MedicalProviderId.ToString(),
+            medicalProvider = "Dr. Anthony Ashworth, MD",
+        };
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-facility",
+            payload);
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var getResponse = await _client.GetAsync(
+            $"/api/liens/cases/liens/get-facility/{SeedHelper.LienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var data = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!["data"]!;
+        data["facilityId"]!.GetValue<string>()
+            .Should().Be(SeedHelper.MedicalFacilityContactId.ToString());
+        data["facilityContactId"]!.GetValue<string>()
+            .Should().Be(SeedHelper.FacilityContactId.ToString());
+        data["medicalProviderId"]!.GetValue<string>()
+            .Should().Be(SeedHelper.MedicalProviderId.ToString());
     }
 
     [Fact]

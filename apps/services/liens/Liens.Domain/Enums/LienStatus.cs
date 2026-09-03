@@ -2,6 +2,9 @@ namespace Liens.Domain.Enums;
 
 public static class LienStatus
 {
+    public static readonly Guid LegacyOpenFilterId = Guid.Parse("10f4afc1-dc10-4e59-96eb-18af4f6edfe6");
+    public static readonly Guid LegacyClosedFilterId = Guid.Parse("77956de1-2976-4760-b56e-ca1b9a22bd27");
+
     public const string Draft      = "Draft";
     public const string Offered    = "Offered";
     public const string Accepted   = "Accepted";
@@ -28,6 +31,24 @@ public static class LienStatus
     {
         Declined, Settled, Withdrawn, Cancelled
     };
+
+    public static bool TryGetLegacyFilterGroup(Guid id, out string group)
+    {
+        if (id == LegacyOpenFilterId)
+        {
+            group = "Open";
+            return true;
+        }
+
+        if (id == LegacyClosedFilterId)
+        {
+            group = "Closed";
+            return true;
+        }
+
+        group = string.Empty;
+        return false;
+    }
 
     /// <summary>
     /// Expands the legacy/UI lifecycle groups used by list filters into the

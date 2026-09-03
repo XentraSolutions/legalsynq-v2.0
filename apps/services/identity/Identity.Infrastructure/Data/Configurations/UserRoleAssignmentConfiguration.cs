@@ -28,7 +28,7 @@ public class UserRoleAssignmentConfiguration : IEntityTypeConfiguration<UserRole
         builder.Property(e => e.CreatedByUserId);
         builder.Property(e => e.UpdatedByUserId);
 
-        builder.HasIndex(e => new { e.TenantId, e.UserId, e.RoleCode })
-               .HasDatabaseName("IX_UserRoleAssignments_TenantId_UserId_RoleCode");
+        builder.HasIndex(e => new { e.TenantId, e.OrganizationId, e.UserId, e.RoleCode })
+               .HasDatabaseName("IX_UserRoleAssignments_TenantId_OrganizationId_UserId_RoleCode");
     }
 }

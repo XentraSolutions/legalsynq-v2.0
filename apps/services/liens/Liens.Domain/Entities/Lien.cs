@@ -323,7 +323,8 @@ public class Lien : AuditableEntity
         string? isServicing = null,
         string? description = null,
         string? notes = null,
-        DateOnly? purchaseDate = null)
+        DateOnly? purchaseDate = null,
+        bool allowSettledServicingCorrection = false)
     {
         if (!Enums.LienType.All.Contains(lienType))
             throw new ArgumentException($"Invalid lien type: '{lienType}'.");
@@ -331,7 +332,8 @@ public class Lien : AuditableEntity
         if (originalAmount < 0)
             throw new ArgumentOutOfRangeException(nameof(originalAmount), "Original amount cannot be negative.");
 
-        if (!LienStatus.Open.Contains(Status))
+        if (!LienStatus.Open.Contains(Status) &&
+            !(allowSettledServicingCorrection && Status == LienStatus.Settled))
             throw new InvalidOperationException($"Cannot update a lien in terminal status '{Status}'.");
 
         LienType          = lienType;
@@ -375,6 +377,9 @@ public class Lien : AuditableEntity
 
         if (!LienStatus.All.Contains(newStatus))
             throw new ArgumentException($"Invalid lien status: '{newStatus}'.");
+
+        if (string.Equals(Status, newStatus, StringComparison.Ordinal))
+            return;
 
         Status          = newStatus;
         UpdatedByUserId = updatedByUserId;

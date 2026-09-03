@@ -29,6 +29,15 @@ public interface ILienService
         Guid tenantId, Guid id, Guid actingUserId,
         UpdateLienRequest request, CancellationToken ct = default);
 
+    Task<LienResponse> UpdateLegacyMedicalAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        UpdateLienRequest request, string? status,
+        CancellationToken ct = default);
+
+    Task<LienResponse> UpdateLegacyMedicalFacilityAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        UpdateLienRequest request, CancellationToken ct = default);
+
     Task<LienResponse> SetLegacyMedicalStatusAsync(
         Guid tenantId, Guid id, Guid actingUserId,
         string status, CancellationToken ct = default);

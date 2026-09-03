@@ -156,4 +156,59 @@ public class EffectiveAccessServiceTests
         Assert.Contains("SYNQ_CARECONNECT:CARECONNECT_REFERRER", result.ProductRolesFlat);
         Assert.DoesNotContain("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", result.ProductRolesFlat);
     }
+
+    [Fact]
+    public async Task GetEffectiveAccessAsync_SynqLienManagementRole_IsOrganizationPermissionCeiling()
+    {
+        var options = new DbContextOptionsBuilder<IdentityDbContext>()
+            .UseInMemoryDatabase("effective-access-synqlien-ceiling-" + Guid.CreateVersion7()).Options;
+        await using var db = new IdentityDbContext(options);
+        var tenant = Identity.Domain.Tenant.Create("Tenant", $"tenant-{Guid.CreateVersion7():N}");
+        var product = Identity.Domain.Product.Create("SynqLien", "SYNQ_LIENS");
+        var user = Identity.Domain.User.Create(tenant.Id, "viewer@example.com", "hash", "View", "Only");
+        var organization = Identity.Domain.Organization.Create(tenant.Id, "Firm", Identity.Domain.OrgType.LawFirm);
+        var seller = Identity.Domain.ProductRole.Create(product.Id, "SYNQLIEN_SELLER", "Seller");
+        var read = Identity.Domain.Permission.Create(product.Id, "SYNQ_LIENS.lien:read", "Read liens");
+        var create = Identity.Domain.Permission.Create(product.Id, "SYNQ_LIENS.lien:create", "Create liens");
+        var viewOnly = Identity.Domain.SynqLienAccessRole.Create(tenant.Id, organization.Id, "View Only", null, true, null);
+        db.AddRange(tenant, product, user, organization, seller, read, create, viewOnly,
+            Identity.Domain.TenantProduct.Create(tenant.Id, product.Id),
+            Identity.Domain.UserProductAccess.Create(tenant.Id, user.Id, "SYNQ_LIENS", organization.Id),
+            Identity.Domain.UserRoleAssignment.Create(tenant.Id, user.Id, "SYNQLIEN_SELLER", "SYNQ_LIENS", organization.Id),
+            Identity.Domain.RolePermissionMapping.Create(seller.Id, read.Id),
+            Identity.Domain.RolePermissionMapping.Create(seller.Id, create.Id),
+            Identity.Domain.SynqLienAccessRolePermission.Create(viewOnly.Id, read.Id),
+            Identity.Domain.SynqLienUserAccessRoleAssignment.Create(tenant.Id, organization.Id, user.Id, viewOnly.Id, null));
+        await db.SaveChangesAsync();
+
+        var service = new EffectiveAccessService(db, new MemoryCache(new MemoryCacheOptions()), NullLogger<EffectiveAccessService>.Instance);
+        var result = await service.GetEffectiveAccessAsync(tenant.Id, user.Id, organization.Id);
+
+        Assert.Contains("SYNQ_LIENS.lien:read", result.Permissions);
+        Assert.DoesNotContain("SYNQ_LIENS.lien:create", result.Permissions);
+    }
+
+    [Fact]
+    public async Task GetEffectiveAccessAsync_UnscopedSynqLienGrant_DoesNotCrossOrganizationBoundary()
+    {
+        var options = new DbContextOptionsBuilder<IdentityDbContext>()
+            .UseInMemoryDatabase("effective-access-synqlien-org-boundary-" + Guid.CreateVersion7()).Options;
+        await using var db = new IdentityDbContext(options);
+        var tenant = Identity.Domain.Tenant.Create("Tenant", $"tenant-{Guid.CreateVersion7():N}");
+        var product = Identity.Domain.Product.Create("SynqLien", BuildingBlocks.Authorization.ProductCodes.SynqLiens);
+        var user = Identity.Domain.User.Create(tenant.Id, "legacy@example.com", "hash", "Legacy", "User");
+        var organization = Identity.Domain.Organization.Create(tenant.Id, "Firm", Identity.Domain.OrgType.LawFirm);
+        var otherOrganization = Identity.Domain.Organization.Create(tenant.Id, "Other Firm", Identity.Domain.OrgType.LawFirm);
+        db.AddRange(tenant, product, user, organization, otherOrganization,
+            Identity.Domain.TenantProduct.Create(tenant.Id, product.Id),
+            Identity.Domain.UserProductAccess.Create(tenant.Id, user.Id, BuildingBlocks.Authorization.ProductCodes.SynqLiens),
+            Identity.Domain.UserOrganizationMembership.Create(user.Id, organization.Id, Identity.Domain.MemberRole.Member),
+            Identity.Domain.UserOrganizationMembership.Create(user.Id, otherOrganization.Id, Identity.Domain.MemberRole.Member));
+        await db.SaveChangesAsync();
+
+        var service = new EffectiveAccessService(db, new MemoryCache(new MemoryCacheOptions()), NullLogger<EffectiveAccessService>.Instance);
+        var result = await service.GetEffectiveAccessAsync(tenant.Id, user.Id, organization.Id);
+
+        Assert.DoesNotContain(BuildingBlocks.Authorization.ProductCodes.SynqLiens, result.Products);
+    }
 }

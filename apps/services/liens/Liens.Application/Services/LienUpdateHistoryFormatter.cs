@@ -42,6 +42,18 @@ public static class LienUpdateHistoryFormatter
         return descriptions;
     }
 
+    public static string BuildSingleDescription(
+        string activity,
+        IReadOnlyCollection<LienFieldChange> changes)
+    {
+        var normalizedActivity = NormalizeActivity(activity);
+        if (changes.Count == 0)
+            return normalizedActivity;
+
+        return EnsurePeriod(
+            $"{normalizedActivity} Changes: {string.Join("; ", changes.Select(FormatChange))}");
+    }
+
     public static string DisplayFieldName(string propertyName)
     {
         if (string.IsNullOrWhiteSpace(propertyName))

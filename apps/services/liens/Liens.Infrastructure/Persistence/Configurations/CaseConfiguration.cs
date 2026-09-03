@@ -80,7 +80,8 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
             .HasMaxLength(4000);
 
         builder.Property(c => c.Notes)
-            .HasMaxLength(4000);
+            .HasMaxLength(4000)
+            .IsConcurrencyToken();
 
         builder.Property(c => c.IncidentState).HasMaxLength(100);
         builder.Property(c => c.CurrentMedicalStatus).HasMaxLength(50);
