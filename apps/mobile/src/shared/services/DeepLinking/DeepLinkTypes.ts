@@ -15,6 +15,12 @@ export interface ResolvedDeepLink {
   normalizedUrl: string;
 }
 
+export interface PortalEntryDeepLink {
+  status: 'portal_entry';
+  originalUrl: string;
+  normalizedUrl: string;
+}
+
 export interface DeepLinkFailure {
   status: DeepLinkFailureStatus;
   reason: string;
@@ -22,7 +28,7 @@ export interface DeepLinkFailure {
   normalizedUrl?: string;
 }
 
-export type DeepLinkResolution = ResolvedDeepLink | DeepLinkFailure;
+export type DeepLinkResolution = ResolvedDeepLink | PortalEntryDeepLink | DeepLinkFailure;
 
 export interface DeepLinkResolverConfiguration {
   expectedHttpsHost: string | null;

@@ -205,6 +205,22 @@ export class DeepLinkResolver {
       );
     }
 
+    if (rawPath === '/') {
+      if (parsedUrl.search) {
+        return failure(
+          'invalid_parameters',
+          originalUrl,
+          'The generic portal entry does not accept query parameters.'
+        );
+      }
+
+      return {
+        status: 'portal_entry',
+        originalUrl,
+        normalizedUrl: `https://${this.expectedHttpsHost}/`,
+      };
+    }
+
     const pathSegments = decodePathSegments(rawPath);
     if (!pathSegments) {
       const hasMalformedEncoding = rawPath

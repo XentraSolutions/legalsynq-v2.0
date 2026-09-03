@@ -3,6 +3,23 @@ import { DeepLinkResolver } from './DeepLinkResolver';
 const resolver = new DeepLinkResolver({ expectedHttpsHost: 'links.qa.example.test' });
 
 describe('DeepLinkResolver', () => {
+  it('recognizes exact root as a benign generic portal entry', () => {
+    expect(resolver.resolve('https://LINKS.QA.EXAMPLE.TEST/')).toEqual({
+      status: 'portal_entry',
+      originalUrl: 'https://LINKS.QA.EXAMPLE.TEST/',
+      normalizedUrl: 'https://links.qa.example.test/',
+    });
+  });
+
+  it('rejects query parameters and fragments on generic portal entry', () => {
+    expect(resolver.resolve('https://links.qa.example.test/?source=test')).toMatchObject({
+      status: 'invalid_parameters',
+    });
+    expect(resolver.resolve('https://links.qa.example.test/#dashboard')).toMatchObject({
+      status: 'invalid_parameters',
+    });
+  });
+
   it('resolves the static dashboard route', () => {
     expect(resolver.resolve('https://links.qa.example.test/dashboard')).toEqual({
       status: 'resolved',
