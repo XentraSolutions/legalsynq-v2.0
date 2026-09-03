@@ -41,7 +41,11 @@ export function CaseInfoFields({
   const accidentTypeList =
     lookup?.AccidentType.map((c) => ({ key: c.id, value: c.id, label: c.name })) ?? [];
   const stateList =
-    lookup?.State.map((c) => ({ key: c.id, value: c.code, label: c.name })) ?? [];
+    lookup?.State.map((c) => ({
+      key: c.id,
+      value: c.code,
+      label: `${c.name} (${c.code})`,
+    })) ?? [];
 
   return (
     <div className="grid grid-cols-2 gap-4">

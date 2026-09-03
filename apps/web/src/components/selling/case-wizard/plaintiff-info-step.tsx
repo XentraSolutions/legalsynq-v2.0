@@ -18,6 +18,7 @@ import {
 } from "./shared";
 import { NewCaseAddedModal } from "./new-case-added-modal";
 import { isValidPhone } from "@/lib/phone";
+import { isValidUsZipCode } from "@/lib/address";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 import {
   useFinalizeCaseDraft,
@@ -108,7 +109,15 @@ export default function PlaintiffInfoStep({
   }, [caseDetail]);
 
   const phoneValid = !form.phone || isValidPhone(form.phone);
-  const valid = !!form.firstName && !!form.lastName && !!form.birthdate && phoneValid;
+  const emailValid = !form.email || /^\S+@\S+\.\S+$/.test(form.email);
+  const zipValid = !form.zipcode || isValidUsZipCode(form.zipcode);
+  const valid =
+    !!form.firstName &&
+    !!form.lastName &&
+    !!form.birthdate &&
+    phoneValid &&
+    emailValid &&
+    zipValid;
   const submitting = finalizeCaseDraft.isPending || updateCasePlaintiff.isPending;
 
   const handleContinue = async () => {
