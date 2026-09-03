@@ -16,6 +16,47 @@ import { cookies } from "next/headers";
  */
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://127.0.0.1:5010";
 
+// ASSUMPTION, not confirmed by the Liens service: if a lien's
+// availableActions allows "prepare-sale", we assume "keep" is also allowed,
+// since the backend never actually returns "keep" today. Applied here (the
+// BFF boundary) rather than in client code so every caller sees it
+// consistently. Drop this once the backend returns "keep" itself.
+function withKeepAssumption(actions: unknown): unknown {
+  if (!Array.isArray(actions)) return actions;
+  if (actions.includes("prepare-sale") && !actions.includes("keep")) {
+    return [...actions, "keep"];
+  }
+  return actions;
+}
+
+// Matches GET .../api/liens/selling/liens (list) and
+// .../api/liens/selling/liens/{id} (detail) — not deeper subpaths like
+// .../liens/{id}/activity, which have their own response shapes.
+function isLienListOrDetailPath(segments: string[]): boolean {
+  return (
+    segments.length >= 4 &&
+    segments.length <= 5 &&
+    segments[0] === "api" &&
+    segments[1] === "liens" &&
+    segments[2] === "selling" &&
+    segments[3] === "liens"
+  );
+}
+
+function applyKeepAssumption(rawJson: string): string {
+  const parsed = JSON.parse(rawJson);
+  if (Array.isArray(parsed?.items)) {
+    for (const item of parsed.items) {
+      if (item && typeof item === "object") {
+        item.availableActions = withKeepAssumption(item.availableActions);
+      }
+    }
+  } else if (parsed && typeof parsed === "object") {
+    parsed.availableActions = withKeepAssumption(parsed.availableActions);
+  }
+  return JSON.stringify(parsed);
+}
+
 async function proxy(
   req: NextRequest,
   segments: string[],
@@ -91,7 +132,20 @@ async function proxy(
     });
   }
 
-  const data = await res.text();
+  let data = await res.text();
+  if (
+    req.method === "GET" &&
+    res.ok &&
+    isLienListOrDetailPath(segments) &&
+    (res.headers.get("Content-Type") ?? "").includes("application/json")
+  ) {
+    try {
+      data = applyKeepAssumption(data);
+    } catch {
+      /* not the JSON shape we expected — pass the response through as-is */
+    }
+  }
+
   return new NextResponse(data, {
     status: res.status,
     headers: responseHeaders,

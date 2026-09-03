@@ -115,4 +115,90 @@ describe("SynqLien catch-all proxy", () => {
     expect(response.headers.get("Location")).toBe("/api/lien/documents/access/attachment-token");
     expect(response.headers.get("X-Correlation-Id")).toBe("corr-message-attachment");
   });
+
+  test("adds the assumed 'keep' action to a lien detail response when prepare-sale is allowed", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ lienId: "lien-1", availableActions: ["prepare-sale", "archive"] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { GET } = await import("./route");
+    const [req, ctx] = makeRequest("api/liens/selling/liens/lien-1", {
+      method: "GET",
+    });
+
+    const response = await GET(req, ctx);
+    const body = await response.json();
+
+    expect(body.availableActions).toEqual(["prepare-sale", "archive", "keep"]);
+  });
+
+  test("leaves availableActions untouched on the lien detail response when prepare-sale isn't allowed", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ lienId: "lien-1", availableActions: ["archive"] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { GET } = await import("./route");
+    const [req, ctx] = makeRequest("api/liens/selling/liens/lien-1", {
+      method: "GET",
+    });
+
+    const response = await GET(req, ctx);
+    const body = await response.json();
+
+    expect(body.availableActions).toEqual(["archive"]);
+  });
+
+  test("adds the assumed 'keep' action to each item in a lien list response", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            { lienId: "lien-1", availableActions: ["prepare-sale"] },
+            { lienId: "lien-2", availableActions: ["confirm-sale"] },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { GET } = await import("./route");
+    const [req, ctx] = makeRequest("api/liens/selling/liens", {
+      method: "GET",
+    });
+
+    const response = await GET(req, ctx);
+    const body = await response.json();
+
+    expect(body.items[0].availableActions).toEqual(["prepare-sale", "keep"]);
+    expect(body.items[1].availableActions).toEqual(["confirm-sale"]);
+  });
+
+  test("does not touch responses from subpaths like lien activity", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ availableActions: ["prepare-sale"] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { GET } = await import("./route");
+    const [req, ctx] = makeRequest("api/liens/selling/liens/lien-1/activity", {
+      method: "GET",
+    });
+
+    const response = await GET(req, ctx);
+    const body = await response.json();
+
+    expect(body.availableActions).toEqual(["prepare-sale"]);
+  });
 });
