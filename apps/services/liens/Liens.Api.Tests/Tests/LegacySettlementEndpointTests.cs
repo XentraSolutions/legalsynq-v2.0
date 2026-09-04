@@ -564,10 +564,37 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     public async Task GetCaseById_returns_no_recovery_status_while_liens_remain_open(
         string settlementStatus)
     {
+        Guid caseId;
+        Guid lienId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"NO-RECOVERY-ALIAS-{Guid.CreateVersion7():N}"[..30],
+                "Alias",
+                "Test",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"NO-RECOVERY-LIEN-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            caseId = caseEntity.Id;
+            lienId = lien.Id;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
         var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
         {
-            caseId = SeedHelper.CaseId,
-            lienId = SeedHelper.LienId,
+            caseId,
+            lienId,
             amount = 0m,
             paymentDate = "2026-08-20",
             paymentMethod = "Other",
@@ -579,7 +606,7 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await createResponse.Content.ReadAsStringAsync()}");
 
-        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
         caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
 
@@ -591,7 +618,7 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task GetCaseById_returns_no_recovery_when_an_open_case_has_a_later_payment()
+    public async Task GetCaseById_returns_closed_when_a_no_recovery_case_has_a_payment()
     {
         foreach (var (status, referenceNumber) in new[]
                  {
@@ -621,13 +648,13 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
         caseBody!.RootElement.GetProperty("settlementStatusId").GetString()
-            .Should().Be("4");
+            .Should().Be("Closed");
         caseBody.RootElement.GetProperty("settlementStatus").GetString()
-            .Should().Be("No Recovery");
+            .Should().Be("Closed");
     }
 
     [Fact]
-    public async Task UpdateLiensStatus_declares_no_recovery_while_another_lien_remains_open()
+    public async Task UpdateLiensStatus_marks_a_paid_lien_and_case_closed()
     {
         Lien openLien;
         using (var scope = _factory.Services.CreateScope())
@@ -663,9 +690,23 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
         caseBody!.RootElement.GetProperty("settlementStatus").GetString()
-            .Should().Be("No Recovery");
+            .Should().Be("Closed");
         caseBody.RootElement.GetProperty("settlementStatusId").GetString()
-            .Should().Be("4");
+            .Should().Be("Closed");
+
+        var servicingResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword = "CASE-TEST-001",
+            page = 1,
+            limit = 10,
+        });
+        servicingResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await servicingResponse.Content.ReadAsStringAsync()}");
+        var servicingBody = await servicingResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        servicingBody!.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("caseId").GetGuid() == SeedHelper.CaseId)
+            .GetProperty("settlementStatus").GetString()
+            .Should().Be("Closed");
 
         using var verificationScope = _factory.Services.CreateScope();
         var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -681,7 +722,7 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
                 payment.PaymentDate == new DateOnly(2026, 8, 21));
         declaration.Amount.Should().Be(0m);
         declaration.Note.Should().Contain("Recovery exhausted");
-        declaration.Note.Should().Contain("status=4");
+        declaration.Note.Should().Contain("status=Closed");
 
         var paymentDetailsResponse = await _client.GetAsync(
             $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
@@ -692,6 +733,79 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var noRecoveryPayment = paymentDetails!.RootElement.GetProperty("data").EnumerateArray()
             .Single(item => item.GetProperty("id").GetGuid() == declaration.Id);
         noRecoveryPayment.GetProperty("amountToSettle").GetString().Should().Be("5000.00");
+        noRecoveryPayment.GetProperty("status").GetString().Should().Be("Closed");
+        noRecoveryPayment.GetProperty("checkAmount").GetString().Should().Be("5000.00");
+        noRecoveryPayment.GetProperty("checkDate").GetString().Should().Be("08/21/2026");
+    }
+
+    [Fact]
+    public async Task UpdateLiensStatus_marks_an_unpaid_lien_and_case_no_recovery()
+    {
+        Guid caseId;
+        Guid lienId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"NO-RECOVERY-{Guid.CreateVersion7():N}"[..30],
+                "No",
+                "Recovery",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"UNPAID-LIEN-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            caseId = caseEntity.Id;
+            lienId = lien.Id;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var updateResponse = await _client.PostAsJsonAsync("/service/update-liens-status", new
+        {
+            caseId,
+            lienIds = lienId.ToString(),
+            lienStatus = "Closed",
+            closedDate = "08/21/2026",
+            note = "No amount received",
+        });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+        var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        caseBody!.RootElement.GetProperty("settlementStatus").GetString()
+            .Should().Be("No Recovery");
+        caseBody.RootElement.GetProperty("settlementStatusId").GetString()
+            .Should().Be("4");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verificationDb.Liens.FindAsync(lienId))!.Status
+            .Should().Be(LienStatus.Settled);
+        var declaration = await verificationDb.SettlementPaymentDetails
+            .SingleAsync(payment =>
+                payment.TenantId == SeedHelper.TenantId &&
+                payment.LienId == lienId);
+        declaration.Amount.Should().Be(0m);
+        declaration.Note.Should().Contain("status=4");
+
+        var paymentDetailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{caseId}");
+        paymentDetailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await paymentDetailsResponse.Content.ReadAsStringAsync()}");
+        var paymentDetails = await paymentDetailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var noRecoveryPayment = paymentDetails!.RootElement.GetProperty("data").EnumerateArray().Single();
+        noRecoveryPayment.GetProperty("status").GetString().Should().Be("No Recovery");
         noRecoveryPayment.GetProperty("checkAmount").GetString().Should().BeEmpty();
         noRecoveryPayment.GetProperty("checkDate").GetString().Should().BeEmpty();
     }

@@ -921,13 +921,27 @@ public sealed class CaseService : ICaseService
 
         var payments = await _settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
         var settlements = await _settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
+        var hasReceivedAmount = payments.Any(payment => payment.Amount > 0m) ||
+                                settlements.Any(settlement => settlement.Amount > 0m);
         var hasNoRecoveryDeclaration = payments.Any(payment =>
                 IsNoRecoveryValue(payment.SettlementStatusId) ||
                 (IsLegacyLienStatusValue(payment.SettlementStatusId) &&
                  IsNoRecoveryValue(payment.SettlementTypeId))) ||
             settlements.Any(settlement => IsNoRecoveryValue(settlement.Status));
         if (hasNoRecoveryDeclaration)
-            return ("No Recovery", "4");
+        {
+            return hasReceivedAmount
+                ? ("Closed", "Closed")
+                : ("No Recovery", "4");
+        }
+
+        var hasClosedDeclaration = payments.Any(payment =>
+            string.Equals(
+                payment.SettlementStatusId?.Trim(),
+                "Closed",
+                StringComparison.OrdinalIgnoreCase));
+        if (hasReceivedAmount && hasClosedDeclaration)
+            return ("Closed", "Closed");
 
         var latestPayment = payments
             .OrderByDescending(payment => payment.CreatedAtUtc)

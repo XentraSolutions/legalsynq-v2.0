@@ -1411,10 +1411,11 @@ label in `lienStatus` and matching LienStatus lookup UUID in `lienStatusId`. It 
 settlement payment's display value in `settlementStatus` and its stored lookup ID or code in
 `settlementStatusId` only when the case has at least one lien and every linked lien is `Settled`
 (legacy/UI `Closed`), or when any settlement or payment record on the case declares `No Recovery`. A No
-Recovery declaration remains visible while other liens are open and is normalized to `No Recovery` with
-legacy settlement-status ID `4`. Other settlement statuses remain empty while any linked lien is open or
-rejected; cases without liens also return empty settlement fields. Each field pair also returns empty
-strings when its corresponding record does not exist.
+Recovery declaration is normalized to `Closed` when the case has any positive payment or settlement amount;
+otherwise it remains `No Recovery` with legacy settlement-status ID `4`. These amount-aware statuses remain
+visible while other liens are open. Other settlement statuses remain empty while any linked lien is open or
+rejected; cases without liens also return empty settlement fields. Each field pair also returns empty strings
+when its corresponding record does not exist.
 
 **Error:** `404 Not Found` — if the case does not exist.
 
@@ -1577,6 +1578,10 @@ servicing compatibility rows are omitted from the timeline to avoid duplicate en
 cancelled liens. When any submitted value changes, the endpoint appends exactly one
 lien-scoped `Liens Details` row that combines every changed case, funding-company,
 status, purchase/service-date, note, bulk, and servicing field as `previous → new`.
+Both `POST /api/liens/cases/liens/medical` and
+`POST /api/liens/cases/liens/update-medical` accept legacy status `Open` and persist it as canonical
+`Active`. `GET /api/liens/cases/liens/get-medical/{id}` maps that canonical value back to the
+legacy/UI value `Open`; other status values remain unchanged.
 The row uses the resulting case association and updated lien ID, and `updatedBy`
 resolves from the authenticated user's first and last name. Case-update history, including historical native Case Created notes, uses
 the same name resolution for `createdBy`, `updatedBy`, and embedded `Created By` text instead of returning the user's email. Clearing a note records its previous value as
@@ -2379,12 +2384,13 @@ Legacy servicing endpoint for closing one or more selected liens and declaring N
 comma-delimited `lienIds`, `lienStatus`, and `closedDate` are required; `closedDate` accepts `yyyy-MM-dd`
 and US `MM/dd/yyyy` formats. Every selected lien must belong to the authenticated tenant and the supplied
 case. The update is atomic on relational databases: each selected lien receives `lienStatus`, and a
-zero-amount payment-detail declaration is recorded for `closedDate` with the optional `note` and canonical
-No Recovery settlement status ID `4`.
+zero-amount payment-detail status declaration is recorded for `closedDate` with the optional `note`. A selected
+lien with any positive payment or settlement amount receives status `Closed`; a selected lien with no received
+amount receives the canonical No Recovery settlement status ID `4`.
 
-The No Recovery declaration is case-level for display compatibility. A subsequent
-`GET /api/liens/cases/{id}` returns `settlementStatus: "No Recovery"` and `settlementStatusId: "4"` even
-when other liens on the case remain open.
+The case-level display follows the same rule for compatibility. A subsequent `GET /api/liens/cases/{id}`
+returns `Closed` when the case has any positive payment or settlement amount, and returns
+`settlementStatus: "No Recovery"` with `settlementStatusId: "4"` when it has none, even if another lien remains open.
 
 ### PUT `/api/liens/settlement/payments/{paymentId}`
 

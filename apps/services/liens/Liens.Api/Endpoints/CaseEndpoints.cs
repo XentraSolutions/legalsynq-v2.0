@@ -1463,7 +1463,9 @@ public static class CaseEndpoints
         {
             id = lien.Id.ToString(),
             caseId = lien.CaseId?.ToString() ?? string.Empty,
-            status = lien.Status,
+            status = string.Equals(lien.Status, LienStatus.Active, StringComparison.OrdinalIgnoreCase)
+                ? "Open"
+                : lien.Status,
             purchaseDate = lien.PurchaseDate ?? string.Empty,
             initialServiceDate = FormatLegacyDate(lien.InitialServiceDate),
             endServiceDate = FormatLegacyDate(lien.EndServiceDate),

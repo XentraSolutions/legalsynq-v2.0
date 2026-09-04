@@ -391,6 +391,11 @@ public static class ServiceLegacyEndpoints
                                      IsSettlementPaymentStatus(paymentLookups, storedTypeId)
                     ? storedTypeId
                     : storedStatusId;
+                if (settlementAmount > 0m &&
+                    IsNoRecoveryPaymentStatus(paymentLookups, settlementStatusId))
+                {
+                    settlementStatusId = "Closed";
+                }
 
                 if (!settlementDate.HasValue)
                 {
@@ -712,7 +717,13 @@ public static class ServiceLegacyEndpoints
             if (string.IsNullOrWhiteSpace(typeId))
                 typeId = "other";
             var statusId = usesLegacyPaymentFields ? storedTypeId : storedStatusId;
-            var isNoRecovery = IsNoRecoveryPaymentStatus(paymentLookups, statusId);
+            var isNoRecovery = payment.Amount <= 0m &&
+                               IsNoRecoveryPaymentStatus(paymentLookups, statusId);
+            if (payment.Amount > 0m &&
+                IsNoRecoveryPaymentStatus(paymentLookups, statusId))
+            {
+                statusId = "Closed";
+            }
             var amountToSettle = payment.Amount != 0m
                 ? payment.Amount
                 : settlement is { Amount: not 0m }
@@ -739,7 +750,9 @@ public static class ServiceLegacyEndpoints
                 typeId,
                 type = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementStatus, typeId),
                 statusId,
-                status = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementType, statusId),
+                status = isNoRecovery
+                    ? "No Recovery"
+                    : ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementType, statusId),
                 payor = payment.Payee ?? payment.PaymentMethod ?? string.Empty,
                 netProfit = (payment.NetProfit ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
                 note = payment.Note ?? settlement?.Note ?? string.Empty,
@@ -1137,6 +1150,16 @@ public static class ServiceLegacyEndpoints
 
         try
         {
+            var payments = await settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
+            var settlements = await settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
+            var liensWithReceivedAmount = payments
+                .Where(payment => payment.Amount > 0m)
+                .Select(payment => payment.LienId)
+                .ToHashSet();
+            liensWithReceivedAmount.UnionWith(settlements
+                .Where(settlement => settlement.Amount > 0m)
+                .Select(settlement => settlement.LienId));
+
             foreach (var lienId in lienIds)
             {
                 await lienService.SetLegacyMedicalStatusAsync(
@@ -1156,7 +1179,9 @@ public static class ServiceLegacyEndpoints
                         PaymentDate = closedDate,
                         Notes = request.note,
                         SettlementType = "other",
-                        SettlementStatus = "4",
+                        SettlementStatus = liensWithReceivedAmount.Contains(lienId)
+                            ? "Closed"
+                            : "4",
                     },
                     ct);
             }

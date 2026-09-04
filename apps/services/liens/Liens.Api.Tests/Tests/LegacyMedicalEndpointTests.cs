@@ -599,7 +599,54 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
 
         var body = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!;
         body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
-        body["data"]!["status"]!.GetValue<string>().Should().Be("Active");
+        body["data"]!["status"]!.GetValue<string>().Should().Be("Open");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await db.Liens.FindAsync(SeedHelper.LienId))!.Status
+            .Should().Be(LienStatus.Active);
+    }
+
+    [Fact]
+    public async Task CreateMedical_accepts_legacy_open_status()
+    {
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medical",
+            new
+            {
+                id = (string?)null,
+                caseId = SeedHelper.CaseId.ToString(),
+                status = "Open",
+                purchaseDate = "09/01/2026",
+                initialServiceDate = "09/09/2026",
+                endServiceDate = "09/14/2026",
+                note = "",
+                isBulk = "N",
+                isServicing = "Y",
+                fundingCompanyId = "",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var createBody = JsonNode.Parse(await createResponse.Content.ReadAsStringAsync())!;
+        createBody["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        var lienId = Guid.Parse(createBody["data"]!.GetValue<string>());
+
+        var getResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{lienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResponse.Content.ReadAsStringAsync()}");
+        var medical = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!["data"]!;
+        medical["status"]!.GetValue<string>().Should().Be("Open");
+        medical["purchaseDate"]!.GetValue<string>().Should().Be("09/01/2026");
+        medical["initialServiceDate"]!.GetValue<string>().Should().Be("09/09/2026");
+        medical["endServiceDate"]!.GetValue<string>().Should().Be("09/14/2026");
+        medical["isBulk"]!.GetValue<string>().Should().Be("N");
+        medical["isServicing"]!.GetValue<string>().Should().Be("Y");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await db.Liens.FindAsync(lienId))!.Status
+            .Should().Be(LienStatus.Active);
     }
 
     [Fact]
