@@ -1416,6 +1416,92 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         updatedCase.Notes.Should().NotContain("statusLabel=Litigation (Open)");
     }
 
+    [Theory]
+    [InlineData(CaseStatus.PreDemand)]
+    [InlineData(CaseStatus.DemandSent)]
+    [InlineData(CaseStatus.InNegotiation)]
+    [InlineData(CaseStatus.LitigationOpen)]
+    [InlineData(CaseStatus.LitigationPending)]
+    public async Task DetailsUpdate_allows_every_non_terminal_case_status(string currentStatus)
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-EDITABLE-{Guid.CreateVersion7():N}"[..28],
+                "Editable",
+                "Case",
+                SeedHelper.UserId);
+            if (currentStatus != CaseStatus.PreDemand)
+                caseEntity.TransitionStatus(currentStatus, SeedHelper.UserId);
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus,
+            notes = $"Updated from {currentStatus}",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var updatedCase = await verifyDb.Cases.FindAsync(caseId);
+        updatedCase.Should().NotBeNull();
+        updatedCase!.Notes.Should().Contain($"Updated from {currentStatus}");
+    }
+
+    [Theory]
+    [InlineData(CaseStatus.Closed)]
+    [InlineData(CaseStatus.CaseSettled)]
+    public async Task DetailsUpdate_rejects_closed_and_settled_cases(string currentStatus)
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LOCKED-{Guid.CreateVersion7():N}"[..26],
+                "Locked",
+                "Case",
+                SeedHelper.UserId,
+                notes: "Original note");
+            caseEntity.TransitionStatus(currentStatus, SeedHelper.UserId);
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus,
+            notes = "This update must be rejected",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("error").GetProperty("message").GetString()
+            .Should().Be("Closed and settled cases cannot be updated.");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var unchangedCase = await verifyDb.Cases.FindAsync(caseId);
+        unchangedCase.Should().NotBeNull();
+        unchangedCase!.Notes.Should().Be("Original note");
+    }
+
     [Fact]
     public async Task GetCaseById_returns_default_false_flags_when_metadata_is_missing()
     {

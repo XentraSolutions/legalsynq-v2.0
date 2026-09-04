@@ -552,6 +552,9 @@ public sealed class CaseService : ICaseService
     {
         var entity = await _caseRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Case '{id}' not found for tenant '{tenantId}'.");
+        if (!CaseStatus.AllowsUpdates(entity.Status))
+            throw new ConflictException("Closed and settled cases cannot be updated.");
+
         var noteBody = ExtractUserNotes(entity.Notes);
         var metadata = ParseCaseMetadata(entity.Notes);
 

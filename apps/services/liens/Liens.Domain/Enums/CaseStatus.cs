@@ -15,6 +15,17 @@ public static class CaseStatus
         PreDemand, DemandSent, InNegotiation, LitigationOpen, LitigationPending, CaseSettled, Closed
     };
 
+    public static bool AllowsUpdates(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        var normalized = string.Concat(status.Where(char.IsLetterOrDigit));
+        return !string.Equals(normalized, "Closed", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(normalized, "CaseSettled", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(normalized, "Settled", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Converts the legacy labels exposed by the case-status lookup into the
     /// canonical values stored by current cases. Litigation variants are also

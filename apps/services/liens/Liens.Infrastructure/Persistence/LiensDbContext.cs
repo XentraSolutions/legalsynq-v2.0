@@ -221,6 +221,15 @@ public class LiensDbContext : DbContext
             [nameof(Lien.ArchivedReason)] = "Archived Reason",
         };
 
+    private static readonly HashSet<string> LienCreationHistoryFields =
+        new(StringComparer.Ordinal)
+        {
+            "Lien Code",
+            "Status",
+            "Purchase Date",
+            "Initial Service Date",
+        };
+
     private void CaptureRootEntityHistories(DateTime now)
     {
         foreach (var entry in ChangeTracker.Entries<Case>()
@@ -261,6 +270,9 @@ public class LiensDbContext : DbContext
             var changes = BuildChanges(entry, LienBusinessFields, expandCaseNotes: false);
             if (entry.State == EntityState.Modified && changes.Count == 0)
                 continue;
+            var historyChanges = entry.State == EntityState.Added
+                ? changes.Where(change => LienCreationHistoryFields.Contains(change.Field)).ToList()
+                : changes;
 
             var oldCaseId = entry.State == EntityState.Added
                 ? null
@@ -294,7 +306,7 @@ public class LiensDbContext : DbContext
                     }
                 }
             }
-            var description = RootEntityHistoryFormatter.BuildDescription(activity, changes);
+            var description = RootEntityHistoryFormatter.BuildDescription(activity, historyChanges);
             var actorUserId = ResolveActor(entry.Entity.CreatedByUserId, entry.Entity.UpdatedByUserId);
             var visibleCaseIds = new[] { oldCaseId, newCaseId }
                 .Where(caseId => caseId.HasValue)
@@ -312,7 +324,7 @@ public class LiensDbContext : DbContext
                          .GroupBy(history => history.CaseId))
             {
                 // Several older callers could split one logical activity into multiple rows.
-                // Keep the primary activity and let the save-boundary capture attach every field change.
+                // Keep the primary activity and attach the save-boundary field projection.
                 var primary = semanticGroup.Last();
                 foreach (var duplicate in semanticGroup.Where(history => history != primary))
                     Entry(duplicate).State = EntityState.Detached;
@@ -326,7 +338,7 @@ public class LiensDbContext : DbContext
                         $"Lien Deleted. {semanticActivity}",
                     _ => semanticActivity,
                 };
-                var enrichedDescription = RootEntityHistoryFormatter.BuildDescription(semanticActivity, changes);
+                var enrichedDescription = RootEntityHistoryFormatter.BuildDescription(semanticActivity, historyChanges);
                 primary.ReplacePendingDescription(enrichedDescription);
                 semanticProjections.Add((primary.CaseId, enrichedDescription));
             }

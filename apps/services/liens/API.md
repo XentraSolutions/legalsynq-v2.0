@@ -1515,6 +1515,10 @@ Update an existing case.
 
 **Permission:** `SYNQ_LIENS.case:update`
 
+Cases in any non-terminal status can be updated. A case whose current status is
+`Closed` or `CaseSettled` is immutable through the general and partial case-update
+routes; attempts return `409 Conflict`.
+
 **Path Parameters:**
 
 | Parameter | Type | Description |
@@ -1568,9 +1572,10 @@ The lien-update timeline excludes case-level `Case Details Update` history that 
 no lien association. Those records remain available from `case-updates/v3`; every
 row returned by `liens-updates/v3` represents a specific lien and includes its
 `lienId`, tenant-scoped `lienCode`, and `action`. Lien codes are resolved by the history row's lien ID, including after the lien has moved to another case. Native lien mutations compare
-the persisted previous values with the resulting values and record every changed
-business field as `previous → new`; unchanged submissions do not create a change row.
-All fields are retained in one text-backed activity row. Selling handlers and other direct EF mutations use the same save-boundary comparison, including creation, archive, restore, deletion, and public buyer-response transitions. A move between cases writes the same activity projection to both the former and resulting case timelines.
+the persisted previous values with the resulting values. `Lien Created` descriptions
+include only Lien Code, Status, Purchase Date, and Initial Service Date when present;
+later updates and deletions record every changed business field as `previous → new`.
+Unchanged submissions do not create a change row. The retained fields are stored in one text-backed activity row. Selling handlers and other direct EF mutations use the same save-boundary comparison, including creation, archive, restore, deletion, and public buyer-response transitions. A move between cases writes the same activity projection to both the former and resulting case timelines.
 Native lien-change rows use the `Liens Details` action label. Obsolete `Lien Update`
 servicing compatibility rows are omitted from the timeline to avoid duplicate entries.
 `POST /api/liens/cases/liens/update-medical` accepts servicing corrections for

@@ -307,7 +307,7 @@ public sealed class RootEntityHistoryCaptureTests
     }
 
     [Fact]
-    public async Task Semantic_creation_is_one_row_and_contains_initial_root_fields()
+    public async Task Semantic_creation_is_one_row_and_contains_only_concise_creation_fields()
     {
         await using var db = CreateDbContext();
         var tenantId = Guid.NewGuid();
@@ -321,8 +321,10 @@ public sealed class RootEntityHistoryCaptureTests
             1000m,
             actorId,
             caseId: caseId,
+            initialServiceDate: new DateOnly(2026, 7, 27),
             description: "Initial description",
-            notes: "Initial note");
+            notes: "Initial note",
+            purchaseDate: new DateOnly(2026, 6, 22));
         db.Liens.Add(lien);
         db.LienStatusHistories.Add(LienStatusHistory.Create(
             tenantId,
@@ -334,10 +336,10 @@ public sealed class RootEntityHistoryCaptureTests
         await db.SaveChangesAsync();
 
         var history = await db.LienStatusHistories.SingleAsync(item => item.LienId == lien.Id);
-        history.Description.Should().StartWith("Lien Created.");
-        history.Description.Should().Contain("Original Amount: blank → 1000.00");
-        history.Description.Should().Contain("Note: blank → Initial note");
-        history.Description.Should().Contain("Description: blank → Initial description");
+        history.Description.Should().Be(
+            "Lien Created. Lien Status: Pending. Selling lien created. Changes: " +
+            "Lien Code: blank → 26-10008-1; Status: blank → Open; " +
+            "Purchase Date: blank → 06/22/2026; Initial Service Date: blank → 07/27/2026.");
     }
 
     [Fact]
