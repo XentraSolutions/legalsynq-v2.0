@@ -82,7 +82,7 @@ When configured, Expo emits:
 - iOS `com.apple.developer.associated-domains` with exactly `applinks:<host>`.
 - Android HTTPS `VIEW` handling with `BROWSABLE`, `DEFAULT`, and `autoVerify=true`.
 
-Android claims are derived directly from `shared/contracts/deep-links/routes.json`. `/dashboard` is exact; parameterized routes use the narrow prefixes `/deals/`, `/contacts/`, `/applications/`, and `/reports/`. Slash-terminated prefixes avoid claiming similarly named paths such as `/deals-marketing`, but they intentionally include descendants within each supported route family. iOS path restrictions belong in the AASA file.
+Phase-1 OS association scope is separate from the resource route registry. Android claims exactly `/` and does not claim `/dashboard` or the resource route families. iOS path restrictions belong in the AASA file; the Platform artifact generator must likewise emit exact `/` before deployment. Resource parsing remains available for future phases without expanding current OS association claims.
 
 The existing bundle/package identity logic and generated custom URL scheme remain unchanged. `DeepLinkingService` is not an incoming-link router; this configuration does not parse URLs or navigate.
 
@@ -130,7 +130,7 @@ The routing modules have separate responsibilities:
 - `DeepLinkingService` remains the thin Expo adapter for initial URLs, custom URL creation, and runtime URL subscription/removal.
 - `DeepLinkIntakeService` coordinates cold-start/runtime intake. It delivers resolved and failure results to a callback, but deliberately withholds duplicate results from that downstream callback.
 
-Successful results use `status: "resolved"` and include `routeKey`, decoded `pathParameters`, approved `queryParameters`, `originalUrl`, and `normalizedUrl`. Expected failures use stable statuses: `malformed`, `unsupported_scheme`, `unsupported_host`, `unsupported_route`, `invalid_parameters`, or `duplicate`.
+Resource results use `status: "resolved"` and include `routeKey`, decoded `pathParameters`, approved `queryParameters`, `originalUrl`, and `normalizedUrl`. Exact portal root returns `status: "portal_entry"`; authentication/navigation treats it as a benign no-op so normal Login or Dashboard startup remains authoritative and no pending resource intent is stored. Expected failures use stable statuses: `malformed`, `unsupported_scheme`, `unsupported_host`, `unsupported_route`, `invalid_parameters`, or `duplicate`.
 
 Routing behavior is intentionally strict:
 

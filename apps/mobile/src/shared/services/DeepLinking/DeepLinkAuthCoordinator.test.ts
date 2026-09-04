@@ -149,4 +149,21 @@ describe('DeepLinkAuthCoordinator', () => {
     expect(coordinator.getPendingIntent()).toBeNull();
     expect(onReady).not.toHaveBeenCalled();
   });
+
+  for (const authState of [hydrating, unauthenticated, authenticated]) {
+    it(`treats a generic portal entry as a no-op in auth state ${authState.status}`, () => {
+      const onReady = jest.fn();
+      const coordinator = new DeepLinkAuthCoordinator(onReady);
+      coordinator.updateAuthState(authState);
+
+      coordinator.processResolution({
+        status: 'portal_entry',
+        originalUrl: 'https://links.example.test/',
+        normalizedUrl: 'https://links.example.test/',
+      });
+
+      expect(coordinator.getPendingIntent()).toBeNull();
+      expect(onReady).not.toHaveBeenCalled();
+    });
+  }
 });

@@ -1,9 +1,9 @@
 const {
   createNativeDeepLinkConfig,
-  deriveAndroidRouteClaims,
+  deriveAndroidAssociationClaims,
+  PHASE_ONE_ASSOCIATION_PATH,
   resolveDeepLinkHost,
 } = require('./app.config.helpers');
-const routeRegistry = require('../../shared/contracts/deep-links/routes.json');
 
 function loadExpoConfig(environment) {
   const originalAppEnvironment = process.env.EXPO_PUBLIC_APP_ENV;
@@ -43,22 +43,9 @@ function loadExpoConfig(environment) {
 }
 
 describe('Mobile verified-link Expo configuration', () => {
-  it('derives narrow Android route claims from the shared registry', () => {
-    const enabledRoutes = routeRegistry.routes.filter((route) => route.enabled);
-
-    expect(deriveAndroidRouteClaims()).toHaveLength(enabledRoutes.length);
-    expect(enabledRoutes).not.toHaveLength(0);
-  });
-
-  it('excludes disabled shared routes from Android claims', () => {
-    expect(
-      deriveAndroidRouteClaims({
-        routes: [
-          { enabled: true, pathTemplate: '/enabled/:id' },
-          { enabled: false, pathTemplate: '/disabled/:id' },
-        ],
-      })
-    ).toEqual([{ pathPrefix: '/enabled/' }]);
+  it('uses a distinct exact-root association scope', () => {
+    expect(PHASE_ONE_ASSOCIATION_PATH).toBe('/');
+    expect(deriveAndroidAssociationClaims()).toEqual([{ path: '/' }]);
   });
 
   it.each(['development', 'qa'])(
@@ -83,18 +70,7 @@ describe('Mobile verified-link Expo configuration', () => {
         action: 'VIEW',
         autoVerify: true,
         category: ['BROWSABLE', 'DEFAULT'],
-        data: expect.arrayContaining([
-          {
-            scheme: 'https',
-            host: 'links.qa.example.test',
-            path: '/dashboard',
-          },
-          {
-            scheme: 'https',
-            host: 'links.qa.example.test',
-            pathPrefix: '/deals/',
-          },
-        ]),
+        data: [{ scheme: 'https', host: 'links.qa.example.test', path: '/' }],
       }),
     ]);
     expect(JSON.stringify(config)).not.toContain('links.example.test');
@@ -126,7 +102,7 @@ describe('Mobile verified-link Expo configuration', () => {
     );
 
     expect(expoConfig.android.package).toBe('com.legalsynq.qa');
-    const expectedAndroidData = deriveAndroidRouteClaims().map((claim) => ({
+    const expectedAndroidData = deriveAndroidAssociationClaims().map((claim) => ({
       scheme: 'https',
       host: 'links.integration.example.test',
       ...claim,
@@ -141,6 +117,9 @@ describe('Mobile verified-link Expo configuration', () => {
     ]);
     expect(expoConfig.android.intentFilters).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/^applinks:/)])
+    );
+    expect(JSON.stringify(expoConfig.android.intentFilters)).not.toMatch(
+      /\/dashboard|\/contacts|\/applications|\/deals|\/reports/
     );
   });
 

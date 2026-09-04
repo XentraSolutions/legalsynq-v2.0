@@ -1,5 +1,3 @@
-const routeRegistry = require('../../shared/contracts/deep-links/routes.json');
-
 const VERIFIED_LINK_HOST_PATTERN =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
 
@@ -36,29 +34,10 @@ function resolveDeepLinkHost(environment = process.env) {
   return configuredHost.toLowerCase();
 }
 
-function deriveAndroidRouteClaims(registry = routeRegistry) {
-  const claims = [];
-  const seen = new Set();
+const PHASE_ONE_ASSOCIATION_PATH = '/';
 
-  for (const route of registry.routes) {
-    if (!route.enabled) {
-      continue;
-    }
-
-    const parameterIndex = route.pathTemplate.indexOf('/:');
-    const claim =
-      parameterIndex === -1
-        ? { path: route.pathTemplate }
-        : { pathPrefix: `${route.pathTemplate.slice(0, parameterIndex)}/` };
-    const claimKey = JSON.stringify(claim);
-
-    if (!seen.has(claimKey)) {
-      seen.add(claimKey);
-      claims.push(claim);
-    }
-  }
-
-  return claims;
+function deriveAndroidAssociationClaims() {
+  return [{ path: PHASE_ONE_ASSOCIATION_PATH }];
 }
 
 function createNativeDeepLinkConfig(environment = process.env) {
@@ -77,7 +56,7 @@ function createNativeDeepLinkConfig(environment = process.env) {
         action: 'VIEW',
         autoVerify: true,
         category: ['BROWSABLE', 'DEFAULT'],
-        data: deriveAndroidRouteClaims().map((claim) => ({
+        data: deriveAndroidAssociationClaims().map((claim) => ({
           scheme: 'https',
           host,
           ...claim,
@@ -90,7 +69,8 @@ function createNativeDeepLinkConfig(environment = process.env) {
 
 module.exports = {
   createNativeDeepLinkConfig,
-  deriveAndroidRouteClaims,
+  deriveAndroidAssociationClaims,
+  PHASE_ONE_ASSOCIATION_PATH,
   resolveDeepLinkHost,
   resolveMobileEnvironment,
 };

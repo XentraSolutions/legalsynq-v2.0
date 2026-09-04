@@ -1,46 +1,57 @@
 import {
+  DeepLinkError,
   deepLinkRoutes,
   generateRegisteredDeepLinkUrl,
   normalizeDeepLinkBaseUrl,
-  parseDeepLinkEnvironment,
   type DeepLinkConfiguration,
-  type DeepLinkGenerationInput,
 } from "../../../../shared/contracts/deep-links";
+
+export { DeepLinkError };
+
+export interface BuildDeepLinkInput {
+  readonly pathParams?: Readonly<Record<string, string | null | undefined>>;
+  readonly routeKey: string;
+}
 
 export interface WebDeepLinkEnvironmentSource {
   readonly NEXT_PUBLIC_DEEP_LINK_BASE_URL?: string;
-  readonly NEXT_PUBLIC_ENV?: string;
 }
 
 function currentEnvironmentSource(): WebDeepLinkEnvironmentSource {
   return {
     NEXT_PUBLIC_DEEP_LINK_BASE_URL: process.env.NEXT_PUBLIC_DEEP_LINK_BASE_URL,
-    NEXT_PUBLIC_ENV: process.env.NEXT_PUBLIC_ENV,
   };
 }
 
 export function resolveWebDeepLinkConfiguration(
   source: WebDeepLinkEnvironmentSource = currentEnvironmentSource(),
 ): DeepLinkConfiguration {
-  const environment = parseDeepLinkEnvironment(source.NEXT_PUBLIC_ENV);
   return {
-    environment,
+    // Web-generated links must always be verified-link-compatible HTTPS URLs.
+    environment: "production",
     baseUrl: normalizeDeepLinkBaseUrl(
       source.NEXT_PUBLIC_DEEP_LINK_BASE_URL,
-      environment,
+      "production",
     ),
   };
 }
 
-export function generateDeepLinkUrl(
-  routeKey: string,
-  input: DeepLinkGenerationInput = {},
-  source: WebDeepLinkEnvironmentSource = currentEnvironmentSource(),
-): string {
-  return generateRegisteredDeepLinkUrl(
+export function buildDeepLink({
+  routeKey,
+  pathParams,
+}: BuildDeepLinkInput): string {
+  const url = generateRegisteredDeepLinkUrl(
     deepLinkRoutes,
     routeKey,
-    resolveWebDeepLinkConfiguration(source),
-    input,
+    resolveWebDeepLinkConfiguration(),
+    { pathParameters: pathParams },
   );
+
+  if (/:([A-Za-z][A-Za-z0-9]*)/.test(new URL(url).pathname)) {
+    throw new Error(
+      `Deep-link route '${routeKey}' produced an unresolved path placeholder.`,
+    );
+  }
+
+  return url;
 }
