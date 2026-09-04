@@ -22,6 +22,7 @@ public class Contact : AuditableEntity
     public string? Organization { get; private set; }
     public string? Email        { get; private set; }
     public string? Phone        { get; private set; }
+    public string? PhoneExtension { get; private set; }
     public string? Fax          { get; private set; }
     public string? Website      { get; private set; }
 
@@ -55,7 +56,8 @@ public class Contact : AuditableEntity
         string? city = null,
         string? state = null,
         string? postalCode = null,
-        string? notes = null)
+        string? notes = null,
+        string? phoneExtension = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (orgId == Guid.Empty) throw new ArgumentException("OrgId is required.", nameof(orgId));
@@ -90,6 +92,7 @@ public class Contact : AuditableEntity
             Organization = organization?.Trim(),
             Email        = email?.Trim(),
             Phone        = phone?.Trim(),
+            PhoneExtension = NormalizeOptional(phoneExtension),
             Fax          = fax?.Trim(),
             Website      = website?.Trim(),
             AddressLine1 = addressLine1?.Trim(),
@@ -123,7 +126,8 @@ public class Contact : AuditableEntity
         string? city = null,
         string? state = null,
         string? postalCode = null,
-        string? notes = null)
+        string? notes = null,
+        string? phoneExtension = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
         if (RequiresLastName(contactType, contactSubtype, lawFirmId))
@@ -149,6 +153,7 @@ public class Contact : AuditableEntity
         Organization = organization?.Trim();
         Email        = email?.Trim();
         Phone        = phone?.Trim();
+        PhoneExtension = NormalizeOptional(phoneExtension);
         Fax          = fax?.Trim();
         Website      = website?.Trim();
         AddressLine1 = addressLine1?.Trim();
@@ -186,4 +191,7 @@ public class Contact : AuditableEntity
         => string.Join(" ",
             new[] { firstName.Trim(), lastName.Trim() }
                 .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

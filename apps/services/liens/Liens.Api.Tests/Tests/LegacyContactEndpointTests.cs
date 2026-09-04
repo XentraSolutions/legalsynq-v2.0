@@ -666,6 +666,93 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task CreateCaseManager_with_phone_extension_persists_separate_fields()
+    {
+        var createResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Morgan",
+            lastName = "Reed",
+            phone = "(555) 555-0000",
+            phoneExtension = " 123 ",
+        });
+
+        createResp.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResp.Content.ReadAsStringAsync()}");
+        var created = await createResp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        created.Should().NotBeNull();
+        created!.LawFirmId.Should().Be(SeedHelper.LawFirmId);
+        created.ContactSubtype.Should().Be("CaseManager");
+        created.Phone.Should().Be("(555) 555-0000");
+        created.PhoneExtension.Should().Be("123");
+
+        var getResp = await _client.GetAsync($"/api/liens/contacts/{created.Id}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var persisted = await getResp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        persisted.Should().NotBeNull();
+        persisted!.Phone.Should().Be("(555) 555-0000");
+        persisted.PhoneExtension.Should().Be("123");
+    }
+
+    [Fact]
+    public async Task CreateCaseManager_without_phone_extension_returns201_with_null_extension()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Taylor",
+            lastName = "Blank",
+            phone = "(555) 555-0001",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        var body = await resp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        body.Should().NotBeNull();
+        body!.PhoneExtension.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateCaseManager_can_change_and_clear_phone_extension()
+    {
+        var createResp = await _client.PostAsJsonAsync("/api/liens/contacts", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Jordan",
+            lastName = "Fields",
+            phone = "(555) 555-0002",
+            phoneExtension = "321",
+        });
+        createResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        created.Should().NotBeNull();
+
+        var updateResp = await _client.PutAsJsonAsync($"/api/liens/contacts/{created!.Id}", new
+        {
+            contactType = "LawFirm",
+            contactSubtype = "CaseManager",
+            lawFirmId = SeedHelper.LawFirmId,
+            firstName = "Jordan",
+            lastName = "Fields",
+            phone = "(555) 555-0002",
+            phoneExtension = " ",
+        });
+
+        updateResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResp.Content.ReadAsStringAsync()}");
+        var updated = await updateResp.Content.ReadFromJsonAsync<ContactResponseDto>();
+        updated.Should().NotBeNull();
+        updated!.Phone.Should().Be("(555) 555-0002");
+        updated.PhoneExtension.Should().BeNull();
+    }
+
+    [Fact]
     public async Task CreateFundingCompanyContact_returns201()
     {
         var resp = await _client.PostAsJsonAsync("/api/liens/contacts", new
@@ -980,6 +1067,6 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
 
     // Helper DTO for parsing created entity ID.
     private sealed record IdResponse(Guid Id);
-    private sealed record ContactResponseDto(Guid Id, Guid? LawFirmId, Guid? FacilityId, string ContactType, string? ContactSubtype, string? Organization, string? Title, string? FirstName, string? LastName, string? DisplayName, int ActiveCases);
+    private sealed record ContactResponseDto(Guid Id, Guid? LawFirmId, Guid? FacilityId, string ContactType, string? ContactSubtype, string? Organization, string? Title, string? FirstName, string? LastName, string? DisplayName, string? Phone, string? PhoneExtension, int ActiveCases);
     private sealed record PaginatedContactResponseDto(List<ContactResponseDto> Items, int TotalCount);
 }

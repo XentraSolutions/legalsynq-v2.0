@@ -1530,10 +1530,10 @@ public static class SellingV2Endpoints
 
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
-        if (!IsMoveToManagementEligible(lien))
-            return Results.Conflict(new { error = new { code = "lien_not_eligible_for_management", message = "Only Selling Pending-tab or existing Internal liens can be moved to management." } });
         if (lien.MovedToManagementAtUtc.HasValue)
             return Results.Conflict(new { error = new { code = "lien_already_moved_to_management", message = "This lien has already been moved to management." } });
+        if (!IsMoveToManagementEligible(lien))
+            return Results.Conflict(new { error = new { code = "lien_not_eligible_for_management", message = "Only Selling Pending-tab or existing Internal liens can be moved to management." } });
 
         var existingCase = lien.CaseId.HasValue && await db.Cases.AnyAsync(item =>
             item.Id == lien.CaseId.Value && item.TenantId == tenantId && item.OrgId == sellerOrgId, ct);
@@ -1766,6 +1766,8 @@ public static class SellingV2Endpoints
 
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (lien.MovedToManagementAtUtc.HasValue)
+            return Results.Conflict(new { error = new { code = "lien_already_moved_to_management", message = "This lien has already been moved to management." } });
         if (!IsMoveToManagementEligible(lien))
             return ValidationError("sellerStatus", "Only Selling Pending-tab or existing Internal liens can be moved to management.");
 
@@ -1790,6 +1792,14 @@ public static class SellingV2Endpoints
             }
 
             await db.Entry(lien).ReloadAsync(ct);
+            if (lien.MovedToManagementAtUtc.HasValue)
+            {
+                db.SellingIdempotencyRecords.Remove(started.Record!);
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return Results.Conflict(new { error = new { code = "lien_already_moved_to_management", message = "This lien has already been moved to management." } });
+            }
             if (!IsMoveToManagementEligible(lien))
             {
                 db.SellingIdempotencyRecords.Remove(started.Record!);
@@ -2851,7 +2861,8 @@ public static class SellingV2Endpoints
 
     private static bool IsMoveToManagementEligible(Lien lien)
     {
-        if (lien.ArchivedAtUtc.HasValue || lien.SoldAtUtc.HasValue || lien.WithdrawnAtUtc.HasValue)
+        if (lien.MovedToManagementAtUtc.HasValue || lien.ArchivedAtUtc.HasValue ||
+            lien.SoldAtUtc.HasValue || lien.WithdrawnAtUtc.HasValue)
             return false;
         if (IsSubmittedLien(lien))
             return true;
@@ -4012,14 +4023,19 @@ public static class SellingV2Endpoints
         if (documents == 0) missing.Add("documents");
         return (missing.Count == 0, missing.ToArray());
     }
-    private static string[] AvailableActions(Lien lien) => lien.SellerStatus switch
+    private static string[] AvailableActions(Lien lien)
     {
-        SellingLienStatus.Pending or SellingLienStatus.Internal => ["prepare-sale", "archive"],
-        SellingLienStatus.PreparedForSale => ["confirm-sale", "archive"],
-        SellingLienStatus.SubmittedForSale => ["withdraw-sale", "archive", "buyer-access-links"],
-        SellingLienStatus.Archived => ["restore"],
-        _ => [],
-    };
+        string[] actions = lien.SellerStatus switch
+        {
+            SellingLienStatus.Pending or SellingLienStatus.Internal => ["prepare-sale", "archive"],
+            SellingLienStatus.PreparedForSale => ["confirm-sale", "archive"],
+            SellingLienStatus.SubmittedForSale => ["withdraw-sale", "archive", "buyer-access-links"],
+            SellingLienStatus.Archived => ["restore"],
+            _ => [],
+        };
+
+        return IsMoveToManagementEligible(lien) ? [.. actions, "keep"] : actions;
+    }
     private static Dictionary<string, string> ParseCaseMetadata(string? notes)
     {
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

@@ -322,6 +322,9 @@ including `draftId`, `caseId`, and `caseNumber`. It is limited to the authentica
 `POST /liens` now requires that returned `caseId`, plus `sellerStatus` (`Pending` or `Internal`) and an
 optional `source`. The route rejects cases outside the authenticated tenant/seller organization.
 
+`GET /liens/{lienId}` returns lifecycle-driven `availableActions`. It includes `keep` exactly when the lien
+is eligible for `move-to-management-v2`; already-managed, archived, sold, settled, and withdrawn liens do not advertise it.
+
 `PUT /liens/{lienId}/lien-information` requires `sellerStatus` and `listingVisibility`. Omitted
 `initialServiceDate`, `endServiceDate`, `receivableDueDate`, and `notes` fields preserve their current values;
 supplying one of those fields as `null` clears its current value.
@@ -1581,7 +1584,11 @@ changing to `blank`; resubmitting unchanged normalized values creates no row. Th
 lien mutation and history write commit atomically. `POST /api/liens/cases/liens/update-facility`
 updates its medical-information compatibility row only when the normalized facility,
 contact, provider, email, or phone values changed; an unchanged resubmission preserves
-the existing row and timestamp.
+the existing row and timestamp. `POST /api/liens/cases/liens/update-medicalcode` likewise
+preserves the existing medical-code row and timestamp when its description and stored
+detail values are unchanged. `POST /api/liens/cases/liens/payment` creates no row for an
+empty payee/check submission and updates its existing medical-payment row only when the
+payee or outbound check number changes.
 Global ordering is timestamp descending, native before imported on an exact
 timestamp tie, then stable source sequence/ID descending. Counts and pagination
 cover all enabled sources. Timeline requests are limited to 200 rows per page
@@ -2182,6 +2189,7 @@ Create a new contact.
 | `organization` | `string` | No | Yes | Organization name |
 | `email` | `string` | No | Yes | Email address |
 | `phone` | `string` | No | Yes | Phone number |
+| `phoneExtension` | `string` | No | Yes | Optional phone extension, stored separately from `phone` |
 | `fax` | `string` | No | Yes | Fax number |
 | `website` | `string` | No | Yes | Website URL |
 | `addressLine1` | `string` | No | Yes | Street address |
@@ -2219,6 +2227,7 @@ Update an existing contact.
 | `organization` | `string` | No | Yes | Organization name |
 | `email` | `string` | No | Yes | Email address |
 | `phone` | `string` | No | Yes | Phone number |
+| `phoneExtension` | `string` | No | Yes | Optional phone extension, stored separately from `phone` |
 | `fax` | `string` | No | Yes | Fax number |
 | `website` | `string` | No | Yes | Website URL |
 | `addressLine1` | `string` | No | Yes | Street address |
@@ -2300,6 +2309,7 @@ Export all matching active, top-level contacts as a Base64-encoded CSV. The defa
 | `organization` | `string` | Yes | Organization name |
 | `email` | `string` | Yes | Email address |
 | `phone` | `string` | Yes | Phone number |
+| `phoneExtension` | `string` | Yes | Phone extension, stored separately from `phone` |
 | `fax` | `string` | Yes | Fax number |
 | `website` | `string` | Yes | Website URL |
 | `addressLine1` | `string` | Yes | Street address |

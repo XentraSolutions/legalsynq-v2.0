@@ -49,6 +49,9 @@ public class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.Property(c => c.Phone)
             .HasMaxLength(30);
 
+        builder.Property(c => c.PhoneExtension)
+            .HasMaxLength(20);
+
         builder.Property(c => c.Fax)
             .HasMaxLength(30);
 

@@ -175,7 +175,8 @@ public sealed class ContactService : IContactService
                     lastName),
                 request.Email, request.Phone, request.Fax, request.Website,
                 request.AddressLine1, request.City, request.State, request.PostalCode,
-                request.Notes);
+                request.Notes,
+                phoneExtension: request.PhoneExtension);
 
             await _repo.AddAsync(entity, ct);
 
@@ -295,7 +296,8 @@ public sealed class ContactService : IContactService
                         : null),
                 request.Email, request.Phone, request.Fax, request.Website,
                 request.AddressLine1, request.City, request.State, request.PostalCode,
-                request.Notes);
+                request.Notes,
+                phoneExtension: request.PhoneExtension);
 
             await _repo.UpdateAsync(entity, ct);
 
@@ -424,6 +426,7 @@ public sealed class ContactService : IContactService
         Organization = entity.Organization,
         Email = entity.Email,
         Phone = entity.Phone,
+        PhoneExtension = entity.PhoneExtension,
         Fax = entity.Fax,
         Website = entity.Website,
         AddressLine1 = entity.AddressLine1,
@@ -551,6 +554,7 @@ public sealed class ContactService : IContactService
             organization: legacyFacilityContact.Organization,
             email: legacyFacilityContact.Email,
             phone: legacyFacilityContact.Phone,
+            phoneExtension: legacyFacilityContact.PhoneExtension,
             fax: legacyFacilityContact.Fax,
             website: legacyFacilityContact.Website,
             addressLine1: legacyFacilityContact.AddressLine1,

@@ -1685,6 +1685,49 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Lien_detail_available_actions_include_keep_only_when_management_move_is_allowed()
+    {
+        var lienId = await CreateSellingLienAsync();
+
+        var pendingResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        pendingResponse.StatusCode.Should().Be(HttpStatusCode.OK, await pendingResponse.Content.ReadAsStringAsync());
+        using (var pendingJson = JsonDocument.Parse(await pendingResponse.Content.ReadAsStringAsync()))
+        {
+            pendingJson.RootElement.GetProperty("availableActions")
+                .EnumerateArray()
+                .Select(action => action.GetString())
+                .Should().Equal("prepare-sale", "archive", "keep");
+        }
+
+        using (var keep = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management-v2")
+        {
+            Content = JsonContent.Create(new { reason = "Retained internally" }),
+        })
+        {
+            keep.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+            var keepResponse = await _client.SendAsync(keep);
+            keepResponse.StatusCode.Should().Be(HttpStatusCode.OK, await keepResponse.Content.ReadAsStringAsync());
+        }
+
+        var keptResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        keptResponse.StatusCode.Should().Be(HttpStatusCode.OK, await keptResponse.Content.ReadAsStringAsync());
+        using var keptJson = JsonDocument.Parse(await keptResponse.Content.ReadAsStringAsync());
+        keptJson.RootElement.GetProperty("availableActions")
+            .EnumerateArray()
+            .Select(action => action.GetString())
+            .Should().NotContain("keep");
+
+        using var repeatKeep = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management-v2")
+        {
+            Content = JsonContent.Create(new { reason = "Retained internally again" }),
+        };
+        repeatKeep.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var repeatResponse = await _client.SendAsync(repeatKeep);
+        repeatResponse.StatusCode.Should().Be(HttpStatusCode.Conflict, await repeatResponse.Content.ReadAsStringAsync());
+        (await repeatResponse.Content.ReadAsStringAsync()).Should().Contain("lien_already_moved_to_management");
+    }
+
+    [Fact]
     public async Task Archive_status_and_restore_keep_lien_record_with_history()
     {
         var lienId = await CreateSellingLienAsync();

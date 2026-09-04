@@ -238,6 +238,7 @@ public static class ContactEndpoints
                 contact.Organization,
                 contact.Email,
                 contact.Phone,
+                contact.PhoneExtension,
                 contact.IsActive,
             },
             relatedCases,
@@ -379,6 +380,7 @@ public static class ContactEndpoints
             Organization = request.Organization,
             Email = request.Email,
             Phone = request.Phone,
+            PhoneExtension = request.PhoneExtension,
             Fax = request.Fax,
             Website = request.Website,
             AddressLine1 = request.AddressLine1,
@@ -742,6 +744,7 @@ public static class ContactEndpoints
         public string? Organization{ get; init; }
         public string? Email       { get; init; }
         public string? Phone       { get; init; }
+        public string? PhoneExtension { get; init; }
         public string? Fax         { get; init; }
         public string? Website     { get; init; }
         public string? AddressLine1{ get; init; }
@@ -764,6 +767,7 @@ public static class ContactEndpoints
         public string? Organization{ get; init; }
         public string? Email       { get; init; }
         public string? Phone       { get; init; }
+        public string? PhoneExtension { get; init; }
         public string? Fax         { get; init; }
         public string? Website     { get; init; }
         public string? AddressLine1{ get; init; }
@@ -787,7 +791,8 @@ public static class ContactEndpoints
             FacilityId   = req.FacilityId, LawFirmId = req.LawFirmId,
             FirstName    = req.FirstName, LastName = req.LastName,
             Title        = req.Title, Organization = req.Organization,
-            Email        = req.Email, Phone = req.Phone, Fax = req.Fax, Website = req.Website,
+            Email        = req.Email, Phone = req.Phone, PhoneExtension = req.PhoneExtension,
+            Fax = req.Fax, Website = req.Website,
             AddressLine1 = req.AddressLine1, City = req.City, State = req.State,
             PostalCode   = req.PostalCode, Notes = req.Notes,
         };

@@ -41,6 +41,7 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260829120000_AddLegacyUpdateEvents", migrationIds);
         Assert.Contains("20260831010000_OptimizeCaseNoteReportQueries", migrationIds);
         Assert.Contains("20260831130318_AddSellingPortalMessageAttachments", migrationIds);
+        Assert.Contains("20260904010000_AddContactPhoneExtension", migrationIds);
     }
 
     [Fact]
@@ -69,6 +70,7 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLegacyUpdateEvents),
             typeof(Liens.Infrastructure.Persistence.Migrations.OptimizeCaseNoteReportQueries),
             typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingPortalMessageAttachments),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddContactPhoneExtension),
         };
 
         foreach (var migrationType in migrationTypes)
@@ -87,6 +89,19 @@ public class LiensMigrationDiscoveryTests
             Assert.NotNull(migrationAttribute);
             Assert.False(string.IsNullOrWhiteSpace(migrationAttribute!.Id));
         }
+    }
+
+    [Fact]
+    public void ContactPhoneExtensionMigration_AddsNullableSeparateColumn()
+    {
+        var migration = new Liens.Infrastructure.Persistence.Migrations.AddContactPhoneExtension();
+
+        var operation = Assert.IsType<AddColumnOperation>(Assert.Single(migration.UpOperations));
+        Assert.Equal("liens_Contacts", operation.Table);
+        Assert.Equal("PhoneExtension", operation.Name);
+        Assert.Equal("varchar(20)", operation.ColumnType);
+        Assert.Equal(20, operation.MaxLength);
+        Assert.True(operation.IsNullable);
     }
 
     [Fact]

@@ -142,7 +142,7 @@ Every tracked root Case mutation is captured at the EF save boundary in append-o
 Identifier changes inside Liens Updates descriptions are returned as tenant-scoped case codes, facility/company/contact names, and Identity organization names instead of raw UUIDs. Deleted or otherwise unresolvable references are labeled unavailable rather than exposing their stored identifier.
 Native changes use the **Liens Details** action label, and obsolete **Lien Update** servicing compatibility rows are excluded from the timeline so the same change is not listed twice.
 The history schema migrations are intentionally forward-only: application rollback leaves the additive case-history table and expanded lien-history text column in place so retained audit evidence is not deleted or truncated.
-`POST /api/liens/cases/liens/update-medical` and `/api/liens/cases/liens/update-facility` permit servicing corrections while a lien is `Settled`; declined, withdrawn, and cancelled liens remain non-editable. Each successful `update-medical` request appends exactly one lien-scoped **Liens Details** row to `liens-updates/v3` when at least one submitted value changed. That row combines every changed case, funding-company, status, purchase/service-date, note, bulk, and servicing field as **previous → new**, uses the resulting case association, and attributes the change to the authenticated user. Note clearing is recorded as **previous value → blank**, and resubmitting unchanged normalized values does not create another row. `update-facility` also preserves its existing medical-information compatibility row and timestamp when the normalized facility, contact, provider, email, and phone values are unchanged. The lien mutation and history write commit atomically.
+`POST /api/liens/cases/liens/update-medical` and `/api/liens/cases/liens/update-facility` permit servicing corrections while a lien is `Settled`; declined, withdrawn, and cancelled liens remain non-editable. Each successful `update-medical` request appends exactly one lien-scoped **Liens Details** row to `liens-updates/v3` when at least one submitted value changed. That row combines every changed case, funding-company, status, purchase/service-date, note, bulk, and servicing field as **previous → new**, uses the resulting case association, and attributes the change to the authenticated user. Note clearing is recorded as **previous value → blank**, and resubmitting unchanged normalized values does not create another row. `update-facility` also preserves its existing medical-information compatibility row and timestamp when the normalized facility, contact, provider, email, and phone values are unchanged. `update-medicalcode` preserves an unchanged medical-code row and timestamp, while `liens/payment` skips empty creation and changes its single medical-payment row only when the payee or outbound check number differs. The lien mutation and history write commit atomically.
 
 Program 1 `SL_CASE_UPDATE_LOG` and `SL_LIENS_UPDATE_LOG` history can be imported
 as append-only evidence through [`scripts/LegacyLiensImport`](../../scripts/LegacyLiensImport/README.md).
@@ -295,7 +295,7 @@ all summary metrics return `trendAvailable: false` with `trendPercent: null`; hi
 | `PUT` | `/api/liens/selling/cases/{caseId}/plaintiff` | Updates the plaintiff fields used by the second intake step for a finalized Selling case. |
 | `GET` | `/api/liens/selling/lookups/document-types` | Returns the fixed Selling document codes: `MedicalBill`, `MedicalRecord`, `LienAgreement`, `SettlementStatement`, `Other`, `ItemizedBill`, `HCFA-1500`, `SignedLien`, and `LetterOfProtection`. |
 | `POST` | `/api/liens/selling/liens` | Creates a lien in `Pending` or `Internal` attached to a required, finalized case owned by the authenticated tenant and seller organization. |
-| `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
+| `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. Its lifecycle-driven `availableActions` includes `keep` exactly when `move-to-management-v2` is allowed, and excludes it after the lien has already moved to Management. |
 | `GET` | `/api/liens/selling/liens/{lienId}/activity` | Returns the seller-scoped activity history. New records include the lien status snapshot that applied when each activity occurred so later status changes do not rewrite earlier history. |
 | `GET`, `POST` | `/api/liens/selling/liens/{lienId}/messages` | Authenticated seller message thread for a seller-scoped lien. Reads return every persisted offer-thread message and message attachment metadata for the lien; sends require an existing buyer offer/access-link thread, accept JSON for text-only messages or multipart `message` plus repeated `files`, persist `senderType=seller`, upload attachments to Documents, and notify the buyer through the same offer-message notification workflow as public seller replies. Message emails display the saved message timestamp in U.S. Pacific time. |
 | `GET` | `/api/liens/selling/liens/{lienId}/message-attachments/{attachmentId}/view`, `/download` | Authenticated seller redirects for message-scoped attachments. The endpoints enforce the seller's tenant/organization/lien scope before issuing short-lived Documents service access URLs. |
@@ -381,6 +381,18 @@ the Liens database. It idempotently applies all three migrations from `202609020
 and preceding migration history. All three final statuses must be `READY` before restarting the API. The narrower
 [`scripts/apply-case-number-reservations.sql`](../../../scripts/apply-case-number-reservations.sql) remains available
 when only the reservation backfill is needed and intentionally does not change `__EFMigrationsHistory`.
+
+If `20260904010000_AddContactPhoneExtension` cannot be applied automatically, stop the Liens API and run
+[`scripts/apply-contact-phone-extension-migration.sql`](../../../scripts/apply-contact-phone-extension-migration.sql)
+against the Liens database. The script idempotently adds the nullable `liens_Contacts.PhoneExtension` column and records
+the EF migration only after verifying the column contract and the preceding migration history. Its final status must be
+`READY` before restarting the API.
+
+For a database whose latest recorded migration is
+`20260827100000_AddSellingCaseDraftConcurrencyToken`, use
+[`scripts/apply-liens-post-selling-draft-catchup.sql`](../../../scripts/apply-liens-post-selling-draft-catchup.sql)
+instead. It safely applies and reconciles the complete seven-migration sequence through
+`20260904010000_AddContactPhoneExtension`; every final row must report `READY` before the API is restarted.
 
 For API testing, import [`LegalSynq Selling Case API.postman_collection.json`](LegalSynq%20Selling%20Case%20API.postman_collection.json).
 It contains the full draft, plaintiff-finalization, finalized-case read, and two-step finalized-case update workflow.

@@ -887,6 +887,194 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task MedicalCode_update_touches_the_row_only_when_values_change()
+    {
+        Guid lienId;
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"MC-NOOP-{Guid.NewGuid():N}",
+                LienType.MedicalLien,
+                0m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+            lienId = lien.Id;
+        }
+
+        var payload = new
+        {
+            id = (string?)null,
+            liensId = lienId.ToString(),
+            code = "99218",
+            description = "Initial hospital care",
+            medicareCost = "175.00",
+            billingAmount = "250.00",
+            purchaseAmount = "200.00",
+            payee = "Test Payee",
+            outboundCheckNumber = "CHK-2000",
+        };
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            payload);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+        var medicalCodeId = Guid.Parse(
+            JsonNode.Parse(await createResponse.Content.ReadAsStringAsync())!["data"]!.GetValue<string>());
+
+        DateTime createdTimestamp;
+        using (var createdScope = _factory.Services.CreateScope())
+        {
+            var db = createdScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            createdTimestamp = (await db.ServicingItems.AsNoTracking()
+                .SingleAsync(item => item.Id == medicalCodeId)).UpdatedAtUtc;
+        }
+
+        var unchangedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medicalcode",
+            new
+            {
+                id = medicalCodeId.ToString(),
+                payload.liensId,
+                payload.code,
+                payload.description,
+                payload.medicareCost,
+                payload.billingAmount,
+                payload.purchaseAmount,
+                payload.payee,
+                payload.outboundCheckNumber,
+            });
+        unchangedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await unchangedResponse.Content.ReadAsStringAsync()}");
+
+        using (var unchangedScope = _factory.Services.CreateScope())
+        {
+            var db = unchangedScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var unchanged = await db.ServicingItems.AsNoTracking()
+                .SingleAsync(item => item.Id == medicalCodeId);
+            unchanged.UpdatedAtUtc.Should().Be(createdTimestamp);
+        }
+
+        var changedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medicalcode",
+            new
+            {
+                id = medicalCodeId.ToString(),
+                payload.liensId,
+                payload.code,
+                payload.description,
+                payload.medicareCost,
+                payload.billingAmount,
+                purchaseAmount = "225.00",
+                payload.payee,
+                payload.outboundCheckNumber,
+            });
+        changedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await changedResponse.Content.ReadAsStringAsync()}");
+
+        using var changedScope = _factory.Services.CreateScope();
+        var changedDb = changedScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var changed = await changedDb.ServicingItems.AsNoTracking()
+            .SingleAsync(item => item.Id == medicalCodeId);
+        changed.UpdatedAtUtc.Should().BeAfter(createdTimestamp);
+        changed.Notes.Should().Contain("purchaseAmount=225.00");
+    }
+
+    [Fact]
+    public async Task MedicalPayment_adds_or_updates_only_when_values_change()
+    {
+        Guid lienId;
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"MP-NOOP-{Guid.NewGuid():N}",
+                LienType.MedicalLien,
+                0m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+            lienId = lien.Id;
+        }
+
+        var blankResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/payment",
+            new { liensId = lienId, payee = "", outboundCheckNumber = "" });
+        blankResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await blankResponse.Content.ReadAsStringAsync()}");
+
+        using (var blankScope = _factory.Services.CreateScope())
+        {
+            var db = blankScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            (await db.ServicingItems.AsNoTracking().CountAsync(item =>
+                item.LienId == lienId && item.TaskType == "LegacyMedicalPayment"))
+                .Should().Be(0);
+        }
+
+        var payment = new
+        {
+            liensId = lienId,
+            payee = "Legacy Payee",
+            outboundCheckNumber = "OB-9001",
+        };
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/payment",
+            payment);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        Guid paymentId;
+        DateTime createdTimestamp;
+        using (var createdScope = _factory.Services.CreateScope())
+        {
+            var db = createdScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var created = await db.ServicingItems.SingleAsync(item =>
+                item.LienId == lienId && item.TaskType == "LegacyMedicalPayment");
+            paymentId = created.Id;
+            db.Entry(created).Property(item => item.CaseId).CurrentValue = null;
+            await db.SaveChangesAsync();
+            createdTimestamp = created.UpdatedAtUtc;
+        }
+
+        var unchangedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/payment",
+            payment);
+        unchangedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await unchangedResponse.Content.ReadAsStringAsync()}");
+
+        using (var unchangedScope = _factory.Services.CreateScope())
+        {
+            var db = unchangedScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var unchanged = await db.ServicingItems.AsNoTracking()
+                .SingleAsync(item => item.Id == paymentId);
+            unchanged.UpdatedAtUtc.Should().Be(createdTimestamp);
+        }
+
+        var changedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/payment",
+            new { payment.liensId, payment.payee, outboundCheckNumber = "OB-9002" });
+        changedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await changedResponse.Content.ReadAsStringAsync()}");
+
+        using var changedScope = _factory.Services.CreateScope();
+        var changedDb = changedScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var changed = await changedDb.ServicingItems.AsNoTracking()
+            .SingleAsync(item => item.Id == paymentId);
+        changed.UpdatedAtUtc.Should().BeAfter(createdTimestamp);
+        changed.Notes.Should().Contain("outboundCheckNumber=OB-9002");
+        (await changedDb.ServicingItems.AsNoTracking().CountAsync(item =>
+            item.LienId == lienId && item.TaskType == "LegacyMedicalPayment"))
+            .Should().Be(1);
+    }
+
+    [Fact]
     public async Task DeleteMedicalCode_deletes_single_row_when_given_medical_code_id()
     {
         var codeA = $"A-{Guid.NewGuid():N}"[..10];

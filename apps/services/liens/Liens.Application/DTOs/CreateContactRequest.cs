@@ -13,6 +13,7 @@ public sealed class CreateContactRequest
     public string? Organization { get; init; }
     public string? Email { get; init; }
     public string? Phone { get; init; }
+    public string? PhoneExtension { get; init; }
     public string? Fax { get; init; }
     public string? Website { get; init; }
     public string? AddressLine1 { get; init; }

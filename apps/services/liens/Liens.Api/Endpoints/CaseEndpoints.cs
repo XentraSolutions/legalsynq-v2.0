@@ -1608,12 +1608,23 @@ public static class CaseEndpoints
             $"payee={request.payee ?? string.Empty}; " +
             $"outboundCheckNumber={request.outboundCheckNumber ?? string.Empty}";
 
+        var description = string.IsNullOrWhiteSpace(request.code)
+            ? existing.Description
+            : $"Medical code {request.code}";
+        if (LegacyTextValuesEqual(existing.Description, description) &&
+            LegacyTextValuesEqual(existing.Notes, details))
+        {
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully updated medical code record.",
+            });
+        }
+
         var mapped = new UpdateServicingItemRequest
         {
             TaskType = existing.TaskType,
-            Description = string.IsNullOrWhiteSpace(request.code)
-                ? existing.Description
-                : $"Medical code {request.code}",
+            Description = description,
             AssignedTo = string.IsNullOrWhiteSpace(existing.AssignedTo) ? "system" : existing.AssignedTo,
             AssignedToUserId = existing.AssignedToUserId,
             Priority = existing.Priority,
@@ -3214,6 +3225,9 @@ public static class CaseEndpoints
         return string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
     }
 
+    private static bool LegacyTextValuesEqual(string? left, string? right) =>
+        string.Equals(left?.Trim() ?? string.Empty, right?.Trim() ?? string.Empty, StringComparison.Ordinal);
+
     private static string SerializeLegacyNoteFields(string? noteBody, Dictionary<string, string> fields)
     {
         var cleanBody = string.IsNullOrWhiteSpace(noteBody) ? null : noteBody.Trim();
@@ -3268,7 +3282,7 @@ public static class CaseEndpoints
                 status: null,
                 priority: null,
                 assignedTo: null,
-                caseId: lien.CaseId,
+                caseId: null,
                 lienId: lienId,
                 page: 1,
                 pageSize: 100,
@@ -3280,6 +3294,16 @@ public static class CaseEndpoints
 
             if (existing is null)
             {
+                if (string.IsNullOrWhiteSpace(request.payee) &&
+                    string.IsNullOrWhiteSpace(request.outboundCheckNumber))
+                {
+                    return Results.Ok(new
+                    {
+                        isSuccess = true,
+                        message = "No payee or outbound check number changes.",
+                    });
+                }
+
                 var createRequest = new CreateServicingItemRequest
                 {
                     TaskNumber = $"LMP-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
@@ -3296,6 +3320,15 @@ public static class CaseEndpoints
                 {
                     isSuccess = true,
                     message = "Successfully inserted payee and outbound check number.",
+                });
+            }
+
+            if (LegacyTextValuesEqual(existing.Notes, details))
+            {
+                return Results.Ok(new
+                {
+                    isSuccess = true,
+                    message = "Successfully updated payee and outbound check number.",
                 });
             }
 
