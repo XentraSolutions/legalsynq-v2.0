@@ -26,44 +26,6 @@ def load_json(path: Path):
         raise ConfigError(f"invalid JSON in {path}: {exc}") from exc
 
 
-def route_items(registry):
-    if isinstance(registry, list):
-        return registry
-    if isinstance(registry, dict):
-        for key in ("routes", "deepLinks", "deep_links"):
-            value = registry.get(key)
-            if isinstance(value, list):
-                return value
-    raise ConfigError("route registry must be a JSON array or object with a routes array")
-
-
-def route_path(route):
-    if isinstance(route, str):
-        return route
-    if isinstance(route, dict):
-        for key in ("pathTemplate", "path", "route", "pattern"):
-            value = route.get(key)
-            if isinstance(value, str):
-                return value
-    raise ConfigError(f"route entry does not contain a path string: {route!r}")
-
-
-def aasa_component_path(route: str) -> str:
-    if not route.startswith("/"):
-        raise ConfigError(f"route must start with '/': {route}")
-    parts = route.split("/")
-    converted = ["*" if part.startswith(":") else part for part in parts]
-    return "/".join(converted)
-
-
-def load_routes(routes_path: Path):
-    registry = load_json(routes_path)
-    paths = [route_path(item) for item in route_items(registry)]
-    if not paths:
-        raise ConfigError("route registry contains no routes")
-    return paths
-
-
 def validate_environment(name: str, env_config: dict):
     if not ENVIRONMENT_RE.fullmatch(name):
         raise ConfigError(f"{name}: environment name must be a lowercase slug")
@@ -101,21 +63,19 @@ def validate_environment(name: str, env_config: dict):
             raise ConfigError(f"{name}: invalid SHA-256 fingerprint format: {fingerprint!r}")
 
 
-def build_aasa(env_config: dict, routes: list[str]):
+def build_aasa(env_config: dict):
     app_id = f"{env_config['appleTeamId']}.{env_config['iosBundleId']}"
-    components = [
-        {
-            "/": aasa_component_path(route),
-            "comment": f"LegalSynq deep link route {route}"
-        }
-        for route in routes
-    ]
     return {
         "applinks": {
             "details": [
                 {
                     "appIDs": [app_id],
-                    "components": components
+                    "components": [
+                        {
+                            "/": "/",
+                            "comment": "LegalSynq generic portal entry"
+                        }
+                    ]
                 }
             ]
         }
@@ -153,13 +113,13 @@ def environment_output_directory(output_root: Path, environment_name: str) -> Pa
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate Apple and Android deep-link association files.")
     parser.add_argument("--config", default="config/deep-links/association-config.json", help="Approved association config JSON.")
-    parser.add_argument("--routes", default="shared/contracts/deep-links/routes.json", help="Read-only deep-link route registry JSON.")
+    parser.add_argument("--association-scope", required=True, choices=("portal-root",), help="Explicit OS association scope.")
+    parser.add_argument("--routes", help=argparse.SUPPRESS)
     parser.add_argument("--output", default="apps/gateway/Gateway.Api/DeepLinks/Associations", help="Output root for environment association files.")
     args = parser.parse_args()
 
     try:
         config = load_json(Path(args.config))
-        routes = load_routes(Path(args.routes))
         environments = config.get("environments")
         if not isinstance(environments, dict) or not environments:
             raise ConfigError("config must contain an environments object")
@@ -169,7 +129,7 @@ def main() -> int:
                 raise ConfigError(f"{name}: environment config must be an object")
             validate_environment(name, env_config)
             env_output = environment_output_directory(Path(args.output), name)
-            write_json(env_output / "apple-app-site-association", build_aasa(env_config, routes))
+            write_json(env_output / "apple-app-site-association", build_aasa(env_config))
             write_json(env_output / "assetlinks.json", build_assetlinks(env_config))
             print(f"generated {env_output}")
     except ConfigError as exc:

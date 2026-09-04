@@ -1400,7 +1400,7 @@ Generate the files only after Platform has approved the host and Mobile release 
 ```bash
 python3 scripts/deep-links/generate-association-files.py \
   --config <approved-association-config.json> \
-  --routes shared/contracts/deep-links/routes.json \
+  --association-scope portal-root \
   --output apps/gateway/Gateway.Api/DeepLinks/Associations
 ```
 
@@ -1408,7 +1408,7 @@ Validate before restart:
 
 ```bash
 python3 scripts/deep-links/validate-association-files.py \
-  --routes shared/contracts/deep-links/routes.json \
+  --association-scope portal-root \
   --directory apps/gateway/Gateway.Api/DeepLinks/Associations/production \
   --apple-app-id <APPLE_TEAM_ID>.com.legalsynq \
   --android-package com.legalsynq
