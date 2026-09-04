@@ -18,28 +18,10 @@ def load_json(path: Path):
         return json.load(handle)
 
 
-def extract_route_paths(registry):
-    items = registry.get("routes") if isinstance(registry, dict) else registry
-    if not isinstance(items, list):
-        raise ValueError("route registry must be a JSON array or object with a routes array")
-    paths = []
-    for item in items:
-        if isinstance(item, str):
-            paths.append(item)
-        elif isinstance(item, dict):
-            paths.append(item.get("pathTemplate") or item.get("path") or item.get("route") or item.get("pattern"))
-        else:
-            paths.append(None)
-    return paths
-
-
-def to_component_path(route: str) -> str:
-    return "/".join("*" if part.startswith(":") else part for part in route.split("/"))
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate generated deep-link association files.")
-    parser.add_argument("--routes", default="shared/contracts/deep-links/routes.json")
+    parser.add_argument("--association-scope", required=True, choices=("portal-root",))
+    parser.add_argument("--routes", help=argparse.SUPPRESS)
     parser.add_argument("--directory", required=True, help="Directory containing apple-app-site-association and assetlinks.json")
     parser.add_argument("--apple-app-id", required=True)
     parser.add_argument("--android-package", required=True)
@@ -48,13 +30,7 @@ def main() -> int:
     directory = Path(args.directory)
     aasa_path = directory / "apple-app-site-association"
     assetlinks_path = directory / "assetlinks.json"
-    routes_path = Path(args.routes)
-
     try:
-        routes = extract_route_paths(load_json(routes_path))
-        if not routes or any(not isinstance(path, str) or not path.startswith("/") for path in routes):
-            return fail("route registry contains invalid route paths")
-
         aasa = load_json(aasa_path)
         details = aasa.get("applinks", {}).get("details", [])
         if len(details) != 1:
@@ -64,11 +40,8 @@ def main() -> int:
             return fail(f"AASA appIDs mismatch: {app_ids!r}")
         components = details[0].get("components", [])
         component_paths = [component.get("/") for component in components]
-        expected_component_paths = [to_component_path(route) for route in routes]
-        if component_paths != expected_component_paths:
-            return fail(f"AASA route coverage mismatch: {component_paths!r} != {expected_component_paths!r}")
-        if "*" in component_paths or "/*" in component_paths:
-            return fail("AASA contains a broad wildcard route")
+        if component_paths != ["/"]:
+            return fail(f"AASA portal-root scope must contain exactly ['/']: {component_paths!r}")
 
         assetlinks = load_json(assetlinks_path)
         if not isinstance(assetlinks, list) or len(assetlinks) != 1:
